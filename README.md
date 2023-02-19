@@ -1,3 +1,58 @@
+# Tix App
+
+## Features
+
+- Users can list a ticket for an event for sale
+  - Other users can purchase this ticket
+- Any user can list tickets for sale and purchase tickets
+- When a user attempts to purchae as ticket, the ticket is 'locked' for 15 minutes. The user has 15 minutes to enter their payment info.
+  - While locked, no other user can purchase the ticket. After 15 minutes, the ticket should 'unlock'
+- Ticket prices can be edited if they are not locked
+
+## Data Objects
+
+- User
+  - email: string
+  - password: string
+- Ticket
+  - title: string
+  - price: number
+  - userId: User
+  - orderId: Order
+- Order
+  - userId: User
+  - status: 'created' | 'cancelled' | 'payment' | 'completed'
+  - expiresAt: Date
+- Charge
+  - orderId: Order
+  - status: 'created' | 'failed' | 'completed'
+  - amount: number
+  - stripeId: string
+  - stripeRefundId: string
+
+## Events
+
+- User
+  - UserCreated
+  - UserUpdated
+- Ticket
+  - TicketCreated
+  - TicketUpdated
+- Order
+  - OrderCreated
+  - OrderCancelled
+  - OrderExpired
+- Charge
+  - ChargeCreated
+
+## Services
+
+- auth
+  - POST, `/api/trpc/user.register`, body: { email: string, password: string }; register for an account
+  - POST, `/api/trpc/user.login`, body: { email: string, password: string }; log in for existing account
+  - POST, `/api/trpc/user.logout`, body: {}; log user out
+  - GET, `/api/trpc/user.current`; return info about user
+
 # create-t3-turbo
 
 <img width="1758" alt="turbo2" src="https://user-images.githubusercontent.com/51714798/213819392-33e50db9-3e38-4c51-9a22-03abe5e48f3d.png">
