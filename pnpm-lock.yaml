@@ -32,14 +32,14 @@ importers:
 
   apps/expo:
     specifiers:
-      '@acme/api': ^0.1.0
-      '@acme/tailwind-config': ^0.1.0
       '@babel/core': ^7.20.12
       '@babel/preset-env': ^7.20.2
       '@babel/runtime': ^7.20.13
       '@expo/config-plugins': ^5.0.4
       '@shopify/flash-list': 1.4.1
       '@tanstack/react-query': ^4.24.9
+      '@tix/api': ^0.1.0
+      '@tix/tailwind-config': ^0.1.0
       '@trpc/client': ^10.12.0
       '@trpc/react-query': ^10.12.0
       '@trpc/server': ^10.12.0
@@ -61,10 +61,10 @@ importers:
       tailwindcss: ^3.2.7
       typescript: ^4.9.5
     dependencies:
-      '@acme/api': link:../../packages/api
-      '@acme/tailwind-config': link:../../packages/config/tailwind
       '@shopify/flash-list': 1.4.1_xf5fkbfc3c37hoqfuar2ll7ney
       '@tanstack/react-query': 4.24.9_bblof3d6od7kdqr2urb3dykbey
+      '@tix/api': link:../../packages/api
+      '@tix/tailwind-config': link:../../packages/config/tailwind
       '@trpc/client': 10.12.0_@trpc+server@10.12.0
       '@trpc/react-query': 10.12.0_t6pkpjuzl4hzq7yqu7znt6owvu
       '@trpc/server': 10.12.0
@@ -93,11 +93,11 @@ importers:
 
   apps/nextjs:
     specifiers:
-      '@acme/api': ^0.1.0
-      '@acme/auth': ^0.1.0
-      '@acme/db': ^0.1.0
-      '@acme/tailwind-config': ^0.1.0
       '@tanstack/react-query': ^4.24.9
+      '@tix/api': ^0.1.0
+      '@tix/auth': ^0.1.0
+      '@tix/db': ^0.1.0
+      '@tix/tailwind-config': ^0.1.0
       '@trpc/client': ^10.12.0
       '@trpc/next': ^10.12.0
       '@trpc/react-query': ^10.12.0
@@ -118,11 +118,11 @@ importers:
       typescript: ^4.9.5
       zod: ^3.20.6
     dependencies:
-      '@acme/api': link:../../packages/api
-      '@acme/auth': link:../../packages/auth
-      '@acme/db': link:../../packages/db
-      '@acme/tailwind-config': link:../../packages/config/tailwind
       '@tanstack/react-query': 4.24.9_biqbaboplfbrettd7655fr4n2y
+      '@tix/api': link:../../packages/api
+      '@tix/auth': link:../../packages/auth
+      '@tix/db': link:../../packages/db
+      '@tix/tailwind-config': link:../../packages/config/tailwind
       '@trpc/client': 10.12.0_@trpc+server@10.12.0
       '@trpc/next': 10.12.0_3wi4bq3cjtt55c7zuonh5a5o34
       '@trpc/react-query': 10.12.0_t6pkpjuzl4hzq7yqu7znt6owvu
@@ -146,8 +146,8 @@ importers:
 
   packages/api:
     specifiers:
-      '@acme/auth': ^0.1.0
-      '@acme/db': ^0.1.0
+      '@tix/auth': ^0.1.0
+      '@tix/db': ^0.1.0
       '@trpc/client': ^10.12.0
       '@trpc/server': ^10.12.0
       eslint: ^8.34.0
@@ -155,8 +155,8 @@ importers:
       typescript: ^4.9.5
       zod: ^3.20.6
     dependencies:
-      '@acme/auth': link:../auth
-      '@acme/db': link:../db
+      '@tix/auth': link:../auth
+      '@tix/db': link:../db
       '@trpc/client': 10.12.0_@trpc+server@10.12.0
       '@trpc/server': 10.12.0
       superjson: 1.12.2
@@ -167,8 +167,8 @@ importers:
 
   packages/auth:
     specifiers:
-      '@acme/db': ^0.1.0
       '@next-auth/prisma-adapter': ^1.0.5
+      '@tix/db': ^0.1.0
       eslint: ^8.34.0
       next: ^13.1.6
       next-auth: ^4.19.2
@@ -176,8 +176,8 @@ importers:
       react-dom: 18.2.0
       typescript: ^4.9.5
     dependencies:
-      '@acme/db': link:../db
       '@next-auth/prisma-adapter': 1.0.5_next-auth@4.19.2
+      '@tix/db': link:../db
       next: 13.1.6_biqbaboplfbrettd7655fr4n2y
       next-auth: 4.19.2_3vryta7zmbcsw4rrqf4axjqggm
       react: 18.2.0

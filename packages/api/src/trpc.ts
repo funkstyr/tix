@@ -6,12 +6,12 @@
  * tl;dr - this is where all the tRPC server stuff is created and plugged in.
  * The pieces you will need to use are documented accordingly near the end
  */
-import { TRPCError, initTRPC } from "@trpc/server";
+import { getServerSession, type Session } from "@tix/auth";
+import { prisma } from "@tix/db";
+import { initTRPC, TRPCError } from "@trpc/server";
 import { type CreateNextContextOptions } from "@trpc/server/adapters/next";
 import superjson from "superjson";
 import { ZodError } from "zod";
-import { getServerSession, type Session } from "@acme/auth";
-import { prisma } from "@acme/db";
 
 /**
  * 1. CONTEXT
