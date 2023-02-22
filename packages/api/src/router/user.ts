@@ -1,19 +1,77 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { createTRPCRouter, publicProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 
 const emailSchema = z.string().email();
 const userNameSchema = z.string().min(4).max(25);
 const passwordSchema = z.string().min(6);
 
+// TODO: should we do this in protected procedure to always update?
+const refreshExpiresAt = () =>
+  new Date(Date.now() + 1000 * 60 * 60).toISOString();
+
+const route = "/user";
+
 export const userRouter = createTRPCRouter({
-  // current: protectedProcedure.mutation(({ ctx }) => {}),
+  current: protectedProcedure
+    .meta({
+      openapi: {
+        method: "GET",
+        path: `${route}/current`,
+        tags: ["user"],
+        protect: true,
+      },
+    })
+    .input(z.void())
+    .output(
+      z.object({
+        id: z.string(),
+        name: z.string().nullable(),
+        username: z.string().nullable(),
+      }),
+    )
+    .query(async ({ ctx }) => {
+      const userId = ctx.session.user.id;
+
+      const currentUser = await ctx.prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          tickets: true,
+          orders: true,
+        },
+      });
+
+      if (!currentUser) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+        });
+      }
+
+      ctx.session.expires = refreshExpiresAt();
+
+      return currentUser;
+    }),
   login: publicProcedure
+    .meta({
+      openapi: { method: "POST", path: `${route}/login`, tags: ["user"] },
+    })
     .input(
       z.object({
         username: userNameSchema,
         password: passwordSchema,
+      }),
+    )
+    .output(
+      z.object({
+        id: z.string(),
+        name: z.string().nullable(),
+        username: z.string().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -30,6 +88,8 @@ export const userRouter = createTRPCRouter({
         });
       }
 
+      // const { password, ...userData } = existingUser;
+
       // TODO: hash passwords
       if (existingUser.password !== input.password) {
         throw new TRPCError({
@@ -42,16 +102,48 @@ export const userRouter = createTRPCRouter({
         user: {
           id: existingUser.id,
         },
-        expires: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
+        expires: refreshExpiresAt(),
+      };
+
+      // TODO: check if output scrubs password
+      return existingUser;
+    }),
+  logout: protectedProcedure
+    .meta({
+      openapi: {
+        method: "POST",
+        path: `${route}/logout`,
+        tags: ["user"],
+        protect: true,
+      },
+    })
+    .input(z.void())
+    .output(z.void())
+    .mutation(({ ctx }) => {
+      // TODO: figure right way to logout
+      ctx.session = {
+        user: {
+          id: "",
+        },
+        expires: "",
       };
     }),
-  // logout: protectedProcedure.mutation(({ ctx }) => {}),
   register: publicProcedure
+    .meta({
+      openapi: { method: "POST", path: `${route}/register`, tags: ["user"] },
+    })
     .input(
       z.object({
         email: emailSchema,
         username: userNameSchema,
         password: passwordSchema,
+      }),
+    )
+    .output(
+      z.object({
+        id: z.string(),
+        name: z.string().nullable(),
+        username: z.string().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

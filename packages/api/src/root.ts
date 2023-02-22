@@ -21,6 +21,7 @@ export const openApiDocument = generateOpenApiDocument(appRouter, {
   title: "tix tRPC OpenAPI",
   version: pkg.version,
   baseUrl: `${BASE_URL}/api`,
+  tags: ["user", "ticket", "order", "payment"],
 });
 
 // export type definition of API

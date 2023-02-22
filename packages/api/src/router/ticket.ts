@@ -7,7 +7,7 @@ const route = "/ticket";
 
 export const ticketRouter = createTRPCRouter({
   all: publicProcedure
-    .meta({ openapi: { method: "GET", path: `${route}` } })
+    .meta({ openapi: { method: "GET", path: `${route}`, tags: ["ticket"] } })
     .input(z.void())
     .output(
       z.array(
@@ -19,7 +19,9 @@ export const ticketRouter = createTRPCRouter({
       return ctx.prisma.ticket.findMany({ orderBy: { id: "desc" } });
     }),
   byId: publicProcedure
-    .meta({ openapi: { method: "GET", path: `${route}/{id}` } })
+    .meta({
+      openapi: { method: "GET", path: `${route}/{id}`, tags: ["ticket"] },
+    })
     .input(z.object({ id: z.string() }))
     .output(
       z
@@ -32,7 +34,14 @@ export const ticketRouter = createTRPCRouter({
       return ctx.prisma.ticket.findFirst({ where: { id } });
     }),
   create: protectedProcedure
-    .meta({ openapi: { method: "POST", path: `${route}` } })
+    .meta({
+      openapi: {
+        method: "POST",
+        path: `${route}`,
+        tags: ["ticket"],
+        protect: true,
+      },
+    })
     .input(
       z.object({
         name: z.string().min(1),
@@ -46,7 +55,14 @@ export const ticketRouter = createTRPCRouter({
       return ctx.prisma.ticket.create({ data: { ...input, userId } });
     }),
   update: protectedProcedure
-    .meta({ openapi: { method: "PUT", path: `${route}/{id}` } })
+    .meta({
+      openapi: {
+        method: "PUT",
+        path: `${route}/{id}`,
+        tags: ["ticket"],
+        protect: true,
+      },
+    })
     .input(
       z.object({
         id: z.string(),
@@ -78,7 +94,14 @@ export const ticketRouter = createTRPCRouter({
       return ctx.prisma.ticket.update({ where: { id }, data });
     }),
   delete: protectedProcedure
-    .meta({ openapi: { method: "DELETE", path: `${route}/{id}` } })
+    .meta({
+      openapi: {
+        method: "DELETE",
+        path: `${route}/{id}`,
+        tags: ["ticket"],
+        protect: true,
+      },
+    })
     .input(z.object({ id: z.string() }))
     .output(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
