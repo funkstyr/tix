@@ -1,6 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import {
+  createTicketSchema,
+  returnTicketSchema,
+  ticketIdInputSchema,
+  updateTicketSchema,
+} from "../schema/ticket";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 
 const route = "/ticket";
@@ -9,11 +15,7 @@ export const ticketRouter = createTRPCRouter({
   all: publicProcedure
     .meta({ openapi: { method: "GET", path: `${route}`, tags: ["ticket"] } })
     .input(z.void())
-    .output(
-      z.array(
-        z.object({ id: z.string(), name: z.string(), price: z.number() }),
-      ),
-    )
+    .output(z.array(returnTicketSchema))
     .query(({ ctx }) => {
       // TODO: dont return tickets that have an order status of created, payment, or completed
       return ctx.prisma.ticket.findMany({ orderBy: { id: "desc" } });
@@ -22,12 +24,8 @@ export const ticketRouter = createTRPCRouter({
     .meta({
       openapi: { method: "GET", path: `${route}/{id}`, tags: ["ticket"] },
     })
-    .input(z.object({ id: z.string() }))
-    .output(
-      z
-        .object({ id: z.string(), name: z.string(), price: z.number() })
-        .nullable(),
-    )
+    .input(ticketIdInputSchema)
+    .output(returnTicketSchema.nullable())
     .query(({ ctx, input }) => {
       console.log("getById", input);
       const { id } = input;
@@ -42,13 +40,8 @@ export const ticketRouter = createTRPCRouter({
         protect: true,
       },
     })
-    .input(
-      z.object({
-        name: z.string().min(1),
-        price: z.number().min(1),
-      }),
-    )
-    .output(z.object({ id: z.string(), name: z.string(), price: z.number() }))
+    .input(createTicketSchema)
+    .output(returnTicketSchema)
     .mutation(({ ctx, input }) => {
       const userId = ctx.session.user.id;
 
@@ -63,14 +56,8 @@ export const ticketRouter = createTRPCRouter({
         protect: true,
       },
     })
-    .input(
-      z.object({
-        id: z.string(),
-        name: z.string().min(1).optional(),
-        price: z.number().min(1).optional(),
-      }),
-    )
-    .output(z.object({ id: z.string(), name: z.string(), price: z.number() }))
+    .input(updateTicketSchema)
+    .output(returnTicketSchema)
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
       const { id, ...data } = input;
@@ -102,8 +89,8 @@ export const ticketRouter = createTRPCRouter({
         protect: true,
       },
     })
-    .input(z.object({ id: z.string() }))
-    .output(z.object({ id: z.string() }))
+    .input(ticketIdInputSchema)
+    .output(ticketIdInputSchema)
     .mutation(async ({ ctx, input }) => {
       const { id } = input;
       const userId = ctx.session.user.id;
