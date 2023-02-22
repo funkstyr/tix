@@ -4,9 +4,12 @@ import { z } from "zod";
 import {
   loginUserSchema,
   registerUserSchema,
+  returnCurrentUserSchema,
   returnUserSchema,
 } from "../schema/user";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
+import { JWT } from "../utils/jwt";
+import { Password } from "../utils/password";
 
 // TODO: should we do this in protected procedure to always update?
 const refreshExpiresAt = () =>
@@ -25,7 +28,7 @@ export const userRouter = createTRPCRouter({
       },
     })
     .input(z.void())
-    .output(returnUserSchema)
+    .output(returnCurrentUserSchema)
     .query(async ({ ctx }) => {
       const userId = ctx.session.user.id;
 
@@ -72,15 +75,22 @@ export const userRouter = createTRPCRouter({
         });
       }
 
-      // const { password, ...userData } = existingUser;
+      const passwordMatch = await Password.compare(
+        existingUser.password ?? "",
+        input.password,
+      );
 
-      // TODO: hash passwords
-      if (existingUser.password !== input.password) {
+      if (!passwordMatch) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "username or password invalid",
         });
       }
+
+      const token = JWT.sign({
+        id: existingUser.id,
+        username: existingUser.username,
+      });
 
       ctx.session = {
         user: {
@@ -89,8 +99,7 @@ export const userRouter = createTRPCRouter({
         expires: refreshExpiresAt(),
       };
 
-      // TODO: check if output scrubs password
-      return existingUser;
+      return { ...existingUser, token };
     }),
   logout: protectedProcedure
     .meta({
@@ -131,8 +140,12 @@ export const userRouter = createTRPCRouter({
         });
       }
 
-      // TODO: hash password
+      const hashedPassword = await Password.toHash(input.password);
+      const data = {
+        ...input,
+        password: hashedPassword,
+      };
 
-      return ctx.prisma.user.create({ data: input });
+      return ctx.prisma.user.create({ data });
     }),
 });

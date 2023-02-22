@@ -17,6 +17,14 @@ export const registerUserSchema = z.object({
 
 export const returnUserSchema = z.object({
   id: z.string(),
-  name: z.string().nullable(),
   username: z.string().nullable(),
+  token: z.string().optional(),
+});
+
+export const returnCurrentUserSchema = z.object({
+  id: z.string(),
+  username: z.string().nullable(),
+  name: z.string().nullable(),
+  tickets: z.array(z.any()),
+  orders: z.array(z.any()),
 });

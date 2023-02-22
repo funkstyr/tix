@@ -13,6 +13,7 @@ import { type CreateNextContextOptions } from "@trpc/server/adapters/next";
 import superjson from "superjson";
 import { OpenApiMeta } from "trpc-openapi";
 import { ZodError } from "zod";
+import { JWT } from "./utils/jwt";
 
 /**
  * 1. CONTEXT
@@ -25,6 +26,7 @@ import { ZodError } from "zod";
  */
 type CreateContextOptions = {
   session: Session | null;
+  token?: string | null;
 };
 
 /**
@@ -53,6 +55,21 @@ export const createTRPCContext = async (opts: CreateNextContextOptions) => {
 
   // Get the session from the server using the unstable_getServerSession wrapper function
   const session = await getServerSession({ req, res });
+
+  // allow access via auth header
+  const authBearer = req.headers.authorization;
+  if (authBearer) {
+    const user = JWT.verify(authBearer.split(" ")[1] ?? "");
+    return createInnerTRPCContext({
+      session: {
+        ...session,
+        user: {
+          id: user.id ?? "",
+        },
+        expires: "",
+      },
+    });
+  }
 
   return createInnerTRPCContext({
     session,
