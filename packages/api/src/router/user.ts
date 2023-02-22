@@ -1,14 +1,14 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
+import { createTRPCRouter, publicProcedure } from "../trpc";
 
 const emailSchema = z.string().email();
 const userNameSchema = z.string().min(4).max(25);
 const passwordSchema = z.string().min(6);
 
 export const userRouter = createTRPCRouter({
-  current: protectedProcedure.mutation(({ ctx }) => {}),
+  // current: protectedProcedure.mutation(({ ctx }) => {}),
   login: publicProcedure
     .input(
       z.object({
@@ -45,7 +45,7 @@ export const userRouter = createTRPCRouter({
         expires: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
       };
     }),
-  logout: protectedProcedure.mutation(({ ctx }) => {}),
+  // logout: protectedProcedure.mutation(({ ctx }) => {}),
   register: publicProcedure
     .input(
       z.object({
@@ -54,5 +54,21 @@ export const userRouter = createTRPCRouter({
         password: passwordSchema,
       }),
     )
-    .mutation(({ ctx, input }) => {}),
+    .mutation(async ({ ctx, input }) => {
+      const existingUser = await ctx.prisma.user.findUnique({
+        where: {
+          username: input.username,
+        },
+      });
+
+      if (existingUser) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+        });
+      }
+
+      // TODO: hash password
+
+      return ctx.prisma.user.create({ data: input });
+    }),
 });
