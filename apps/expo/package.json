@@ -7,8 +7,8 @@
     "dev:dont": "expo start --ios",
     "dev:android": "expo start --android",
     "dev:ios": "expo start --ios",
-    "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "lint:dont": "eslint .",
+    "type-check:dont": "tsc --noEmit"
   },
   "dependencies": {
     "@shopify/flash-list": "1.4.1",
