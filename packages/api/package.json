@@ -10,8 +10,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@tix/auth": "workspace:^0.1.0",
-    "@tix/db": "workspace:^0.1.0",
+    "@tix/auth": "0.1.0",
+    "@tix/db": "0.1.0",
     "@trpc/client": "^10.12.0",
     "@trpc/server": "^10.12.0",
     "superjson": "1.12.2",
