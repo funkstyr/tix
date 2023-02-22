@@ -53,12 +53,16 @@ model User {
     email         String?   @unique
     username      String?   @unique
     password      String?
-    createdAt     DateTime @default(now())
-    updatedAt     DateTime @updatedAt
     emailVerified DateTime?
     image         String?
-    accounts      Account[]
-    sessions      Session[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    accounts Account[]
+    sessions Session[]
+    tickets  Ticket[]
+    orders   Order[]
 }
 
 model VerificationToken {
@@ -67,4 +71,53 @@ model VerificationToken {
     expires    DateTime
 
     @@unique([identifier, token])
+}
+
+model Ticket {
+    id     String @id @default(cuid())
+    name   String
+    price  Int
+    userId String
+
+    user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+    orders Order[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+// enum OrderStatus {
+//     CREATED
+//     CANCELLED
+//     PAYMENT
+//     COMPLETED
+// }
+
+model Order {
+    id        String   @id @default(cuid())
+    // status        OrderStatus @default(CREATED)
+    status    String   @default("created") // created | cancelled | payment | completed
+    expiredAt DateTime
+
+    userId   String
+    ticketId String
+
+    user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    ticket  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+    payment Payment?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Payment {
+    id       String @id @default(cuid())
+    stripeId String @unique
+
+    orderId String @unique
+
+    order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
