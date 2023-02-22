@@ -1,8 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { protectedProcedure } from "./../trpc";
 
-import { createTRPCRouter, publicProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 
 /**
  * /api/tickets - GET
@@ -38,7 +37,7 @@ export const ticketRouter = createTRPCRouter({
         price: z.number().min(1).optional(),
       }),
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
 
       const ticket = await prisma.ticket.findUnique({
@@ -52,19 +51,21 @@ export const ticketRouter = createTRPCRouter({
       }
       return ctx.prisma.ticket.update({ data: input });
     }),
-  delete: protectedProcedure.input(z.string()).mutation(({ ctx, input }) => {
-    const userId = ctx.session.user.id;
+  delete: protectedProcedure
+    .input(z.string())
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id;
 
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: input },
-    });
-
-    if (ticket.userId !== userId) {
-      throw new TRPCError({
-        code: "UNAUTHORIZED",
+      const ticket = await prisma.ticket.findUnique({
+        where: { id: input },
       });
-    }
 
-    return ctx.prisma.ticket.delete({ where: { id: input } });
-  }),
+      if (ticket.userId !== userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+        });
+      }
+
+      return ctx.prisma.ticket.delete({ where: { id: input } });
+    }),
 });

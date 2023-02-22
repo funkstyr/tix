@@ -30,7 +30,7 @@ export const userRouter = createTRPCRouter({
         password: passwordSchema,
       }),
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const existingUser = await ctx.prisma.user.findUnique({
         where: {
           username: input.username,
