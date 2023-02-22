@@ -19,7 +19,7 @@ export const ticketRouter = createTRPCRouter({
       return ctx.prisma.ticket.findMany({ orderBy: { id: "desc" } });
     }),
   byId: publicProcedure
-    .meta({ openapi: { method: "GET", path: `/${route}/{id}` } })
+    .meta({ openapi: { method: "GET", path: `${route}/{id}` } })
     .input(z.object({ id: z.string() }))
     .output(
       z
@@ -27,10 +27,12 @@ export const ticketRouter = createTRPCRouter({
         .nullable(),
     )
     .query(({ ctx, input }) => {
-      return ctx.prisma.ticket.findFirst({ where: { id: input.id } });
+      console.log("getById", input);
+      const { id } = input;
+      return ctx.prisma.ticket.findFirst({ where: { id } });
     }),
   create: protectedProcedure
-    .meta({ openapi: { method: "POST", path: `/${route}` } })
+    .meta({ openapi: { method: "POST", path: `${route}` } })
     .input(
       z.object({
         name: z.string().min(1),
@@ -44,7 +46,7 @@ export const ticketRouter = createTRPCRouter({
       return ctx.prisma.ticket.create({ data: { ...input, userId } });
     }),
   update: protectedProcedure
-    .meta({ openapi: { method: "PUT", path: `/${route}/{id}` } })
+    .meta({ openapi: { method: "PUT", path: `${route}/{id}` } })
     .input(
       z.object({
         id: z.string(),
@@ -76,7 +78,7 @@ export const ticketRouter = createTRPCRouter({
       return ctx.prisma.ticket.update({ where: { id }, data });
     }),
   delete: protectedProcedure
-    .meta({ openapi: { method: "DELETE", path: `/${route}/{id}` } })
+    .meta({ openapi: { method: "DELETE", path: `${route}/{id}` } })
     .input(z.object({ id: z.string() }))
     .output(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
