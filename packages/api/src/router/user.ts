@@ -1,11 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import {
+  loginUserSchema,
+  registerUserSchema,
+  returnUserSchema,
+} from "../schema/user";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
-
-const emailSchema = z.string().email();
-const userNameSchema = z.string().min(4).max(25);
-const passwordSchema = z.string().min(6);
 
 // TODO: should we do this in protected procedure to always update?
 const refreshExpiresAt = () =>
@@ -24,13 +25,7 @@ export const userRouter = createTRPCRouter({
       },
     })
     .input(z.void())
-    .output(
-      z.object({
-        id: z.string(),
-        name: z.string().nullable(),
-        username: z.string().nullable(),
-      }),
-    )
+    .output(returnUserSchema)
     .query(async ({ ctx }) => {
       const userId = ctx.session.user.id;
 
@@ -61,19 +56,8 @@ export const userRouter = createTRPCRouter({
     .meta({
       openapi: { method: "POST", path: `${route}/login`, tags: ["user"] },
     })
-    .input(
-      z.object({
-        username: userNameSchema,
-        password: passwordSchema,
-      }),
-    )
-    .output(
-      z.object({
-        id: z.string(),
-        name: z.string().nullable(),
-        username: z.string().nullable(),
-      }),
-    )
+    .input(loginUserSchema)
+    .output(returnUserSchema)
     .mutation(async ({ ctx, input }) => {
       const existingUser = await ctx.prisma.user.findUnique({
         where: {
@@ -132,20 +116,8 @@ export const userRouter = createTRPCRouter({
     .meta({
       openapi: { method: "POST", path: `${route}/register`, tags: ["user"] },
     })
-    .input(
-      z.object({
-        email: emailSchema,
-        username: userNameSchema,
-        password: passwordSchema,
-      }),
-    )
-    .output(
-      z.object({
-        id: z.string(),
-        name: z.string().nullable(),
-        username: z.string().nullable(),
-      }),
-    )
+    .input(registerUserSchema)
+    .output(returnUserSchema)
     .mutation(async ({ ctx, input }) => {
       const existingUser = await ctx.prisma.user.findUnique({
         where: {
