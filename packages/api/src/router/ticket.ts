@@ -27,7 +27,6 @@ export const ticketRouter = createTRPCRouter({
     .input(ticketIdInputSchema)
     .output(returnTicketSchema.nullable())
     .query(({ ctx, input }) => {
-      console.log("getById", input);
       const { id } = input;
       return ctx.prisma.ticket.findFirst({ where: { id } });
     }),
@@ -94,6 +93,8 @@ export const ticketRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id } = input;
       const userId = ctx.session.user.id;
+
+      // TODO: eventually make this a soft delete
 
       const ticket = await ctx.prisma.ticket.findUnique({
         where: { id },

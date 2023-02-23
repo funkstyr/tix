@@ -97,7 +97,7 @@ model Order {
     id        String   @id @default(cuid())
     // status        OrderStatus @default(CREATED)
     status    String   @default("created") // created | cancelled | payment | completed
-    expiredAt DateTime
+    expiresAt DateTime
 
     userId   String
     ticketId String
