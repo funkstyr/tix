@@ -21,7 +21,7 @@
     "expo": "47.0.13",
     "expo-constants": "~14.0.2",
     "expo-linking": "~3.3.0",
-    "expo-router": "1.0.0-rc8",
+    "expo-router": "1.0.1",
     "expo-splash-screen": "~0.17.5",
     "expo-status-bar": "~1.4.2",
     "nativewind": "^2.0.11",
