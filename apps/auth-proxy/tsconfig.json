@@ -1,4 +1,4 @@
 {
-  "extends": "@tix/tsconfig/tsconfig.json",
+  "extends": "@tix/typescript/tsconfig.json",
   "include": ["routes"]
 }

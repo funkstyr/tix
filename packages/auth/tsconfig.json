@@ -1,5 +1,5 @@
 {
-  "extends": "@tix/tsconfig/tsconfig.json",
+  "extends": "@tix/typescript/tsconfig.json",
   "compilerOptions": {
     "tsBuildInfoFile": "node_modules/.cache/tsbuildinfo.json"
   },

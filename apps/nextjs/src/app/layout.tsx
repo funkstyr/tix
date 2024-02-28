@@ -7,7 +7,7 @@ import { ThemeProvider, ThemeToggle } from "@tix/ui/theme";
 import { Toaster } from "@tix/ui/toast";
 
 import { env } from "~/env";
-import { TRPCReactProvider } from "~/trpc/react";
+import { TRPCReactProvider } from "@tix/trpc/react";
 
 import "~/app/globals.css";
 

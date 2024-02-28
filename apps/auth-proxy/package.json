@@ -8,7 +8,7 @@
     "dev": "nitro dev --port 3001",
     "lint": "eslint .",
     "format": "prettier --check . --ignore-path ../../.gitignore",
-    "typecheck": "tsc --noEmit"
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@auth/core": "0.27.0"
@@ -17,8 +17,8 @@
     "@tix/eslint-config": "workspace:^0.2.0",
     "@tix/prettier-config": "workspace:^0.1.0",
     "@tix/tailwind-config": "workspace:^0.1.0",
-    "@tix/tsconfig": "workspace:^0.1.0",
-    "@types/node": "^20.11.20",
+    "@tix/typescript": "workspace:^0.1.0",
+    "@types/node": "^20.11.21",
     "eslint": "^8.57.0",
     "h3": "^1.11.1",
     "nitropack": "^2.8.1",

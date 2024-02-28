@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "push": "pnpm with-env drizzle-kit push:mysql",
     "studio": "pnpm with-env drizzle-kit studio",
-    "typecheck": "tsc --noEmit",
+    "type-check": "tsc --noEmit",
     "with-env": "dotenv -e ../../.env --"
   },
   "dependencies": {
@@ -23,7 +23,7 @@
   "devDependencies": {
     "@tix/eslint-config": "workspace:^0.2.0",
     "@tix/prettier-config": "workspace:^0.1.0",
-    "@tix/tsconfig": "workspace:^0.1.0",
+    "@tix/typescript": "workspace:^0.1.0",
     "dotenv-cli": "^7.3.0",
     "drizzle-kit": "^0.20.14",
     "eslint": "^8.57.0",
