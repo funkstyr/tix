@@ -1,0 +1,26 @@
+{
+  "name": "@tix/postcss-config",
+  "private": true,
+  "version": "0.1.0",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "clean": "rm -rf .turbo node_modules",
+    "format": "prettier --check . --ignore-path ../../.gitignore",
+    "type-check": "tsc --noEmit --pretty"
+  },
+  "dependencies": {
+    "postcss": "^8.4.35",
+    "postcss-flexbugs-fixes": "^5.0.2",
+    "postcss-preset-env": "^9.4.0",
+    "postcss-simple-vars": "^7.0.1",
+    "tailwindcss": "^3.4.1"
+  },
+  "devDependencies": {
+    "@tix/prettier-config": "workspace:^0.1.0",
+    "@tix/typescript": "workspace:^0.1.0",
+    "typescript": "^5.3.3"
+  },
+  "prettier": "@omnibytes/prettier-config"
+}
