@@ -2,12 +2,12 @@ import type { Metadata, Viewport } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 
+import { TRPCReactProvider } from "@tix/trpc/react";
 import { cn } from "@tix/ui";
 import { ThemeProvider, ThemeToggle } from "@tix/ui/theme";
 import { Toaster } from "@tix/ui/toast";
 
 import { env } from "~/env";
-import { TRPCReactProvider } from "@tix/trpc/react";
 
 import "~/app/globals.css";
 

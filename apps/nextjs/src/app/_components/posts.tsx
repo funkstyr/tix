@@ -3,6 +3,7 @@
 import { use } from "react";
 
 import type { RouterOutputs } from "@tix/api";
+import { api } from "@tix/trpc/react";
 import { cn } from "@tix/ui";
 import { Button } from "@tix/ui/button";
 import {
@@ -16,8 +17,6 @@ import {
 import { Input } from "@tix/ui/input";
 import { toast } from "@tix/ui/toast";
 import { CreatePostSchema } from "@tix/validators";
-
-import { api } from "@tix/trpc/react";
 
 export function CreatePostForm() {
   const form = useForm({

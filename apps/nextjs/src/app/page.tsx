@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
 import { api } from "@tix/trpc/server";
+
 import { AuthShowcase } from "./_components/auth-showcase";
 import {
   CreatePostForm,
