@@ -1,5 +1,5 @@
 {
-  "name": "@acme/auth-proxy",
+  "name": "@tix/auth-proxy",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,10 +14,10 @@
     "@auth/core": "0.27.0"
   },
   "devDependencies": {
-    "@acme/eslint-config": "workspace:^0.2.0",
-    "@acme/prettier-config": "workspace:^0.1.0",
-    "@acme/tailwind-config": "workspace:^0.1.0",
-    "@acme/tsconfig": "workspace:^0.1.0",
+    "@tix/eslint-config": "workspace:^0.2.0",
+    "@tix/prettier-config": "workspace:^0.1.0",
+    "@tix/tailwind-config": "workspace:^0.1.0",
+    "@tix/tsconfig": "workspace:^0.1.0",
     "@types/node": "^20.11.20",
     "eslint": "^8.57.0",
     "h3": "^1.11.1",
@@ -28,8 +28,8 @@
   "eslintConfig": {
     "root": true,
     "extends": [
-      "@acme/eslint-config/base"
+      "@tix/eslint-config/base"
     ]
   },
-  "prettier": "@acme/prettier-config"
+  "prettier": "@tix/prettier-config"
 }
