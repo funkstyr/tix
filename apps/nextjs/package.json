@@ -19,6 +19,7 @@
     "@tix/api": "workspace:^0.1.0",
     "@tix/auth": "workspace:^0.1.0",
     "@tix/db": "workspace:^0.1.0",
+    "@tix/trpc": "workspace:^0.1.0",
     "@tix/ui": "workspace:^0.1.0",
     "@tix/validators": "workspace:^0.1.0",
     "@trpc/client": "11.0.0-next-beta.294",
@@ -33,7 +34,9 @@
   },
   "devDependencies": {
     "@tix/eslint-config": "workspace:^0.2.0",
+    "@tix/next-config": "workspace:^0.1.0",
     "@tix/prettier-config": "workspace:^0.1.0",
+    "@tix/postcss-config": "workspace:^0.1.0",
     "@tix/tailwind-config": "workspace:^0.1.0",
     "@tix/typescript": "workspace:^0.1.0",
     "@types/node": "^20.11.21",

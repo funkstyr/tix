@@ -5,7 +5,7 @@ import { GeistSans } from "geist/font/sans";
 import { TRPCReactProvider } from "@tix/trpc/react";
 import { cn } from "@tix/ui";
 import { ThemeProvider, ThemeToggle } from "@tix/ui/theme";
-import { Toaster } from "@tix/ui/toast";
+import { Toaster } from "@tix/ui/toaster";
 
 import { env } from "~/env";
 

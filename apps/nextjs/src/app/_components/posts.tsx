@@ -15,10 +15,11 @@ import {
   useForm,
 } from "@tix/ui/form";
 import { Input } from "@tix/ui/input";
-import { toast } from "@tix/ui/toast";
+// import { toast, useToast } from "@tix/ui/use-toast";
 import { CreatePostSchema } from "@tix/validators";
 
 export function CreatePostForm() {
+  // const { toast } = useToast();
   const form = useForm({
     schema: CreatePostSchema,
     defaultValues: {
@@ -33,12 +34,12 @@ export function CreatePostForm() {
       form.reset();
       await utils.post.invalidate();
     },
-    onError: (err) => {
-      toast.error(
-        err?.data?.code === "UNAUTHORIZED"
-          ? "You must be logged in to post"
-          : "Failed to create post",
-      );
+    onError: (_err) => {
+      // toast.error(
+      //   err?.data?.code === "UNAUTHORIZED"
+      //     ? "You must be logged in to post"
+      //     : "Failed to create post",
+      // );
     },
   });
 
@@ -120,12 +121,12 @@ export function PostCard(props: {
     onSuccess: async () => {
       await utils.post.invalidate();
     },
-    onError: (err) => {
-      toast.error(
-        err?.data?.code === "UNAUTHORIZED"
-          ? "You must be logged in to delete a post"
-          : "Failed to delete post",
-      );
+    onError: (_err) => {
+      // toast.error(
+      //   err?.data?.code === "UNAUTHORIZED"
+      //     ? "You must be logged in to delete a post"
+      //     : "Failed to delete post",
+      // );
     },
   });
 

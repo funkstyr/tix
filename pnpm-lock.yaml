@@ -190,6 +190,9 @@ importers:
       '@tix/db':
         specifier: workspace:^0.1.0
         version: link:../../packages/db
+      '@tix/trpc':
+        specifier: workspace:^0.1.0
+        version: link:../../packages/trpc
       '@tix/ui':
         specifier: workspace:^0.1.0
         version: link:../../packages/ui
@@ -227,6 +230,12 @@ importers:
       '@tix/eslint-config':
         specifier: workspace:^0.2.0
         version: link:../../tooling/eslint
+      '@tix/next-config':
+        specifier: workspace:^0.1.0
+        version: link:../../tooling/next
+      '@tix/postcss-config':
+        specifier: workspace:^0.1.0
+        version: link:../../tooling/postcss
       '@tix/prettier-config':
         specifier: workspace:^0.1.0
         version: link:../../tooling/prettier

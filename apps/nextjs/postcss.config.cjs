@@ -1,5 +1,6 @@
+const { postcssConfig } = require("@tix/postcss-config");
+
+/**@type {import('postcss').Config} */
 module.exports = {
-  plugins: {
-    tailwindcss: {},
-  },
+  ...postcssConfig,
 };
