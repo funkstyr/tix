@@ -1,6 +1,7 @@
 import { fileURLToPath } from "url";
-import { nextConfig } from "@tix/next-config";
 import _jiti from "jiti";
+
+import { nextConfig } from "@tix/next-config";
 
 const jiti = _jiti(fileURLToPath(import.meta.url));
 
