@@ -1,9 +1,10 @@
 {
-  "name": "@tix/postcss-config",
+  "name": "@tix/next-config",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.mjs"
   },
   "scripts": {
     "clean": "rm -rf .turbo node_modules",
@@ -11,11 +12,7 @@
     "type-check": "tsc --noEmit --pretty"
   },
   "dependencies": {
-    "postcss": "^8.4.35",
-    "postcss-flexbugs-fixes": "^5.0.2",
-    "postcss-preset-env": "^9.4.0",
-    "postcss-simple-vars": "^7.0.1",
-    "tailwindcss": "^3.4.1"
+    "next": "^14.1.0"
   },
   "devDependencies": {
     "@tix/prettier-config": "workspace:^0.1.0",
