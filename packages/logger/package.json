@@ -1,0 +1,32 @@
+{
+  "name": "@tix/logger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "license": "MIT",
+  "scripts": {
+    "quality:---": "------------------------------",
+    "clean": "rm -rf .turbo node_modules",
+    "format": "prettier --check . --ignore-path ../../.gitignore",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit --pretty"
+  },
+  "devDependencies": {
+    "@tix/eslint-config": "workspace:^0.2.0",
+    "@tix/prettier-config": "workspace:^0.1.0",
+    "@tix/typescript": "workspace:^0.1.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.3.3"
+  },
+  "eslintConfig": {
+    "root": true,
+    "extends": [
+      "@tix/eslint-config/base"
+    ]
+  },
+  "prettier": "@tix/prettier-config"
+}

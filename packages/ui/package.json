@@ -113,10 +113,10 @@
     "vaul": "^0.9.0"
   },
   "devDependencies": {
-    "@omnibytes/eslint-config": "workspace:^0.2.0",
-    "@omnibytes/prettier-config": "workspace:^0.1.0",
-    "@omnibytes/tailwind-config": "workspace:^0.1.0",
-    "@omnibytes/typescript": "workspace:^0.1.0",
+    "@tix/eslint-config": "workspace:^0.2.0",
+    "@tix/prettier-config": "workspace:^0.1.0",
+    "@tix/tailwind-config": "workspace:^0.1.0",
+    "@tix/typescript": "workspace:^0.1.0",
     "@types/react": "^18.2.58",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
@@ -131,9 +131,9 @@
   },
   "eslintConfig": {
     "extends": [
-      "@omnibytes/eslint-config/base",
-      "@omnibytes/eslint-config/react"
+      "@tix/eslint-config/base",
+      "@tix/eslint-config/react"
     ]
   },
-  "prettier": "@omnibytes/prettier-config"
+  "prettier": "@tix/prettier-config"
 }
