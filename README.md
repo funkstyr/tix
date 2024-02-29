@@ -1,3 +1,18 @@
+# Tix
+
+> E-commerce site to sell tickets brocken out into multiple services.
+
+- Users can list a ticket for an event for sale
+  - other users can purchase this tickets
+- Any user can list tickets for sale and purchase tickets
+- When a user attempts to purchase a tickets, the ticket is 'locked' for 15 minutes.
+  - the user has 15 minutes to enter their payment info
+  - while locked, no other user can purchase the ticket.
+  - after 15 minutes, the ticket should become available
+- Ticket prices can be edited if they are not locked
+
+<hr />
+
 # create-t3-turbo
 
 > **Note**
