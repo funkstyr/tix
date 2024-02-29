@@ -11,6 +11,34 @@
   - after 15 minutes, the ticket should become available
 - Ticket prices can be edited if they are not locked
 
+## UI
+
+- app
+  - header
+    - name/home link
+      - all the way left
+    - sign in link
+      - form has up vs in toggle
+    - logged in
+      - my orders
+      - sell tickkets
+      - sign out
+- home
+  - list of tickets for sale
+- sign in page
+  - email, password, submit
+  - sign up: hass confirm password
+  - can log in via github or google
+- ticket listing page
+  - title, price, status, purchase button
+    - purchase will add to basket and lock item
+      - modal cann pop up to continue or go to cart
+  - if owner can edit modal
+    - edit title and price
+    - delist with fee
+- cart/checkout page
+  - use stripe
+
 <hr />
 
 # create-t3-turbo
