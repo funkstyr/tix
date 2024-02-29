@@ -61,6 +61,23 @@
   - stripeId: string,
   - stripeRedundId: string
 
+## Services
+
+- auth
+  - everything related to user signup/sign in/sign out
+- tickets
+  - ticket creation/editing
+  - knows if a ticket can be updated
+- orders
+  - create/edit order
+- expiration
+  - watches for orders created, and cancels them after 15 minutes
+  - redis
+- payments
+  - handle cc payments
+  - cancels order if payment fails
+  - completes order if succeeds
+
 <hr />
 
 # create-t3-turbo
