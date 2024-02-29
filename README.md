@@ -78,6 +78,21 @@
   - cancels order if payment fails
   - completes order if succeeds
 
+## Events
+
+- user
+  - created
+  - updated
+- ticket
+  - created
+  - updated
+- order
+  - created
+  - updated
+  - expired
+- charge
+  - created
+
 <hr />
 
 # create-t3-turbo
