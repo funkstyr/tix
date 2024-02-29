@@ -39,6 +39,28 @@
 - cart/checkout page
   - use stripe
 
+## Models
+
+- user
+  - email, string
+  - password, string
+- ticket
+  - title, string
+  - price, number
+  - userId, string, guid
+  - orderId; string, guid
+- order
+  - userId, string, guid
+  - status: enum
+  - ticketId: string, guid
+  - expiresAt: dateTime
+- charge
+  - orderId, string, guid
+  - status, enum
+  - amount: number,
+  - stripeId: string,
+  - stripeRedundId: string
+
 <hr />
 
 # create-t3-turbo
