@@ -1,5 +1,6 @@
 {
   "name": "tix",
+  "version": "0.1.0",
   "private": true,
   "engines": {
     "node": ">=20.11.0"
@@ -21,7 +22,6 @@
     "lint:ws": "pnpm dlx sherif@latest",
     "postinstall": "pnpm lint:ws",
     "type-check": "turbo type-check"
-    
   },
   "devDependencies": {
     "@tix/prettier-config": "workspace:^0.1.0",
