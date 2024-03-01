@@ -1,0 +1,157 @@
+#
+# `docker-compose` file used ONLY for hobby deployments.
+#
+# Please take a look at https://posthog.com/docs/self-host/deploy/hobby
+# for more info.
+#
+# PostHog has sunset support for self-hosted K8s deployments.
+# See: https://posthog.com/blog/sunsetting-helm-support-posthog
+#
+
+services:
+    db:
+        extends:
+            file: docker-compose.base.yml
+            service: db
+        # Pin to postgres 12 until we have a process for pg_upgrade to postgres 15 for exsisting installations
+        image: ${DOCKER_REGISTRY_PREFIX:-}postgres:12-alpine
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+
+    redis:
+        extends:
+            file: docker-compose.base.yml
+            service: redis
+    clickhouse:
+        #
+        # Note: please keep the default version in sync across
+        #       `posthog` and the `charts-clickhouse` repos
+        #
+        extends:
+            file: docker-compose.base.yml
+            service: clickhouse
+        restart: on-failure
+        depends_on:
+            - kafka
+            - zookeeper
+        volumes:
+            - ./posthog/posthog/idl:/idl
+            - ./posthog/docker/clickhouse/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+            - ./posthog/docker/clickhouse/config.xml:/etc/clickhouse-server/config.xml
+            - ./posthog/docker/clickhouse/users.xml:/etc/clickhouse-server/users.xml
+            - clickhouse-data:/var/lib/clickhouse
+    zookeeper:
+        extends:
+            file: docker-compose.base.yml
+            service: zookeeper
+        volumes:
+            - zookeeper-datalog:/datalog
+            - zookeeper-data:/data
+            - zookeeper-logs:/logs
+    kafka:
+        extends:
+            file: docker-compose.base.yml
+            service: kafka
+
+    worker:
+        extends:
+            file: docker-compose.base.yml
+            service: worker
+        environment:
+            SENTRY_DSN: 'https://public@sentry.example.com/1'
+            SITE_URL: https://dev.posthog
+            SECRET_KEY: 59bf948974c717837a76222df9607229ea54f2684d5fcef1c9c7d115
+        image: posthog/posthog:latest
+    web:
+        extends:
+            file: docker-compose.base.yml
+            service: web
+        command: /compose/start
+        volumes:
+            - ./compose:/compose
+        image: posthog/posthog:latest
+        environment:
+            SENTRY_DSN: 'https://public@sentry.example.com/1'
+            SITE_URL: https://dev.posthog
+            SECRET_KEY: 59bf948974c717837a76222df9607229ea54f2684d5fcef1c9c7d115
+            RECORDINGS_INGESTER_URL: http://plugins:6738
+
+    plugins:
+        extends:
+            file: docker-compose.base.yml
+            service: plugins
+        image: posthog/posthog:latest
+        environment:
+            SENTRY_DSN: 'https://public@sentry.example.com/1'
+            SITE_URL: https://dev.posthog
+            SECRET_KEY: 59bf948974c717837a76222df9607229ea54f2684d5fcef1c9c7d115
+
+    caddy:
+        image: caddy:2.6.1
+        restart: unless-stopped
+        ports:
+            - '80:80'
+            - '443:443'
+        volumes:
+            - ./Caddyfile:/etc/caddy/Caddyfile
+        depends_on:
+            - web
+    object_storage:
+        extends:
+            file: docker-compose.base.yml
+            service: object_storage
+        restart: on-failure
+        volumes:
+            - object_storage:/data
+
+    asyncmigrationscheck:
+        extends:
+            file: docker-compose.base.yml
+            service: asyncmigrationscheck
+        image: posthog/posthog:latest
+        environment:
+            SENTRY_DSN: 'https://public@sentry.example.com/1'
+            SITE_URL: https://dev.posthog
+            SECRET_KEY: 59bf948974c717837a76222df9607229ea54f2684d5fcef1c9c7d115
+            SKIP_ASYNC_MIGRATIONS_SETUP: 0
+
+    # Temporal containers
+    temporal:
+        extends:
+            file: docker-compose.base.yml
+            service: temporal
+        environment:
+            - ENABLE_ES=false
+        ports:
+            - 7233:7233
+        volumes:
+            - ./posthog/docker/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
+    temporal-admin-tools:
+        extends:
+            file: docker-compose.base.yml
+            service: temporal-admin-tools
+    temporal-ui:
+        extends:
+            file: docker-compose.base.yml
+            service: temporal-ui
+        ports:
+            - 8081:8080
+    temporal-django-worker:
+        command: /compose/temporal-django-worker
+        extends:
+            file: docker-compose.base.yml
+            service: temporal-django-worker
+        volumes:
+            - ./compose:/compose
+        image: posthog/posthog:latest
+        environment:
+            SENTRY_DSN: 'https://public@sentry.example.com/1'
+            SITE_URL: https://dev.posthog
+
+volumes:
+    zookeeper-data:
+    zookeeper-datalog:
+    zookeeper-logs:
+    object_storage:
+    postgres-data:
+    clickhouse-data:

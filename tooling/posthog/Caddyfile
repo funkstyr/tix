@@ -1,0 +1,6 @@
+{
+
+}
+dev.posthog, http://, https:// {
+reverse_proxy http://web:8000
+}
