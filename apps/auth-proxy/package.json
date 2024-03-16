@@ -11,19 +11,19 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@auth/core": "0.27.0"
+    "@auth/core": "0.28.0"
   },
   "devDependencies": {
     "@tix/eslint-config": "workspace:^0.2.0",
     "@tix/prettier-config": "workspace:^0.1.0",
     "@tix/tailwind-config": "workspace:^0.1.0",
     "@tix/typescript": "workspace:^0.1.0",
-    "@types/node": "^20.11.21",
+    "@types/node": "^20.11.28",
     "eslint": "^8.57.0",
     "h3": "^1.11.1",
-    "nitropack": "^2.8.1",
+    "nitropack": "^2.9.4",
     "prettier": "^3.2.5",
-    "typescript": "^5.3.3"
+    "typescript": "^5.4.2"
   },
   "eslintConfig": {
     "root": true,
