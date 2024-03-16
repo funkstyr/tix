@@ -1,0 +1,43 @@
+ARG app_name
+
+FROM node:20-alpine AS platform
+
+
+FROM platform as base
+RUN npm install -g pnpm
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN pnpm install -g turbo
+
+FROM base AS init
+WORKDIR /app
+COPY . .
+RUN turbo prune --scope=@tix/$app_name --docker
+
+
+FROM base AS builder
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+COPY --from=init /app/out/json/ .
+COPY --from=init /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY .gitignore .
+
+RUN pnpm i --frozen-lockfile
+RUN pnpm build --scope=@tix/$app_name
+
+
+FROM base AS runner
+WORKDIR /app
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 hono
+
+COPY --from=builder --chown=hono:nodejs /app/apps/$app_name/node_modules /app/node_modules
+COPY --from=builder --chown=hono:nodejs /app/apps/$app_name/dist /app/dist
+
+USER hono
+ENV NODE_ENV=production
+EXPOSE 8787
+
+CMD ["node", "/app/dist/index.js"]

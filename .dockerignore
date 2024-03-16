@@ -1,0 +1,7 @@
+**/coverage
+**/Dockerfile
+**/node_modules
+**/README.md
+.dockerignore
+.git
+dist
