@@ -10,7 +10,7 @@
     "quality:---": "-----------------------------",
     "clean": "git clean -xdf .next .turbo node_modules",
     "format": "prettier --check . --ignore-path ../../.gitignore",
-    "lint": "dotenv -v SKIP_ENV_VALIDATION=1 next lint",
+    "lint": "eslint ./src",
     "start": "pnpm with-env next start",
     "type-check": "tsc --noEmit",
     "docker:---": "------------------------------",
