@@ -3,6 +3,24 @@
 # https://docs.tilt.dev/api.html#api.version_settings
 version_settings(constraint='>=0.33.11')
 
+k8s_yaml('./tooling/k8s/nginx-ingress.yaml')
+
+k8s_resource(
+    'ingress-nginx-controller',
+    labels=['ingress']
+)
+
+k8s_resource(
+    'ingress-nginx-admission-create',
+    labels=['ingress']
+)
+
+k8s_resource(
+    'ingress-nginx-admission-patch',
+    labels=['ingress']
+)
+
+
 # live_update syncs changed source code files to the correct place
 # https://docs.tilt.dev/api.html#api.docker_build
 # https://docs.tilt.dev/live_update_reference.html

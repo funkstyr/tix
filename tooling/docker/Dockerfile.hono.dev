@@ -17,6 +17,6 @@ WORKDIR /app
 COPY . .
 RUN pnpm i
 
-WORKDIR /apps/${APP_NAME}
+WORKDIR /app/apps/${APP_NAME}
 
 CMD pnpm dev
