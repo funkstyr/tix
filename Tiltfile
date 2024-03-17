@@ -2,7 +2,9 @@
 # version_settings() enforces a minimum Tilt version
 # https://docs.tilt.dev/api.html#api.version_settings
 version_settings(constraint='>=0.33.11')
+load('ext://helm_resource', 'helm_resource', 'helm_repo')
 
+# nginx
 k8s_yaml('./tooling/k8s/nginx-ingress.yaml')
 
 k8s_resource(
@@ -20,6 +22,53 @@ k8s_resource(
     labels=['ingress']
 )
 
+# supabase
+k8s_yaml('./tooling/supabase/k8s/secrets.yaml')
+
+k8s_yaml(helm(
+    './tooling/supabase/charts',
+    values=['./tooling/supabase/charts/values.example.yaml']
+))
+
+k8s_resource(
+    'chart-supabase-auth',
+    labels=['supabase']
+)
+
+k8s_resource(
+    'chart-supabase-db',
+    labels=['supabase']
+)
+
+k8s_resource(
+    'chart-supabase-kong',
+    labels=['supabase']
+)
+
+k8s_resource(
+    'chart-supabase-meta',
+    labels=['supabase']
+)
+
+k8s_resource(
+    'chart-supabase-realtime',
+    labels=['supabase']
+)
+
+k8s_resource(
+    'chart-supabase-rest',
+    labels=['supabase']
+)
+
+k8s_resource(
+    'chart-supabase-storage',
+    labels=['supabase']
+)
+
+k8s_resource(
+    'chart-supabase-studio',
+    labels=['supabase']
+)
 
 # live_update syncs changed source code files to the correct place
 # https://docs.tilt.dev/api.html#api.docker_build
