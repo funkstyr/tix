@@ -1,0 +1,44 @@
+# deployment
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: auth-api-depl
+
+spec:
+  selector:
+    matchLabels:
+      app: auth-api
+
+  template:
+    metadata:
+      labels:
+        app: auth-api
+
+    spec:
+      containers:
+        - name: auth-api
+          image: tix/auth-api
+
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+
+          ports:
+            - containerPort: 8787
+---
+# service
+apiVersion: v1
+kind: Service
+# default service is cluster ip
+
+metadata:
+  name: auth-api-svc
+
+spec:
+  selector:
+    app: auth-api
+  ports:
+    - port: 80
+      targetPort: 8787

@@ -1,6 +1,6 @@
-ARG app_name
-
 FROM node:20-alpine AS platform
+ARG APP_NAME
+ENV APP_NAME=${APP_NAME}
 
 
 FROM platform as base
@@ -12,7 +12,7 @@ RUN pnpm install -g turbo
 FROM base AS init
 WORKDIR /app
 COPY . .
-RUN turbo prune --scope=@tix/$app_name --docker
+RUN turbo prune --scope=@tix/${APP_NAME} --docker
 
 
 FROM base AS builder
@@ -24,7 +24,7 @@ COPY --from=init /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY .gitignore .
 
 RUN pnpm i --frozen-lockfile
-RUN pnpm build --scope=@tix/$app_name
+RUN pnpm build --scope=@tix/${APP_NAME}
 
 
 FROM base AS runner
@@ -33,8 +33,8 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 hono
 
-COPY --from=builder --chown=hono:nodejs /app/apps/$app_name/node_modules /app/node_modules
-COPY --from=builder --chown=hono:nodejs /app/apps/$app_name/dist /app/dist
+COPY --from=builder --chown=hono:nodejs /app/apps/${APP_NAME}/node_modules /app/node_modules
+COPY --from=builder --chown=hono:nodejs /app/apps/${APP_NAME}/dist /app/dist
 
 USER hono
 ENV NODE_ENV=production

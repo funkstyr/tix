@@ -4,14 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "clean": "git clean -xdf .next .turbo node_modules",
     "dev": "tsx watch src/index.ts",
+    "build": "tsc src/index.ts",
+    "with-env": "dotenv -e ../../.env --",
+    "quality:---": "-----------------------------",
+    "clean": "git clean -xdf .next .turbo node_modules",
     "format": "prettier --check . --ignore-path ../../.gitignore",
     "lint": "dotenv -v SKIP_ENV_VALIDATION=1 next lint",
     "start": "pnpm with-env next start",
     "type-check": "tsc --noEmit",
-    "with-env": "dotenv -e ../../.env --"
+    "docker:---": "------------------------------",
+    "docker:build": "docker build -f ../../tooling/docker/Dockerfile.hono.dev --build-arg APP_NAME=auth-api -t tix/auth-api:dev ../../",
+    "docker:run": "docker run -p 4010:8787 tix/auth-api:dev"
   },
   "dependencies": {
     "@hono/node-server": "^1.8.2",

@@ -1,0 +1,22 @@
+FROM node:20-alpine AS platform
+ARG APP_NAME
+ENV APP_NAME=${APP_NAME}
+
+FROM platform as base
+
+RUN npm install -g pnpm
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN pnpm install -g turbo
+
+FROM base AS init
+EXPOSE 8787
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+COPY . .
+RUN pnpm i
+
+WORKDIR /apps/${APP_NAME}
+
+CMD pnpm dev
