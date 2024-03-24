@@ -25,6 +25,7 @@ const getQueryClient = () => {
   }
 };
 
+// TODO: merge routers here for the multiple apis
 export const api = createTRPCReact<AppRouter>();
 
 export function TRPCReactProvider(props: { children: React.ReactNode }) {

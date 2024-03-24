@@ -1,57 +1,7 @@
-import { initTRPC, TRPCError } from "@trpc/server";
-import superjson from "superjson";
-import { z, ZodError } from "zod";
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 
-import { db } from "@tix/db";
-
-// TODO: mv this to a trpc pkg
-interface Session {
-  id: string;
-  email: string;
-  role: string;
-}
-
-export const createTRPCContext = (opts: {
-  headers: Headers;
-  session: Session | null;
-}) => {
-  const session = opts.session;
-  const source = opts.headers.get("x-trpc-source") ?? "unknown";
-
-  console.log(">>> tRPC Request from", source, "by", session?.id);
-
-  return {
-    session,
-    db,
-  };
-};
-
-const t = initTRPC.context<typeof createTRPCContext>().create({
-  transformer: superjson,
-  errorFormatter: ({ shape, error }) => ({
-    ...shape,
-    data: {
-      ...shape.data,
-      zodError: error.cause instanceof ZodError ? error.cause.flatten() : null,
-    },
-  }),
-});
-
-const publicProcedure = t.procedure;
-
-const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.session?.id) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
-  return next({
-    ctx: {
-      // infers the `session` as non-nullable
-      session: { ...ctx.session },
-    },
-  });
-});
-
-const router = t.router;
+import { protectedProcedure, publicProcedure, router } from "@tix/trpc";
 
 const $auth = z.object({
   email: z.string().min(6, "email is required").email("must be email"),
