@@ -26,6 +26,7 @@ app.get("/", (c) => c.text("ok"));
 app.get("/health", (c) => c.text(""));
 app.get("/ping", (c) => c.text("pong"));
 
+//? should probably just use hono/rpc but t3 already uses trpc
 app.use(
   "/trpc/*",
   trpcServer({

@@ -17,13 +17,14 @@
     "with-env": "dotenv -e ../../.env --"
   },
   "dependencies": {
-    "@planetscale/database": "^1.16.0",
-    "drizzle-orm": "^0.30.4"
+    "drizzle-orm": "^0.30.4",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "@tix/eslint-config": "workspace:^0.2.0",
     "@tix/prettier-config": "workspace:^0.1.0",
     "@tix/typescript": "workspace:^0.1.0",
+    "@types/pg": "^8.11.4",
     "dotenv-cli": "^7.4.1",
     "drizzle-kit": "^0.20.14",
     "eslint": "^8.57.0",

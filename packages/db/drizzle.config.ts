@@ -1,20 +1,19 @@
 import type { Config } from "drizzle-kit";
 
-const uri = [
-  "mysql://",
+const connectionString = [
+  "postgres://",
   process.env.DB_USERNAME,
   ":",
   process.env.DB_PASSWORD,
   "@",
   process.env.DB_HOST,
-  ":3306/",
+  ":5432/",
   process.env.DB_NAME,
-  '?ssl={"rejectUnauthorized":true}',
 ].join("");
 
 export default {
   schema: "./src/schema",
-  driver: "mysql2",
-  dbCredentials: { uri },
-  tablesFilter: ["t3turbo_*"],
+  driver: "pg",
+  dbCredentials: { connectionString },
+  tablesFilter: ["tix_*"],
 } satisfies Config;
