@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@planetscale/database": "^1.16.0",
-    "drizzle-orm": "^0.30.2"
+    "drizzle-orm": "^0.30.4"
   },
   "devDependencies": {
     "@tix/eslint-config": "workspace:^0.2.0",
@@ -28,7 +28,7 @@
     "drizzle-kit": "^0.20.14",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.3"
   },
   "eslintConfig": {
     "root": true,

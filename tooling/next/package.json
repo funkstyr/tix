@@ -12,12 +12,12 @@
     "type-check": "tsc --noEmit --pretty"
   },
   "dependencies": {
-    "next": "^14.1.3"
+    "next": "^14.1.4"
   },
   "devDependencies": {
     "@tix/prettier-config": "workspace:^0.1.0",
     "@tix/typescript": "workspace:^0.1.0",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.3"
   },
   "prettier": "@tix/prettier-config"
 }
