@@ -16,9 +16,9 @@
   },
   "dependencies": {
     "@next/eslint-plugin-next": "^14.1.4",
-    "@typescript-eslint/eslint-plugin": "^7.3.1",
-    "@typescript-eslint/parser": "^7.3.1",
-    "eslint-config-turbo": "^1.13.0",
+    "@typescript-eslint/eslint-plugin": "^7.5.0",
+    "@typescript-eslint/parser": "^7.5.0",
+    "eslint-config-turbo": "^1.13.1",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-jsx-a11y": "^6.8.0",
     "eslint-plugin-react": "^7.34.1",
@@ -27,7 +27,7 @@
   "devDependencies": {
     "@tix/prettier-config": "workspace:^0.1.0",
     "@tix/typescript": "workspace:^0.1.0",
-    "@types/eslint": "^8.56.6",
+    "@types/eslint": "^8.56.7",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
     "typescript": "^5.4.3"

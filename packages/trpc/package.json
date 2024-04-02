@@ -17,7 +17,7 @@
     "type-check": "tsc --noEmit --pretty"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.28.6",
+    "@tanstack/react-query": "^5.28.12",
     "@tix/api": "workspace:^0.1.0",
     "@tix/auth": "workspace:^0.1.0",
     "@tix/db": "workspace:^0.1.0",
@@ -32,7 +32,7 @@
     "@tix/eslint-config": "workspace:^0.2.0",
     "@tix/prettier-config": "workspace:^0.1.0",
     "@tix/typescript": "workspace:^0.1.0",
-    "@types/react": "^18.2.69",
+    "@types/react": "^18.2.74",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
     "typescript": "^5.4.3"

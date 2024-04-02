@@ -17,8 +17,8 @@
     "with-env": "dotenv -e ../../.env --"
   },
   "dependencies": {
-    "drizzle-orm": "^0.30.4",
-    "pg": "^8.11.3"
+    "drizzle-orm": "^0.30.6",
+    "pg": "^8.11.4"
   },
   "devDependencies": {
     "@tix/eslint-config": "workspace:^0.2.0",
