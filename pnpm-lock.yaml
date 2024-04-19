@@ -27,8 +27,8 @@ importers:
   apps/auth-api:
     dependencies:
       '@hono/node-server':
-        specifier: ^1.9.1
-        version: 1.9.1
+        specifier: ^1.10.1
+        version: 1.10.1
       '@hono/prometheus':
         specifier: ^1.0.0
         version: 1.0.0(hono@4.2.0)(prom-client@15.1.1)
@@ -3894,8 +3894,8 @@ packages:
       '@hapi/hoek': 9.3.0
     dev: false
 
-  /@hono/node-server@1.9.1:
-    resolution: {integrity: sha512-XBru0xbtRlTZJyAiFJLn7XDKbCVXBaRhVQAQhB9TwND2gwj8jf9SDWIj/7VxVtNAjURJf7Ofcz58DRA6DPYiWA==}
+  /@hono/node-server@1.10.1:
+    resolution: {integrity: sha512-5BKW25JH5PQKPDkTcIgv3yNUPtOAbnnjFFgWvIxxAY/B/ZNeYjjWoAeDmqhIiCgOAJ3Tauuw+0G+VainhuZRYQ==}
     engines: {node: '>=18.14.1'}
     dev: false
 
