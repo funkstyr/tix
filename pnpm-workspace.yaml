@@ -1,0 +1,46 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  esbuild: true
+  lefthook: true
+  msgpackr-extract: true
+
+catalog:
+  "@types/node": ^25.9.1
+  "@typescript/native-preview": 7.0.0-dev.20260515.1
+  arktype: ^2.2.0
+  better-auth: ^1.6.11
+  bullmq: ^5.76.10
+  drizzle-kit: ^0.31.10
+  drizzle-orm: ^0.45.2
+  hono: ^4.12.21
+  jsdom: ^29.1.1
+  nats: ^2.29.3
+  "@nats-io/jetstream": ^3.4.0
+  "@nats-io/transport-node": ^3.4.0
+  "@orpc/client": ^1.14.3
+  "@orpc/server": ^1.14.3
+  pino: ^10.3.1
+  postgres: ^3.4.9
+  react: ^19.2.6
+  react-dom: ^19.2.6
+  "@types/react": ^19.2.15
+  "@types/react-dom": ^19.2.3
+  stripe: ^22.1.1
+  tsdown: ^0.22.0
+  tsx: ^4.22.3
+  vitest: ^4.1.7
+  "@vitest/ui": ^4.1.7
+  "@vitest/coverage-v8": ^4.1.7
+
+minimumReleaseAgeExclude:
+  - "@vitest/expect@4.1.7"
+  - "@vitest/mocker@4.1.7"
+  - "@vitest/pretty-format@4.1.7"
+  - "@vitest/runner@4.1.7"
+  - "@vitest/snapshot@4.1.7"
+  - "@vitest/spy@4.1.7"
+  - "@vitest/utils@4.1.7"
+  - vitest@4.1.7

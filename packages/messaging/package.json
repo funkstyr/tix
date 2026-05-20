@@ -1,0 +1,38 @@
+{
+  "name": "@tix/messaging",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./jetstream": {
+      "types": "./dist/jetstream.d.ts",
+      "import": "./dist/jetstream.js"
+    },
+    "./jobs": {
+      "types": "./dist/jobs.d.ts",
+      "import": "./dist/jobs.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsgo --build",
+    "dev": "tsdown --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nats-io/jetstream": "catalog:",
+    "@nats-io/transport-node": "catalog:",
+    "bullmq": "catalog:"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,6 +1,6 @@
 # Full reliability kit from day one: outbox + inbox + optimistic version
 
-Every service implements the three patterns below. This is a deliberate departure from the original tutorial, which publishes events after the DB write (lossy on crash), and dedupes only loosely. The cost is real but the patterns are *the* lesson for distributed-systems learning.
+Every service implements the three patterns below. This is a deliberate departure from the original tutorial, which publishes events after the DB write (lossy on crash), and dedupes only loosely. The cost is real but the patterns are _the_ lesson for distributed-systems learning.
 
 ## Outbox
 

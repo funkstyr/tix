@@ -1,0 +1,33 @@
+{
+  "name": "tix",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo build",
+    "build:packages": "turbo build --filter=\"./packages/*\"",
+    "check": "pnpm lint && pnpm format && pnpm check-types && pnpm test && pnpm build",
+    "check-types": "turbo check-types",
+    "dev": "pnpm build:packages && turbo dev",
+    "fix": "pnpm lint:fix && pnpm format:fix",
+    "format": "oxfmt --check",
+    "format:fix": "oxfmt --write",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "postinstall": "lefthook install",
+    "test": "turbo test",
+    "up-deps": "pnpm dlx taze -r -w minor",
+    "up-deps:major": "pnpm dlx taze -r -w major"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@turbo/gen": "^2.9.14",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "lefthook": "^2.1.6",
+    "oxfmt": "^0.50.0",
+    "oxlint": "^1.66.0",
+    "turbo": "^2.9.14",
+    "vitest": "catalog:"
+  },
+  "packageManager": "pnpm@11.1.3"
+}

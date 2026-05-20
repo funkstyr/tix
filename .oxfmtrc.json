@@ -1,0 +1,29 @@
+{
+  "sortImports": {
+    "customGroups": [
+      {
+        "groupName": "react",
+        "elementNamePattern": ["react", "react/**", "react-dom", "react-dom/**"]
+      },
+      { "groupName": "workspace", "elementNamePattern": ["@tix/**"] }
+    ],
+    "groups": [
+      "side_effect",
+      "react",
+      { "newlinesBetween": false },
+      ["builtin", "external"],
+      "workspace",
+      { "newlinesBetween": false },
+      ["internal", "subpath"],
+      "style",
+      { "newlinesBetween": false },
+      ["parent", "sibling", "index"],
+      "unknown"
+    ],
+    "internalPattern": ["~/", "@/"],
+    "newlinesBetween": true
+  },
+  "sortPackageJson": true,
+  "sortTailwindcss": true,
+  "ignorePatterns": ["turbo/generators/templates/**"]
+}

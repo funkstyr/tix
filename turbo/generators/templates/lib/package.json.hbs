@@ -1,0 +1,29 @@
+{
+  "name": "@tix/{{name}}",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./{{name}}": {
+      "types": "./dist/{{name}}.d.ts",
+      "import": "./dist/{{name}}.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsgo --build",
+    "dev": "tsdown --watch",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  }
+}

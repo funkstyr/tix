@@ -1,9 +1,9 @@
 ---
 name: house-style
-description: Code conventions for bun-mono — duck/feature layout, file-size limits, blank-line groups, strict TypeScript, fast tests. Use when writing or refactoring code in this repo, splitting large files, planning a package refactor, or whenever code structure decisions come up.
+description: Code conventions for tix — duck/feature layout, file-size limits, blank-line groups, strict TypeScript, fast tests. Use when writing or refactoring code in this repo, splitting large files, planning a package refactor, or whenever code structure decisions come up.
 ---
 
-# bun-mono house style
+# tix house style
 
 The repo enforces formatting, lint, and types automatically — see [automation](#automation). This skill documents what mechanical tools **don't** check: structure, sizing, test discipline.
 
@@ -14,28 +14,25 @@ When refactoring a package, work it end-to-end with [the refactor checklist](#pa
 **Co-locate by feature**, not by type. A feature directory contains its components, hooks, and utils side by side:
 
 ```
-royalty/src/
-├── card/
-│   ├── card-button.tsx
-│   ├── card-grid.tsx
-│   ├── card-labels.ts        # handLabel, rankLabel, isRedSuit
-│   └── use-card-selection.ts
-├── seat/
-│   ├── human-seat.tsx
-│   ├── opponent-seat.tsx
-│   └── seat-utils.ts
-├── tribute/
-│   ├── tribute-panel.tsx
-│   ├── return-selector.tsx
-│   └── ask-history.tsx
-├── engine.ts                 # pure domain — keep cohesive even if long
-├── bot.ts
-├── storage.ts
-├── use-game.ts
-└── royalty-app.tsx           # composition root
+orders/src/
+├── reservation/
+│   ├── reserve-handler.ts        # POST /orders → reserve + persist
+│   ├── tickets-client.ts         # @orpc/client wrapper for tickets.reserve
+│   └── reservation-conflict.ts   # 409 → retry-once mapping
+├── cancel/
+│   ├── cancel-handler.ts         # POST /orders/:id/cancel
+│   └── cancel-publisher.ts       # outbox emit of order.cancelled.v1
+├── expire/
+│   ├── expire-listener.ts        # consumes expiration.due.v1
+│   └── expire-publisher.ts       # outbox emit of order.expired.v1
+├── state-machine.ts              # pure FSM — keep cohesive even if long
+├── outbox.ts
+├── inbox.ts
+├── schema.ts                     # drizzle tables for this service's schema
+└── index.ts                      # Hono composition root
 ```
 
-**No `index.ts` barrel files.** Every import goes to the exact file that defines the symbol. Barrels defeat tree-shaking and force bundlers to walk dependency graphs they shouldn't have to. Import `@bun-mono/core-ui/button`, not `@bun-mono/core-ui`.
+**No `index.ts` barrel files.** Every import goes to the exact file that defines the symbol. Barrels defeat tree-shaking and force bundlers to walk dependency graphs they shouldn't have to. Import `@tix/contracts/subjects`, not `@tix/contracts`.
 
 **One concern per file.** A `.tsx` file may contain one main component plus tightly-coupled sub-components. It should not also export hooks or generic utils — those move to their own file.
 
@@ -47,7 +44,7 @@ royalty/src/
 | 200–400 lines | Acceptable if one concern (pure domain module, single complex component tree). Otherwise split. |
 | > 400 lines   | Split, unless it's a single cohesive algorithm (e.g. `engine.ts`).                              |
 
-**Cohesion beats size.** A 629-line game engine with 30 small pure functions is fine; a 400-line component file that mixes 5 sub-components, 3 hooks, and 6 utils is not. The rule isn't line count — it's "if I rename this file, do all its contents move together?"
+**Cohesion beats size.** A 600-line state machine with 30 small pure transitions is fine; a 400-line handler file that mixes 5 routes, 3 helpers, and 6 utils is not. The rule isn't line count — it's "if I rename this file, do all its contents move together?"
 
 ## Style: blank-line groups
 
@@ -196,7 +193,7 @@ Base config is `packages/config/tsconfig.base.json`. All strict flags are on:
 - `noUncheckedSideEffectImports`, `erasableSyntaxOnly`, `verbatimModuleSyntax`
 - `allowUnreachableCode: false`, `allowUnusedLabels: false`
 
-`isolatedDeclarations` is enabled **per library package**, not on the base config (apps `noEmit` and can't use it). It's also not enabled everywhere — see [the schema-builder caveat](#schema-builders-and-isolateddeclarations). Currently on in `packages/royalty` and `packages/tic-tac-toe`. See [the recipe](#enabling-isolateddeclarations-on-a-library-package).
+`isolatedDeclarations` is enabled **per library package**, not on the base config (apps `noEmit` and can't use it). It's also not enabled everywhere — see [the schema-builder caveat](#schema-builders-and-isolateddeclarations). New library packages get it from `pnpm turbo gen package`. None of tix's current packages have it on (all three — `contracts`, `db-core`, `messaging` — wrap schema/DSL builders). See [the recipe](#enabling-isolateddeclarations-on-a-library-package) for retrofitting a future hand-written lib.
 
 ### Conventions
 
@@ -213,7 +210,7 @@ Base config is `packages/config/tsconfig.base.json`. All strict flags are on:
 
 Apps (`web`, `server`) `noEmit` and can't use the flag. Don't try.
 
-New packages get the flag automatically from `turbo gen package`. The recipe below is for **retrofitting** an existing package (see `packages/royalty/tsconfig.json` for the working example):
+New packages get the flag automatically from `pnpm turbo gen package` (see `turbo/generators/templates/lib/tsconfig.json.hbs`). The recipe below is for **retrofitting** an existing package whose `isolatedDeclarations` is currently off:
 
 1. In the package `tsconfig.json`, add `"isolatedDeclarations": true` and extend the exclude list to skip test files:
    ```jsonc
@@ -229,7 +226,7 @@ New packages get the flag automatically from `turbo gen package`. The recipe bel
    }
    ```
    Excluding tests is required: `tsgo` (the `@typescript/native-preview` build) currently fails to resolve `vitest` imports when `isolatedDeclarations` is on. Tests get type-checked by vitest at runtime — no coverage lost. Bonus: no useless `*.test.d.ts` files emitted to `dist/`.
-2. Run `bun tsgo --build --force` from the package directory. The remaining errors are missing return types on **exported** declarations only. Internal helpers and unexported sub-components are unaffected.
+2. Run `pnpm exec tsgo --build --force` from the package directory. The remaining errors are missing return types on **exported** declarations only. Internal helpers and unexported sub-components are unaffected.
 3. Fix each export. For React components, the idiom is:
 
    ```ts
@@ -243,7 +240,7 @@ New packages get the flag automatically from `turbo gen package`. The recipe bel
    `verbatimModuleSyntax` is on, so use the inline `type` modifier rather than a separate `import type` line.
 
 4. For pure functions, just annotate the return type. Most engine/util code in this repo already has them.
-5. Verify with `bun check-types` (turbo, full repo) and the package's tests (`bunx vitest run` from the package — not `bun test`, which uses Bun's runner and doesn't honor the vitest setup).
+5. Verify with `pnpm check-types` (turbo, full repo) and the package's tests (`pnpm test` from the package, which delegates to its local `vitest run` script).
 
 Per-package cost for hand-written code is typically 1–3 annotations. **For packages built around schema/DSL builders, the flag is impractical — read on.**
 
@@ -253,14 +250,13 @@ The flag fights any library whose value proposition is _inferring complex types 
 
 Builders in this codebase that block `isolatedDeclarations`:
 
-| Package         | Builder                                                            | Why it blocks                                                                                                |
-| --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `db`            | `drizzle-orm` `sqliteTable(...)`                                   | Each table's type is inferred from its column definitions; annotating requires writing the full schema twice |
-| `auth`          | `better-auth` `betterAuth({...})`                                  | Same shape — config object → inferred auth instance type                                                     |
-| `api`           | `oRPC` router/procedure builders                                   | Same — chained builders produce complex inferred types                                                       |
-| `env`           | `@t3-oss/env-core` `createEnv({...})` with zod schemas             | Same                                                                                                         |
-| `core-ui`       | `class-variance-authority` `cva(...)` + Radix/Base-UI `forwardRef` | Same — variant configs and ref-forwarding generics                                                           |
-| `workout-timer` | `arktype` `type({...})` schemas                                    | Same                                                                                                         |
+| Package     | Builder                          | Why it blocks                                                                                                |
+| ----------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `db-core`   | `drizzle-orm` `pgTable(...)`     | Each table's type is inferred from its column definitions; annotating requires writing the full schema twice |
+| `contracts` | `arktype` `type({...})` schemas  | Event payload types are inferred from the arktype schema — annotating means writing the schema twice         |
+| `messaging` | re-exports `db-core` outbox rows | Inherits the inference chain from `db-core`; can be flipped on once the outbox helper has a hand-written API |
+
+(Future tix packages — e.g. an oRPC client/router lib, or a `@t3-oss/env-core` wrapper — would join this table for the same reason.)
 
 **Rule of thumb**: if the package's public surface is "hand-written types and functions" → enable `isolatedDeclarations`. If it's "a config object passed to a framework builder, with the return value re-exported" → don't.
 
@@ -276,36 +272,31 @@ Forcing it anyway means duplicating the schema in a type annotation — defeats 
 - **Reach for `vitest-playwright` only when the test genuinely needs a real browser.** A DOM render to assert a className is the wrong tool — extract the logic and test it directly.
 - **Avoid mocks of internal collaborators.** If you need to mock something inside the same package to make a test pass, the seam is probably wrong.
 
-See `packages/royalty/src/engine.test.ts` for the target shape: data in, behavior out, no fixtures, no setup.
+Target shape: data in, behavior out, no fixtures, no setup. Once a service's pure domain modules (e.g. `orders/src/state-machine.ts`) exist, their test files should look like that.
 
 ## Creating a new package
 
 **Use the generator. Don't hand-write boilerplate.**
 
 ```sh
-bun turbo gen package
+pnpm turbo gen package
 ```
 
-Prompts: kebab-case name, flavor (`lib` or `ui`), and (for `ui`) whether to depend on `@bun-mono/core-ui`. Non-interactive: `bun turbo gen package --args my-pkg ui true`.
+Prompts: kebab-case name (becomes `@tix/<name>`). Non-interactive: `pnpm turbo gen package --args my-pkg`.
 
-The generator scaffolds `packages/<name>/` with `package.json`, `tsconfig.json` (already `isolatedDeclarations: true`), `tsdown.config.ts` and `vitest.config.ts` (both two-line files that delegate to a preset from `@bun-mono/config`), a starter duck source + test file, and (for `ui`) `styles.css`. The `ui` flavor's jsdom + localStorage shim is wired in by the shared vitest preset, not a per-package `vitest.setup.ts`. Run `bun install` after.
+The generator scaffolds `packages/<name>/` with `package.json`, `tsconfig.json` (already `isolatedDeclarations: true`), `tsdown.config.ts` and `vitest.config.ts` (both two-line files that delegate to a preset from `@tix/config`), and a starter duck source + test file. Run `pnpm install` after.
 
-**Flavors:**
-
-| Flavor | Test env | Includes                                                |
-| ------ | -------- | ------------------------------------------------------- |
-| `lib`  | node     | tsdown for node, no React                               |
-| `ui`   | jsdom    | React + Tailwind peers, `styles.css`, localStorage shim |
+Tix currently only ships the `lib` flavor (node vitest, tsdown for node, no React). A `ui` flavor would need to land alongside a `core-ui` package — neither exists yet; the `web` app is the only frontend and lives under `apps/`.
 
 ### Adding a new duck-file export
 
 Each new file in `src/` (other than tests) needs an entry in `package.json#exports`. Use:
 
 ```sh
-bun turbo gen export
+pnpm turbo gen export
 ```
 
-Prompts for the package directory (e.g. `royalty`) and the duck filename without extension (e.g. `use-game`). It appends `"./<duck>": { "types": "./dist/<duck>.d.ts", "import": "./dist/<duck>.js" }` to the exports map.
+Prompts for the package directory (e.g. `contracts`) and the duck filename without extension (e.g. `subjects`). It appends `"./<duck>": { "types": "./dist/<duck>.d.ts", "import": "./dist/<duck>.js" }` to the exports map.
 
 If a package's exports map drifts from `src/`, the build will silently skip the missing entry — there's no whole-repo check yet.
 
@@ -313,18 +304,18 @@ If a package's exports map drifts from `src/`, the build will silently skip the 
 
 A Stop hook (`.claude/hooks/stop-fix-and-check.sh`, wired in `.claude/settings.local.json`) runs **automatically** when the assistant finishes a turn:
 
-1. `bun fix` — applies `oxlint --fix` and `oxfmt --write` across the repo.
-2. `bun check-types` — turbo-cached type check.
+1. `pnpm fix` — applies `oxlint --fix` and `oxfmt --write` across the repo.
+2. `pnpm check-types` — turbo-cached type check.
 
 If either fails, the hook exits 2 and surfaces the error so the assistant must address it before stopping. **Don't run these manually mid-task** — they fire on stop. Do run them inline if you want fast feedback after a big change.
 
-The hook **does not** run the full `bun check` (which also runs tests and builds). Before declaring a task done, run:
+The hook **does not** run the full `pnpm check` (which also runs tests and builds). Before declaring a task done, run:
 
 ```sh
-bun check
+pnpm check
 ```
 
-**Fix pre-existing issues you surface, don't just dodge them.** If `bun check` (or any other check you run) turns up a format, lint, or type problem that you didn't introduce, fix it in the same branch — typically as a small `chore:` commit alongside your work. The bar is "the branch leaves the tree clean," not "no worse than I found it." Exceptions: deep refactors of unrelated code, or a real bug rather than a hygiene issue — flag those to the user instead of silently rewriting them.
+**Fix pre-existing issues you surface, don't just dodge them.** If `pnpm check` (or any other check you run) turns up a format, lint, or type problem that you didn't introduce, fix it in the same branch — typically as a small `chore:` commit alongside your work. The bar is "the branch leaves the tree clean," not "no worse than I found it." Exceptions: deep refactors of unrelated code, or a real bug rather than a hygiene issue — flag those to the user instead of silently rewriting them.
 
 `lefthook` separately runs `oxlint --fix` and `oxfmt --write` on staged files at pre-commit, so commits are always formatted.
 
@@ -339,6 +330,6 @@ When refactoring a package to match this style:
 5. **Delete any `index.ts` you find.** Update imports to point at the concrete file.
 6. **Tighten test scope.** When splitting a file, ask: does the existing test file still match? If a test reaches into newly-private internals, it was testing implementation — rewrite to use the public surface.
 7. **Flip on `isolatedDeclarations`** _if_ the package's public surface is hand-written code (pure functions, types, simple components) — not if it wraps a schema/DSL builder (see the [caveat table](#schema-builders-and-isolateddeclarations)). Follow the [retrofit recipe](#enabling-isolateddeclarations-on-a-library-package). Best done after splitting, since smaller files mean smaller diffs. (Packages created with `turbo gen package` already have it on.)
-8. **Run `bun check`** (full suite) before declaring the package done.
+8. **Run `pnpm check`** (full suite) before declaring the package done.
 
 For the largest current offenders see [refactor-targets.md](refactor-targets.md).

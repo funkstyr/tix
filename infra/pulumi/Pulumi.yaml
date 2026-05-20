@@ -1,0 +1,3 @@
+name: tix
+runtime: nodejs
+description: Kubernetes manifests for the tix services, applied via `pulumi up`.

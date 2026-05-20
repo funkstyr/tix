@@ -1,6 +1,6 @@
 # NATS JetStream for inter-service events, BullMQ for delayed jobs
 
-These solve different problems and we use both rather than picking one. **NATS JetStream** is the event bus: durable pub/sub between services with subjects, consumer groups, and replay. Events are fan-out (one publish, many subscribers) and represent things that happened (`tickets.created.v1`). **BullMQ** is a Redis-backed job queue used only *inside* a service for targeted, often delayed, work — primarily the Expiration service's "cancel this Order in 15 minutes" timer. Jobs are point-to-point (one producer, one worker) and represent things that should happen.
+These solve different problems and we use both rather than picking one. **NATS JetStream** is the event bus: durable pub/sub between services with subjects, consumer groups, and replay. Events are fan-out (one publish, many subscribers) and represent things that happened (`tickets.created.v1`). **BullMQ** is a Redis-backed job queue used only _inside_ a service for targeted, often delayed, work — primarily the Expiration service's "cancel this Order in 15 minutes" timer. Jobs are point-to-point (one producer, one worker) and represent things that should happen.
 
 ## Why not BullMQ-only
 

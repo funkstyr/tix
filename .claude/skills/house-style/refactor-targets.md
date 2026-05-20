@@ -1,6 +1,6 @@
-# Refactor targets
+## Refactor targets
 
-Snapshot taken when the skill was written — use as a starting point, not a fixed list. Re-run the inventory before starting:
+No audit history yet — the codebase is a skeleton. Re-run the inventory before opening a refactor pass, and append entries below once you've audited a package:
 
 ```sh
 for pkg in packages/*/src apps/*/src; do
@@ -10,36 +10,23 @@ for pkg in packages/*/src apps/*/src; do
 done
 ```
 
-All workspace packages and apps have been audited to the current style. Re-run the inventory before reopening this list.
-
 ## Audited packages and apps
 
-| Target          | Iso-decl    | Notes                                                                                   |
-| --------------- | ----------- | --------------------------------------------------------------------------------------- |
-| `royalty`       | enabled     | Split into card/, seat/, tribute/ feature dirs                                          |
-| `workout-timer` | not enabled | arktype schemas block iso-decl; split into form/, list/, runner/, set-editor/, workout/ |
-| `tic-tac-toe`   | enabled     | Split `tic-tac-toe-app.tsx` into ducks; extracted `storage.ts`                          |
-| `core-ui`       | not enabled | `cva` in button.tsx blocks iso-decl                                                     |
-| `db`            | not enabled | drizzle `sqliteTable` blocks iso-decl                                                   |
-| `auth`          | not enabled | `betterAuth({...})` blocks iso-decl                                                     |
-| `env`           | not enabled | `@t3-oss/env-core` `createEnv` blocks iso-decl                                          |
-| `api`           | not enabled | oRPC procedure builders + appRouter composition block iso-decl                          |
-| `apps/server`   | n/a         | Apps `noEmit`. Stripped narrative WHAT-comments from tracing/logger                     |
-| `apps/web`      | n/a         | Apps `noEmit`. Style sweep across components and routes                                 |
+_None yet._ Table shape for future entries:
+
+| Target           | Iso-decl              | Notes                                |
+| ---------------- | --------------------- | ------------------------------------ |
+| `@tix/<package>` | enabled / not enabled | What was split / why iso-decl is off |
+| `apps/<service>` | n/a (`noEmit`)        | Style sweep notes                    |
 
 ## Keep as-is (cohesive single-concern)
 
-| File                                     | Lines | Why                                                              |
-| ---------------------------------------- | ----- | ---------------------------------------------------------------- |
-| `packages/royalty/src/engine.ts`         | 629   | Pure game engine — single concern, all functions tightly related |
-| `packages/royalty/src/engine.test.ts`    | 1315  | Behavior coverage of the engine                                  |
-| `packages/core-ui/src/dropdown-menu.tsx` | 241   | Single compound — 15 small wrappers for one Base-UI primitive    |
-| `packages/core-ui/src/confetti.tsx`      | 168   | Single component                                                 |
+_None yet._ Add files here only after deliberately deciding "this is one concern" — e.g. a pure state machine, an algorithmic kernel.
 
 ## Barrel `index.ts` files
 
-Most package `index.ts` files in this repo are real composition roots (exporting composed values like `db`, `auth`, `appRouter`) — those stay. The pure re-export barrels (`db/src/schema/index.ts`, `server/src/emails/index.ts`) have been deleted. Audit again after any package refactor pass.
+Each service `apps/<svc>/src/index.ts` is the **composition root** (Hono `app` + route wiring), not a barrel — those stay. Lib packages have **no** `index.ts`: every export goes through `package.json#exports` to a concrete duck file. If a barrel ever appears in `packages/*/src/`, delete it during the next refactor pass and rewrite imports to point at concrete files.
 
 ## When iso-decl was attempted but rolled back
 
-Every library package without iso-decl was tested during the audit pass. The blocker in every case was a schema/DSL builder whose inferred return type can't be annotated without duplicating the schema (see the [caveat table in SKILL.md](SKILL.md#schema-builders-and-isolateddeclarations)). For `core-ui` specifically, the rest of the file errors (component return types) were all fixable with `: JSX.Element` annotations — only `buttonVariants = cva(...)` couldn't be expressed without duplicating the variant config.
+_None yet._ Document the blocker per package once you've tried (see [the caveat table in SKILL.md](SKILL.md#schema-builders-and-isolateddeclarations) for typical reasons).

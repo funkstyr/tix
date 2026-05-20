@@ -4,6 +4,6 @@ The project exists to learn modern K8s + microservice patterns. Collapsing to a 
 
 ## Consequences
 
-- Operational cost is real: 6 deployments, 6 sets of env, 6 sets of logs. Acceptable because the cost *is* the lesson.
+- Operational cost is real: 6 deployments, 6 sets of env, 6 sets of logs. Acceptable because the cost _is_ the lesson.
 - The BFF is the only thing the web app calls. Services do not have public ingress routes; ingress-nginx only routes `/api/*` to the gateway.
 - Per-service ownership of data is enforced (no cross-service DB reads), even where it would be more convenient to break the rule.

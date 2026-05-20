@@ -1,0 +1,16 @@
+{
+  "name": "@tix/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./tsdown": "./tsdown.ts",
+    "./vitest": "./vitest.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  }
+}

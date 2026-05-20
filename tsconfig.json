@@ -1,0 +1,3 @@
+{
+  "extends": "@tix/config/tsconfig.base.json"
+}
