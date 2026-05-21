@@ -9,7 +9,7 @@
     "up": "pulumi up"
   },
   "dependencies": {
-    "@pulumi/kubernetes": "^4.20.0",
-    "@pulumi/pulumi": "^3.150.0"
+    "@pulumi/kubernetes": "^4.31.1",
+    "@pulumi/pulumi": "^3.242.0"
   }
 }
