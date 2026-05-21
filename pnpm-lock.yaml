@@ -382,6 +382,12 @@ importers:
 
   apps/tickets:
     dependencies:
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.0.3(hono@4.12.21)
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 1.14.3
       '@orpc/server':
         specifier: 'catalog:'
         version: 1.14.3
@@ -419,9 +425,15 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
+      auth:
+        specifier: workspace:*
+        version: link:../auth
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
+      testcontainers:
+        specifier: 'catalog:'
+        version: 11.14.0
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
