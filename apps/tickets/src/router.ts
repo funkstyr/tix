@@ -3,12 +3,12 @@ import { type } from "arktype";
 import { eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
+import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
-import type { AuthSession, AuthSessionClient } from "./auth-session-client.ts";
 import { reserveTicket } from "./reserve-ticket.ts";
 import { tickets, ticketsOutbox, type ticketsTables } from "./tickets-schema.ts";
 
@@ -48,15 +48,6 @@ export type TicketsRouterDeps = {
   authClient: AuthSessionClient;
   serviceToken: string;
 };
-
-async function requireSession(authClient: AuthSessionClient, token: string): Promise<AuthSession> {
-  const session = await authClient.getSession({ token });
-  if (session === null) {
-    throw new ORPCError("UNAUTHORIZED", { message: "invalid or expired session" });
-  }
-
-  return session;
-}
 
 export function createTicketsRouter(deps: TicketsRouterDeps) {
   const { db, authClient, serviceToken: expectedServiceToken } = deps;

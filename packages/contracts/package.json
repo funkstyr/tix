@@ -12,6 +12,10 @@
       "types": "./dist/auth.d.ts",
       "import": "./dist/auth.js"
     },
+    "./auth-client": {
+      "types": "./dist/auth-client.d.ts",
+      "import": "./dist/auth-client.js"
+    },
     "./subjects": {
       "types": "./dist/subjects.d.ts",
       "import": "./dist/subjects.js"
@@ -40,6 +44,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@orpc/client": "catalog:",
+    "@orpc/server": "catalog:",
     "arktype": "catalog:"
   },
   "devDependencies": {

@@ -7,23 +7,23 @@ import { RPC_PREFIX } from "@tix/contracts/rpc";
 import type { DbClient } from "@tix/db-core/client";
 import { requestLogger } from "@tix/observability/request-logger";
 
-import { createTicketsRouter } from "./router.ts";
-import type { ticketsTables } from "./tickets-schema.ts";
+import type { ordersTables } from "./orders-schema.ts";
+import { createOrdersRouter } from "./router.ts";
+import type { TicketsClient } from "./tickets-client.ts";
 
-const SERVICE_TOKEN_HEADER = "x-service-token";
-
-export type CreateTicketsAppDeps = {
-  db: DbClient<typeof ticketsTables>;
+export type CreateOrdersAppDeps = {
+  db: DbClient<typeof ordersTables>;
   authClient: AuthSessionClient;
-  serviceToken: string;
+  ticketsClient: TicketsClient;
   logger: Logger;
 };
 
-export function createTicketsApp(deps: CreateTicketsAppDeps): Hono {
-  const router = createTicketsRouter({
+export function createOrdersApp(deps: CreateOrdersAppDeps): Hono {
+  const router = createOrdersRouter({
     db: deps.db,
     authClient: deps.authClient,
-    serviceToken: deps.serviceToken,
+    ticketsClient: deps.ticketsClient,
+    logger: deps.logger,
   });
   const rpc = new RPCHandler(router);
 
@@ -31,14 +31,12 @@ export function createTicketsApp(deps: CreateTicketsAppDeps): Hono {
 
   app.use("*", requestLogger(deps.logger));
 
-  app.get("/health", (c) => c.json({ service: "tickets", ok: true }));
+  app.get("/health", (c) => c.json({ service: "orders", ok: true }));
 
   app.all(`${RPC_PREFIX}/*`, async (c) => {
-    const headerToken = c.req.header(SERVICE_TOKEN_HEADER);
-
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: RPC_PREFIX,
-      context: headerToken === undefined ? {} : { serviceToken: headerToken },
+      context: {},
     });
     if (matched) return response;
 

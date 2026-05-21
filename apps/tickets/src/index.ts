@@ -1,12 +1,12 @@
 import { serve } from "@hono/node-server";
 import { connect } from "@nats-io/transport-node";
 
+import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
 import { createDbClient } from "@tix/db-core/client";
 import { startOutboxRelay } from "@tix/db-core/outbox";
 import { createPublisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
-import { createHttpAuthSessionClient } from "./auth-session-client.ts";
 import { createTicketsApp } from "./tickets-app.ts";
 import { ticketsOutbox, ticketsTables } from "./tickets-schema.ts";
 
