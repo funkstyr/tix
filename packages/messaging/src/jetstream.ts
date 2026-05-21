@@ -10,9 +10,11 @@ import {
 import type { JsMsg, PubAck } from "@nats-io/jetstream";
 import type { NatsConnection } from "@nats-io/transport-node";
 import { ArkErrors, type Type } from "arktype";
-import type { Logger } from "pino";
+import { pino, type Logger } from "pino";
 
 const MSG_ID_HEADER = "Nats-Msg-Id";
+
+const fallbackLogger: Logger = pino({ level: "warn" });
 
 export type PublishOptions = {
   msgId?: string;
@@ -35,7 +37,7 @@ export function createPublisher(
   options: PublisherOptions = {},
 ): Publisher {
   const js = jetstream(natsConnection);
-  const log = options.logger;
+  const log = options.logger ?? fallbackLogger;
   const encoder = new TextEncoder();
 
   return {
@@ -44,7 +46,7 @@ export function createPublisher(
       const pubOpts = opts?.msgId === undefined ? undefined : { msgID: opts.msgId };
       const ack = await js.publish(subject, data, pubOpts);
 
-      log?.info(
+      log.info(
         { subject, msgId: opts?.msgId, stream: ack.stream, seq: ack.seq, duplicate: ack.duplicate },
         "event published",
       );
@@ -82,7 +84,7 @@ export async function createConsumer<Payload>(
   options: ConsumerOptions<Payload>,
 ): Promise<RunningConsumer> {
   const { stream, subjectFilter, group, schema, handler, logger, ackWaitMs } = options;
-  const log = logger?.child({ stream, group, subjectFilter });
+  const log = (logger ?? fallbackLogger).child({ stream, group, subjectFilter });
 
   const manager = await jetstreamManager(natsConnection);
   await ensureConsumer(manager, { stream, subjectFilter, group, ackWaitMs });
@@ -100,7 +102,7 @@ export async function createConsumer<Payload>(
   })();
 
   loop.catch((err: unknown) => {
-    log?.error({ err }, "consumer loop terminated unexpectedly");
+    log.error({ err }, "consumer loop terminated unexpectedly");
   });
 
   return {
@@ -148,7 +150,7 @@ type ProcessMessageArgs<Payload> = {
   schema: Type<Payload>;
   handler: ConsumerHandler<Payload>;
   decoder: TextDecoder;
-  log: Logger | undefined;
+  log: Logger;
 };
 
 async function processMessage<Payload>(
@@ -156,20 +158,26 @@ async function processMessage<Payload>(
   { schema, handler, decoder, log }: ProcessMessageArgs<Payload>,
 ): Promise<void> {
   const subject = msg.subject;
-  const eventId = msg.headers?.get(MSG_ID_HEADER) ?? "";
+  const eventId = msg.headers?.get(MSG_ID_HEADER);
+
+  if (!eventId) {
+    log.error({ subject }, `event missing ${MSG_ID_HEADER} header; terminating`);
+    msg.term(`missing ${MSG_ID_HEADER} header`);
+    return;
+  }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(decoder.decode(msg.data));
   } catch (err) {
-    log?.error({ eventId, subject, err }, "event payload is not valid JSON; terminating");
+    log.error({ eventId, subject, err }, "event payload is not valid JSON; terminating");
     msg.term("invalid json");
     return;
   }
 
   const validated = schema(parsed);
   if (validated instanceof ArkErrors) {
-    log?.error(
+    log.error(
       { eventId, subject, summary: validated.summary },
       "event payload failed schema validation; terminating",
     );
@@ -177,23 +185,33 @@ async function processMessage<Payload>(
     return;
   }
 
-  let didAck = false;
+  let settled = false;
   const ack = (): void => {
-    if (didAck) return;
-    didAck = true;
+    if (settled) return;
+    settled = true;
     msg.ack();
   };
 
   try {
+    // arktype distills the call result to `finalizeDistillation<Payload, ...>`; cast back to Payload.
     await handler({ subject, payload: validated as Payload, eventId, ack });
     ack();
-    log?.info({ eventId, subject, redelivered: msg.redelivered }, "event handled");
+    log.info({ eventId, subject, redelivered: msg.redelivered }, "event handled");
   } catch (err) {
-    log?.error(
+    if (settled) {
+      log.error(
+        { eventId, subject, err, redelivered: msg.redelivered },
+        "handler threw after acking; not redelivering",
+      );
+      return;
+    }
+
+    settled = true;
+    msg.nak();
+    log.error(
       { eventId, subject, err, redelivered: msg.redelivered },
       "handler threw; nak-ing for redelivery",
     );
-    msg.nak();
   }
 }
 

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { ticketCreatedV1 } from "@tix/contracts/tickets";
 
-import { createConsumer, createPublisher } from "./jetstream.ts";
+import { createConsumer, createPublisher, type Publisher } from "./jetstream.ts";
 
 const dockerAvailable = ((): boolean => {
   if (process.env["DOCKER_HOST"]) return true;
@@ -45,6 +45,23 @@ async function freshStream(nc: NatsConnection, subject: string): Promise<string>
   return streamName;
 }
 
+type TestContext = {
+  nc: NatsConnection;
+  subject: string;
+  stream: string;
+  group: string;
+  publisher: Publisher;
+};
+
+async function setupContext(): Promise<TestContext> {
+  const nc = await connectNats();
+  const subject = `tickets.created.v1.${randomUUID()}`;
+  const stream = await freshStream(nc, subject);
+  const group = `g-${randomUUID()}`;
+  const publisher = createPublisher(nc);
+  return { nc, subject, stream, group, publisher };
+}
+
 beforeAll(async () => {
   if (!dockerAvailable) return;
   container = await new GenericContainer("nats:2.10-alpine")
@@ -60,10 +77,7 @@ afterAll(async () => {
 
 describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
   it("publishes a payload that the consumer validates and hands to the handler exactly once", async () => {
-    const nc = await connectNats();
-    const subject = `tickets.created.v1.${randomUUID()}`;
-    const stream = await freshStream(nc, subject);
-    const group = `g-${randomUUID()}`;
+    const { nc, subject, stream, group, publisher } = await setupContext();
 
     const eventId = randomUUID();
     const payload = {
@@ -92,8 +106,6 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       },
     });
 
-    const publisher = createPublisher(nc);
-
     try {
       const { ack } = await publisher.publish(subject, payload, { msgId: eventId });
       expect(ack.stream).toBe(stream);
@@ -110,10 +122,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
   }, 20_000);
 
   it("terminates malformed payloads without invoking the handler and without redelivering", async () => {
-    const nc = await connectNats();
-    const subject = `tickets.created.v1.${randomUUID()}`;
-    const stream = await freshStream(nc, subject);
-    const group = `g-${randomUUID()}`;
+    const { nc, subject, stream, group, publisher } = await setupContext();
 
     const badPayload = { ticketId: randomUUID() };
 
@@ -129,8 +138,6 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       },
     });
 
-    const publisher = createPublisher(nc);
-
     try {
       await publisher.publish(subject, badPayload, { msgId: randomUUID() });
 
@@ -144,11 +151,83 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
     }
   }, 20_000);
 
+  it("terminates messages missing the Nats-Msg-Id header without invoking the handler", async () => {
+    const { nc, subject, stream, group, publisher } = await setupContext();
+
+    const payload = {
+      ticketId: randomUUID(),
+      sellerId: randomUUID(),
+      title: "Headerless concert",
+      quantityTotal: 1,
+      unitPriceCents: 100,
+      createdAt: new Date().toISOString(),
+    };
+
+    let invocations = 0;
+    const consumer = await createConsumer(nc, {
+      stream,
+      subjectFilter: subject,
+      group,
+      schema: ticketCreatedV1,
+      ackWaitMs: 500,
+      handler: () => {
+        invocations++;
+      },
+    });
+
+    try {
+      await publisher.publish(subject, payload);
+
+      await new Promise((r) => setTimeout(r, 1500));
+
+      expect(invocations).toBe(0);
+    } finally {
+      await consumer.stop();
+      await nc.close();
+    }
+  }, 20_000);
+
+  it("does not redeliver when the handler acks early and then throws", async () => {
+    const { nc, subject, stream, group, publisher } = await setupContext();
+
+    const eventId = randomUUID();
+    const payload = {
+      ticketId: randomUUID(),
+      sellerId: randomUUID(),
+      title: "Early-ack concert",
+      quantityTotal: 1,
+      unitPriceCents: 100,
+      createdAt: new Date().toISOString(),
+    };
+
+    let invocations = 0;
+    const consumer = await createConsumer(nc, {
+      stream,
+      subjectFilter: subject,
+      group,
+      schema: ticketCreatedV1,
+      ackWaitMs: 500,
+      handler: ({ ack }) => {
+        invocations++;
+        ack();
+        throw new Error("post-ack failure");
+      },
+    });
+
+    try {
+      await publisher.publish(subject, payload, { msgId: eventId });
+
+      await new Promise((r) => setTimeout(r, 1500));
+
+      expect(invocations).toBe(1);
+    } finally {
+      await consumer.stop();
+      await nc.close();
+    }
+  }, 20_000);
+
   it("redelivers the same event id when the handler throws mid-processing", async () => {
-    const nc = await connectNats();
-    const subject = `tickets.created.v1.${randomUUID()}`;
-    const stream = await freshStream(nc, subject);
-    const group = `g-${randomUUID()}`;
+    const { nc, subject, stream, group, publisher } = await setupContext();
 
     const eventId = randomUUID();
     const payload = {
@@ -182,8 +261,6 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
         resolveSecond();
       },
     });
-
-    const publisher = createPublisher(nc);
 
     try {
       await publisher.publish(subject, payload, { msgId: eventId });
