@@ -138,20 +138,16 @@ describe.skipIf(!dockerAvailable)("auth router", () => {
       name: "Carol",
     });
 
-    const wrongPassword = getClient().signIn({
-      email: "carol@example.com",
-      password: "wrong-password",
-    });
-    const unknownEmail = getClient().signIn({
-      email: "nobody@example.com",
-      password: "wrong-password",
-    });
-
-    await expect(wrongPassword).rejects.toMatchObject({
+    await expect(
+      getClient().signIn({ email: "carol@example.com", password: "wrong-password" }),
+    ).rejects.toMatchObject({
       code: "UNAUTHORIZED",
       message: "Invalid email or password",
     });
-    await expect(unknownEmail).rejects.toMatchObject({
+
+    await expect(
+      getClient().signIn({ email: "nobody@example.com", password: "wrong-password" }),
+    ).rejects.toMatchObject({
       code: "UNAUTHORIZED",
       message: "Invalid email or password",
     });
