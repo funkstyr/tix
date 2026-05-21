@@ -26,10 +26,12 @@
   "dependencies": {
     "@nats-io/jetstream": "catalog:",
     "@nats-io/transport-node": "catalog:",
+    "arktype": "catalog:",
     "bullmq": "catalog:"
   },
   "devDependencies": {
     "@tix/config": "workspace:*",
+    "@tix/contracts": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "pino": "catalog:",
