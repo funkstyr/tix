@@ -536,6 +536,9 @@ importers:
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
+      arktype:
+        specifier: 'catalog:'
+        version: 2.2.0
       bullmq:
         specifier: 'catalog:'
         version: 5.76.10
@@ -543,6 +546,9 @@ importers:
       '@tix/config':
         specifier: workspace:*
         version: link:../config
+      '@tix/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.1
