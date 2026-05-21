@@ -278,6 +278,9 @@ importers:
 
   apps/orders:
     dependencies:
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.0.3(hono@4.12.21)
       '@orpc/client':
         specifier: 'catalog:'
         version: 1.14.3
@@ -290,9 +293,9 @@ importers:
       '@tix/db-core':
         specifier: workspace:*
         version: link:../../packages/db-core
-      '@tix/messaging':
+      '@tix/observability':
         specifier: workspace:*
-        version: link:../../packages/messaging
+        version: link:../../packages/observability
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
@@ -318,9 +321,18 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
+      auth:
+        specifier: workspace:*
+        version: link:../auth
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
+      testcontainers:
+        specifier: 'catalog:'
+        version: 12.0.0
+      tickets:
+        specifier: workspace:*
+        version: link:../tickets
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
