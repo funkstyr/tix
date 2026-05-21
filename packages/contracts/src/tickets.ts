@@ -11,3 +11,12 @@ export const ticketCreatedV1 = type({
 });
 
 export type TicketCreatedV1 = typeof ticketCreatedV1.infer;
+
+export const ticketSnapshotOutput = type({
+  id: "string.uuid",
+  sellerId: "string",
+  quantityAvailable: "number.integer",
+  version: "number.integer",
+});
+
+export type TicketSnapshot = typeof ticketSnapshotOutput.infer;

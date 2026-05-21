@@ -15,18 +15,22 @@
   },
   "dependencies": {
     "@hono/node-server": "catalog:",
+    "@nats-io/transport-node": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
+    "@tix/messaging": "workspace:*",
     "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "drizzle-orm": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
-    "postgres": "catalog:"
+    "postgres": "catalog:",
+    "uuid": "catalog:"
   },
   "devDependencies": {
+    "@nats-io/jetstream": "catalog:",
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",

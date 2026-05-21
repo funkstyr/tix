@@ -12,10 +12,14 @@ import { tickets as ticketsTable, ticketsTables } from "tickets/schema";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthRouterClient } from "@tix/contracts/auth";
+import { createInProcessAuthSessionClient } from "@tix/contracts/auth-client";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 
-import { createInProcessAuthSessionClient } from "./auth-session-client.ts";
-import { orders as ordersTable, ordersTables } from "./orders-schema.ts";
+import {
+  orders as ordersTable,
+  ordersOutbox as ordersOutboxTable,
+  ordersTables,
+} from "./orders-schema.ts";
 import { createOrdersRouter } from "./router.ts";
 import { createInProcessTicketsClient, type TicketsClient } from "./tickets-client.ts";
 
@@ -129,7 +133,7 @@ afterAll(async () => {
 beforeEach(async () => {
   if (!ordersDb || !ticketsDb || !authDb) return;
 
-  await ordersDb.sql`TRUNCATE TABLE orders.orders RESTART IDENTITY CASCADE`;
+  await ordersDb.sql`TRUNCATE TABLE orders.orders, orders.outbox RESTART IDENTITY CASCADE`;
   await ticketsDb.sql`TRUNCATE TABLE tickets.tickets, tickets.outbox RESTART IDENTITY CASCADE`;
   await authDb.sql`TRUNCATE TABLE auth.session, auth.account, auth.user RESTART IDENTITY CASCADE`;
 });
@@ -213,9 +217,52 @@ function randomTag(): string {
 }
 
 describe.skipIf(!dockerAvailable)("orders.create", () => {
-  it("creates an Order, decrements the Ticket, sets expiresAt 15min ahead", async () => {
-    const seller = await signUpUser("seller@example.com");
-    const buyer = await signUpUser("buyer@example.com");
+  it("persists the Order row in `created` status", async () => {
+    const seller = await signUpUser("seller-create@example.com");
+    const buyer = await signUpUser("buyer-create@example.com");
+    const ticket = await createTicket(seller.token, 5);
+
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 2,
+    });
+
+    expect(order.buyerId).toBe(buyer.userId);
+    expect(order.ticketId).toBe(ticket.id);
+    expect(order.quantity).toBe(2);
+    expect(order.status).toBe("created");
+    expect(order.version).toBe(1);
+
+    const [row] = await getOrdersDb()
+      .db.select()
+      .from(ordersTable)
+      .where(eq(ordersTable.id, order.id));
+    expect(row?.status).toBe("created");
+    expect(row?.quantity).toBe(2);
+  });
+
+  it("decrements the Ticket's quantityAvailable by the Order quantity", async () => {
+    const seller = await signUpUser("seller-decrement@example.com");
+    const buyer = await signUpUser("buyer-decrement@example.com");
+    const ticket = await createTicket(seller.token, 5);
+
+    await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 2,
+    });
+
+    const [ticketRow] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, ticket.id));
+    expect(ticketRow?.quantityAvailable).toBe(3);
+  });
+
+  it("sets expiresAt 15 minutes after creation", async () => {
+    const seller = await signUpUser("seller-expires@example.com");
+    const buyer = await signUpUser("buyer-expires@example.com");
     const ticket = await createTicket(seller.token, 5);
 
     const before = Date.now();
@@ -226,29 +273,36 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
     });
     const after = Date.now();
 
-    expect(order.buyerId).toBe(buyer.userId);
-    expect(order.ticketId).toBe(ticket.id);
-    expect(order.quantity).toBe(2);
-    expect(order.status).toBe("created");
-    expect(order.version).toBe(1);
-
     const expiresAtMs = Date.parse(order.expiresAt);
     const fifteenMin = 15 * 60 * 1000;
     expect(expiresAtMs).toBeGreaterThanOrEqual(before + fifteenMin);
     expect(expiresAtMs).toBeLessThanOrEqual(after + fifteenMin);
+  });
 
-    const [row] = await getOrdersDb()
-      .db.select()
-      .from(ordersTable)
-      .where(eq(ordersTable.id, order.id));
-    expect(row?.status).toBe("created");
-    expect(row?.quantity).toBe(2);
+  it("enqueues an order.created.v1 outbox row in the same transaction", async () => {
+    const seller = await signUpUser("seller-outbox@example.com");
+    const buyer = await signUpUser("buyer-outbox@example.com");
+    const ticket = await createTicket(seller.token, 5);
 
-    const [ticketRow] = await getTicketsDb()
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 2,
+    });
+
+    const rows = await getOrdersDb()
       .db.select()
-      .from(ticketsTable)
-      .where(eq(ticketsTable.id, ticket.id));
-    expect(ticketRow?.quantityAvailable).toBe(3);
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, "order.created.v1"));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.payload).toMatchObject({
+      orderId: order.id,
+      ticketId: ticket.id,
+      buyerId: buyer.userId,
+      quantity: 2,
+    });
+    expect(rows[0]?.sentAt).toBeNull();
   });
 
   it("rejects an unauthenticated buyer with 401 and writes no Order row", async () => {

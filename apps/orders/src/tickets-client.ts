@@ -2,21 +2,12 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 
 import { RPC_PREFIX } from "@tix/contracts/rpc";
+import type { TicketSnapshot } from "@tix/contracts/tickets";
 import type { ReserveTicketInput, ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
 
-export type TicketSnapshot = {
-  id: string;
-  sellerId: string;
-  quantityAvailable: number;
-  version: number;
-};
+export type { TicketSnapshot };
 
 export type TicketsClient = {
-  reserve: (input: ReserveTicketInput) => Promise<ReserveTicketOutput>;
-  getById: (input: { ticketId: string }) => Promise<TicketSnapshot | null>;
-};
-
-type TicketsRouterClient = {
   reserve: (input: ReserveTicketInput) => Promise<ReserveTicketOutput>;
   getById: (input: { ticketId: string }) => Promise<TicketSnapshot | null>;
 };
@@ -29,7 +20,7 @@ export function createHttpTicketsClient(
     url: `${ticketsBaseUrl.replace(/\/$/, "")}${RPC_PREFIX}`,
     headers: { "x-service-token": serviceToken },
   });
-  const client: TicketsRouterClient = createORPCClient(link);
+  const client: TicketsClient = createORPCClient(link);
 
   return {
     reserve: (input) => client.reserve(input),
@@ -37,7 +28,7 @@ export function createHttpTicketsClient(
   };
 }
 
-export function createInProcessTicketsClient(client: TicketsRouterClient): TicketsClient {
+export function createInProcessTicketsClient(client: TicketsClient): TicketsClient {
   return {
     reserve: (input) => client.reserve(input),
     getById: (input) => client.getById(input),

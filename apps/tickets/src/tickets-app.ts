@@ -2,11 +2,11 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type { Logger } from "pino";
 
+import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import type { DbClient } from "@tix/db-core/client";
 import { requestLogger } from "@tix/observability/request-logger";
 
-import type { AuthSessionClient } from "./auth-session-client.ts";
 import { createTicketsRouter } from "./router.ts";
 import type { ticketsTables } from "./tickets-schema.ts";
 

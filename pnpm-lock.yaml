@@ -281,6 +281,9 @@ importers:
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
+      '@nats-io/transport-node':
+        specifier: 'catalog:'
+        version: 3.4.0
       '@orpc/client':
         specifier: 'catalog:'
         version: 1.14.3
@@ -293,6 +296,9 @@ importers:
       '@tix/db-core':
         specifier: workspace:*
         version: link:../../packages/db-core
+      '@tix/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -311,7 +317,13 @@ importers:
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
+      uuid:
+        specifier: 'catalog:'
+        version: 14.0.0
     devDependencies:
+      '@nats-io/jetstream':
+        specifier: 'catalog:'
+        version: 3.4.0
       '@tix/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -528,6 +540,12 @@ importers:
 
   packages/contracts:
     dependencies:
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 1.14.3
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 1.14.3
       arktype:
         specifier: 'catalog:'
         version: 2.2.0

@@ -10,9 +10,9 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthRouterClient } from "@tix/contracts/auth";
+import { createInProcessAuthSessionClient } from "@tix/contracts/auth-client";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 
-import { createInProcessAuthSessionClient } from "./auth-session-client.ts";
 import { createTicketsRouter } from "./router.ts";
 import { tickets as ticketsTable, ticketsTables } from "./tickets-schema.ts";
 

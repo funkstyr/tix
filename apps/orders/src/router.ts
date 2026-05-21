@@ -1,14 +1,21 @@
 import { ORPCError, os } from "@orpc/server";
 import { type } from "arktype";
 import { eq } from "drizzle-orm";
+import type { Logger } from "pino";
+import { pino } from "pino";
+import { v7 as uuidv7 } from "uuid";
 
+import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
+import { ORDER_CREATED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import type { DbClient } from "@tix/db-core/client";
+import { enqueueEvent } from "@tix/db-core/outbox";
 
-import type { AuthSession, AuthSessionClient } from "./auth-session-client.ts";
-import { orders, type ordersTables } from "./orders-schema.ts";
+import { orders, ordersOutbox, type ordersTables } from "./orders-schema.ts";
 import type { TicketsClient } from "./tickets-client.ts";
 
 const RESERVATION_TTL_MS = 15 * 60 * 1000;
+
+const fallbackLogger: Logger = pino({ level: "warn" });
 
 const tokenInput = type({
   token: "string >= 1",
@@ -40,20 +47,11 @@ export type OrdersRouterDeps = {
   db: DbClient<typeof ordersTables>;
   authClient: AuthSessionClient;
   ticketsClient: TicketsClient;
-  now?: () => Date;
+  logger?: Logger;
 };
 
-async function requireSession(authClient: AuthSessionClient, token: string): Promise<AuthSession> {
-  const session = await authClient.getSession({ token });
-  if (session === null) {
-    throw new ORPCError("UNAUTHORIZED", { message: "invalid or expired session" });
-  }
-
-  return session;
-}
-
 export function createOrdersRouter(deps: OrdersRouterDeps) {
-  const { db, authClient, ticketsClient, now = () => new Date() } = deps;
+  const { db, authClient, ticketsClient, logger = fallbackLogger } = deps;
 
   const base = os;
 
@@ -67,11 +65,13 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
       if (!ticket) {
         throw new ORPCError("NOT_FOUND", { message: "ticket not found" });
       }
+
       if (ticket.sellerId === session.user.id) {
         throw new ORPCError("FORBIDDEN", {
           message: "buyer cannot purchase their own ticket",
         });
       }
+
       if (ticket.quantityAvailable < input.quantity) {
         throw new ORPCError("GONE", {
           status: 410,
@@ -91,43 +91,75 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
             data: { reason: "race_lost" as const },
           });
         }
+
         if (err instanceof ORPCError && err.code === "NOT_FOUND") {
           throw new ORPCError("NOT_FOUND", { message: "ticket not found" });
         }
+
         throw err;
       }
 
-      const createdAt = now();
+      // Reserve succeeded — from here, any failure must compensate via order.reservation_released.v1.
+      const orderId = uuidv7();
+      const createdAt = new Date();
       const expiresAt = new Date(createdAt.getTime() + RESERVATION_TTL_MS);
 
-      const [row] = await db.db
-        .insert(orders)
-        .values({
-          buyerId: session.user.id,
+      try {
+        const row = await db.db.transaction(async (tx) => {
+          const [inserted] = await tx
+            .insert(orders)
+            .values({
+              id: orderId,
+              buyerId: session.user.id,
+              ticketId: input.ticketId,
+              quantity: input.quantity,
+              status: "created",
+              expiresAt,
+              createdAt,
+            })
+            .returning();
+
+          if (!inserted) {
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
+              message: "order insert returned no row",
+            });
+          }
+
+          await enqueueEvent(tx, ordersOutbox, {
+            subject: ORDER_CREATED_V1,
+            eventId: uuidv7(),
+            payload: {
+              orderId: inserted.id,
+              ticketId: inserted.ticketId,
+              buyerId: inserted.buyerId,
+              quantity: inserted.quantity,
+              expiresAt: inserted.expiresAt.toISOString(),
+              createdAt: inserted.createdAt.toISOString(),
+            },
+          });
+
+          return inserted;
+        });
+
+        return {
+          id: row.id,
+          buyerId: row.buyerId,
+          ticketId: row.ticketId,
+          quantity: row.quantity,
+          status: row.status,
+          expiresAt: row.expiresAt.toISOString(),
+          version: row.version,
+          createdAt: row.createdAt.toISOString(),
+        };
+      } catch (err: unknown) {
+        await compensateReserve(db, logger, {
+          orderId,
           ticketId: input.ticketId,
           quantity: input.quantity,
-          status: "created",
-          expiresAt,
-          createdAt,
-        })
-        .returning();
-
-      if (!row) {
-        throw new ORPCError("INTERNAL_SERVER_ERROR", {
-          message: "order insert returned no row",
         });
-      }
 
-      return {
-        id: row.id,
-        buyerId: row.buyerId,
-        ticketId: row.ticketId,
-        quantity: row.quantity,
-        status: row.status,
-        expiresAt: row.expiresAt.toISOString(),
-        version: row.version,
-        createdAt: row.createdAt.toISOString(),
-      };
+        throw err;
+      }
     });
 
   const getById = base
@@ -153,3 +185,39 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
 }
 
 export type OrdersRouter = ReturnType<typeof createOrdersRouter>;
+
+type CompensateReserveArgs = {
+  orderId: string;
+  ticketId: string;
+  quantity: number;
+};
+
+async function compensateReserve(
+  db: DbClient<typeof ordersTables>,
+  logger: Logger,
+  args: CompensateReserveArgs,
+): Promise<void> {
+  try {
+    await enqueueEvent(db.db, ordersOutbox, {
+      subject: ORDER_RESERVATION_RELEASED_V1,
+      eventId: uuidv7(),
+      payload: {
+        orderId: args.orderId,
+        ticketId: args.ticketId,
+        quantity: args.quantity,
+        releasedAt: new Date().toISOString(),
+      },
+    });
+  } catch (releaseErr) {
+    // Inventory is now stuck reserved against an unborn Order. Operator must reconcile manually.
+    logger.error(
+      {
+        err: releaseErr,
+        ticketId: args.ticketId,
+        quantity: args.quantity,
+        orphanOrderId: args.orderId,
+      },
+      "failed to enqueue order.reservation_released.v1 after order insert failure",
+    );
+  }
+}

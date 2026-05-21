@@ -1,10 +1,9 @@
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
+import { ORPCError } from "@orpc/server";
 
-import type { AuthRouterClient, AuthSession } from "@tix/contracts/auth";
-import { RPC_PREFIX } from "@tix/contracts/rpc";
-
-export type { AuthSession };
+import type { AuthRouterClient, AuthSession } from "./auth";
+import { RPC_PREFIX } from "./rpc";
 
 export type AuthSessionClient = {
   getSession: (input: { token: string }) => Promise<AuthSession | null>;
@@ -23,4 +22,16 @@ export function createInProcessAuthSessionClient(client: AuthRouterClient): Auth
   return {
     getSession: (input) => client.getSession(input),
   };
+}
+
+export async function requireSession(
+  authClient: AuthSessionClient,
+  token: string,
+): Promise<AuthSession> {
+  const session = await authClient.getSession({ token });
+  if (session === null) {
+    throw new ORPCError("UNAUTHORIZED", { message: "invalid or expired session" });
+  }
+
+  return session;
 }
