@@ -8,6 +8,7 @@ import type { DbClient } from "@tix/db-core/client";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
 import type { AuthSession, AuthSessionClient } from "./auth-session-client.ts";
+import { reserveTicket } from "./reserve-ticket.ts";
 import { tickets, ticketsOutbox, type ticketsTables } from "./tickets-schema.ts";
 
 const tokenInput = type({
@@ -24,6 +25,17 @@ const getByIdInput = type({
   ticketId: "string.uuid",
 });
 
+const reserveInput = type({
+  ticketId: "string.uuid",
+  quantity: "number.integer >= 1",
+});
+
+const reserveOutput = type({
+  ticketId: "string.uuid",
+  quantityAvailable: "number.integer",
+  version: "number.integer",
+});
+
 const ticketOutput = type({
   id: "string.uuid",
   sellerId: "string",
@@ -37,9 +49,14 @@ const ticketOutput = type({
 
 const ticketOrNullOutput = ticketOutput.or("null");
 
+export type TicketsRouterContext = {
+  serviceToken?: string;
+};
+
 export type TicketsRouterDeps = {
   db: DbClient<typeof ticketsTables>;
   authClient: AuthSessionClient;
+  serviceToken: string;
 };
 
 async function requireSession(authClient: AuthSessionClient, token: string): Promise<AuthSession> {
@@ -52,9 +69,11 @@ async function requireSession(authClient: AuthSessionClient, token: string): Pro
 }
 
 export function createTicketsRouter(deps: TicketsRouterDeps) {
-  const { db, authClient } = deps;
+  const { db, authClient, serviceToken: expectedServiceToken } = deps;
 
-  const create = os
+  const base = os.$context<TicketsRouterContext>();
+
+  const create = base
     .input(createInput)
     .output(ticketOutput)
     .handler(async ({ input }) => {
@@ -108,7 +127,18 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
       };
     });
 
-  const getById = os
+  const reserve = base
+    .input(reserveInput)
+    .output(reserveOutput)
+    .handler(async ({ input, context }) => {
+      if (context.serviceToken !== expectedServiceToken) {
+        throw new ORPCError("UNAUTHORIZED", { message: "missing or invalid service token" });
+      }
+
+      return await reserveTicket(db, input);
+    });
+
+  const getById = base
     .input(getByIdInput)
     .output(ticketOrNullOutput)
     .handler(async ({ input }) => {
@@ -127,7 +157,7 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
       };
     });
 
-  return { create, getById };
+  return { create, reserve, getById };
 }
 
 export type TicketsRouter = ReturnType<typeof createTicketsRouter>;

@@ -37,10 +37,11 @@ async function main(): Promise<void> {
   const databaseUrl = requireEnv("DATABASE_URL");
   const authBaseUrl = requireEnv("AUTH_BASE_URL");
   const natsUrl = requireEnv("NATS_URL");
+  const serviceToken = requireEnv("TICKETS_SERVICE_TOKEN");
 
   const db = createDbClient("tickets", databaseUrl, { schema: ticketsTables });
   const authClient = createHttpAuthSessionClient(authBaseUrl);
-  const app = createTicketsApp({ db, authClient, logger });
+  const app = createTicketsApp({ db, authClient, serviceToken, logger });
 
   const nats = await connect({ servers: natsUrl });
   const publisher = createPublisher(nats, { logger });

@@ -23,6 +23,10 @@
     "./outbox": {
       "types": "./dist/outbox.d.ts",
       "import": "./dist/outbox.js"
+    },
+    "./optimistic-version": {
+      "types": "./dist/optimistic-version.d.ts",
+      "import": "./dist/optimistic-version.js"
     }
   },
   "scripts": {

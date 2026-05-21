@@ -18,6 +18,7 @@ import { tickets as ticketsTable, ticketsTables } from "./tickets-schema.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_BASE_URL = "http://localhost:4001";
+const TEST_SERVICE_TOKEN = "test-service-token";
 const INVALID_TOKEN = "definitely-not-a-valid-session-token";
 
 const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
@@ -39,6 +40,7 @@ const dockerAvailable = ((): boolean => {
 
 type TicketsDbClient = DbClient<typeof ticketsTables>;
 type AuthDbClient = DbClient<typeof authTables>;
+type TicketsRouter = ReturnType<typeof createTicketsRouter>;
 type TicketsRouterClient = ReturnType<typeof buildClients>["ticketsClient"];
 
 function buildClients(ticketsDb: TicketsDbClient, authDb: AuthDbClient) {
@@ -46,11 +48,18 @@ function buildClients(ticketsDb: TicketsDbClient, authDb: AuthDbClient) {
   const authRouter = createAuthRouter({ auth });
   const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
-  const ticketsRouter = createTicketsRouter({ db: ticketsDb, authClient: authSessionClient });
+  const ticketsRouter = createTicketsRouter({
+    db: ticketsDb,
+    authClient: authSessionClient,
+    serviceToken: TEST_SERVICE_TOKEN,
+  });
 
   return {
     authClient: authRouterClient,
-    ticketsClient: createRouterClient(ticketsRouter),
+    ticketsRouter,
+    ticketsClient: createRouterClient(ticketsRouter, {
+      context: { serviceToken: TEST_SERVICE_TOKEN },
+    }),
   };
 }
 
@@ -58,6 +67,7 @@ let container: StartedTestContainer | undefined;
 let ticketsDb: TicketsDbClient | undefined;
 let authDb: AuthDbClient | undefined;
 let ticketsClient: TicketsRouterClient | undefined;
+let ticketsRouter: TicketsRouter | undefined;
 let authClient: AuthRouterClient | undefined;
 
 beforeAll(async () => {
@@ -86,6 +96,7 @@ beforeAll(async () => {
 
   const clients = buildClients(ticketsDb, authDb);
   authClient = clients.authClient;
+  ticketsRouter = clients.ticketsRouter;
   ticketsClient = clients.ticketsClient;
 }, 120_000);
 
@@ -118,6 +129,12 @@ function getTicketsDb(): TicketsDbClient {
   if (!ticketsDb) throw new Error("ticketsDb not initialized");
 
   return ticketsDb;
+}
+
+function getTicketsRouter(): TicketsRouter {
+  if (!ticketsRouter) throw new Error("ticketsRouter not initialized");
+
+  return ticketsRouter;
 }
 
 async function signUpSeller(email: string): Promise<{ userId: string; token: string }> {
@@ -234,3 +251,102 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
     expect(missing).toBeNull();
   });
 });
+
+describe.skipIf(!dockerAvailable)("tickets.reserve", () => {
+  async function createTicket(quantityTotal: number): Promise<{ id: string }> {
+    const seller = await signUpSeller(`seller-${randomTag()}@example.com`);
+    const created = await getTicketsClient().create({
+      token: seller.token,
+      title: `Reserve test ${randomTag()}`,
+      quantityTotal,
+      unitPriceCents: 5000,
+    });
+
+    return { id: created.id };
+  }
+
+  it("decrements quantityAvailable and bumps version on a successful reserve", async () => {
+    const ticket = await createTicket(4);
+
+    const result = await getTicketsClient().reserve({ ticketId: ticket.id, quantity: 2 });
+
+    expect(result.ticketId).toBe(ticket.id);
+    expect(result.quantityAvailable).toBe(2);
+    expect(result.version).toBe(2);
+
+    const [row] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, ticket.id));
+    expect(row?.quantityAvailable).toBe(2);
+    expect(row?.version).toBe(2);
+  });
+
+  it("returns 410 sold_out when quantityAvailable is less than requested", async () => {
+    const ticket = await createTicket(1);
+
+    const oversell = getTicketsClient().reserve({ ticketId: ticket.id, quantity: 5 });
+
+    await expect(oversell).rejects.toMatchObject({
+      status: 410,
+      data: { reason: "sold_out" },
+    });
+
+    const [row] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, ticket.id));
+    expect(row?.quantityAvailable).toBe(1);
+    expect(row?.version).toBe(1);
+  });
+
+  it("lets exactly one of two concurrent callers claim the last seats", async () => {
+    const ticket = await createTicket(2);
+
+    const results = await Promise.allSettled([
+      getTicketsClient().reserve({ ticketId: ticket.id, quantity: 2 }),
+      getTicketsClient().reserve({ ticketId: ticket.id, quantity: 2 }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const winnerStatus = rejected[0];
+    if (winnerStatus?.status !== "rejected") throw new Error("expected one rejection");
+    // The loser's re-read sees quantityAvailable = 0, so this surfaces as a sold-out 410.
+    // A 409 only occurs when a third writer contends with the retry, which two callers can't trigger.
+    expect(winnerStatus.reason).toMatchObject({
+      status: 410,
+      data: { reason: "sold_out" },
+    });
+
+    const [row] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, ticket.id));
+    expect(row?.quantityAvailable).toBe(0);
+    expect(row?.version).toBe(2);
+  });
+
+  it("rejects callers that omit the service token with 401", async () => {
+    const ticket = await createTicket(3);
+
+    const noTokenClient = createRouterClient(getTicketsRouter(), { context: {} });
+    const call = noTokenClient.reserve({ ticketId: ticket.id, quantity: 1 });
+
+    await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+
+    const [row] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, ticket.id));
+    expect(row?.quantityAvailable).toBe(3);
+    expect(row?.version).toBe(1);
+  });
+});
+
+function randomTag(): string {
+  return Math.random().toString(36).slice(2, 10);
+}

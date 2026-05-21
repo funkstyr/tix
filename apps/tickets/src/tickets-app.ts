@@ -10,14 +10,21 @@ import type { AuthSessionClient } from "./auth-session-client.ts";
 import { createTicketsRouter } from "./router.ts";
 import type { ticketsTables } from "./tickets-schema.ts";
 
+const SERVICE_TOKEN_HEADER = "x-service-token";
+
 export type CreateTicketsAppDeps = {
   db: DbClient<typeof ticketsTables>;
   authClient: AuthSessionClient;
+  serviceToken: string;
   logger: Logger;
 };
 
 export function createTicketsApp(deps: CreateTicketsAppDeps): Hono {
-  const router = createTicketsRouter({ db: deps.db, authClient: deps.authClient });
+  const router = createTicketsRouter({
+    db: deps.db,
+    authClient: deps.authClient,
+    serviceToken: deps.serviceToken,
+  });
   const rpc = new RPCHandler(router);
 
   const app = new Hono();
@@ -27,9 +34,11 @@ export function createTicketsApp(deps: CreateTicketsAppDeps): Hono {
   app.get("/health", (c) => c.json({ service: "tickets", ok: true }));
 
   app.all(`${RPC_PREFIX}/*`, async (c) => {
+    const headerToken = c.req.header(SERVICE_TOKEN_HEADER);
+
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: RPC_PREFIX,
-      context: {},
+      context: headerToken === undefined ? {} : { serviceToken: headerToken },
     });
     if (matched) return response;
 
