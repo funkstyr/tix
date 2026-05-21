@@ -1,10 +1,11 @@
 import { ORPCError, os } from "@orpc/server";
 import { type } from "arktype";
 import { eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { v7 as uuidv7 } from "uuid";
 
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
 import type { DbClient } from "@tix/db-core/client";
+import { enqueueEvent } from "@tix/db-core/outbox";
 
 import type { AuthSession, AuthSessionClient } from "./auth-session-client.ts";
 import { tickets, ticketsOutbox, type ticketsTables } from "./tickets-schema.ts";
@@ -78,9 +79,9 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
           });
         }
 
-        await tx.insert(ticketsOutbox).values({
+        await enqueueEvent(tx, ticketsOutbox, {
           subject: TICKETS_CREATED_V1,
-          eventId: randomUUID(),
+          eventId: uuidv7(),
           payload: {
             ticketId: inserted.id,
             sellerId: inserted.sellerId,
