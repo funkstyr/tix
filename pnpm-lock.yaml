@@ -81,9 +81,6 @@ catalogs:
     tsx:
       specifier: ^4.22.3
       version: 4.22.3
-    uuid:
-      specifier: ^11.1.0
-      version: 11.1.1
     vitest:
       specifier: ^4.1.7
       version: 4.1.7
@@ -429,7 +426,7 @@ importers:
         version: 3.4.9
       uuid:
         specifier: 'catalog:'
-        version: 11.1.1
+        version: 14.0.0
     devDependencies:
       '@nats-io/jetstream':
         specifier: 'catalog:'
@@ -3451,8 +3448,8 @@ packages:
     deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
-  uuid@11.1.1:
-    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
+  uuid@14.0.0:
+    resolution: {integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==}
     hasBin: true
 
   vite@8.0.13:
@@ -5940,7 +5937,7 @@ snapshots:
 
   uuid@10.0.0: {}
 
-  uuid@11.1.1: {}
+  uuid@14.0.0: {}
 
   vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(tsx@4.22.3)(yaml@2.9.0):
     dependencies:
