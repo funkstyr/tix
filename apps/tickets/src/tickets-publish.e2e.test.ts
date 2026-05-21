@@ -25,6 +25,7 @@ import { ticketsOutbox, ticketsTables } from "./tickets-schema.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_BASE_URL = "http://localhost:4001";
+const TEST_SERVICE_TOKEN = "test-service-token";
 
 const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
 const ticketsMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
@@ -59,11 +60,17 @@ function buildClients(ticketsDb_: TicketsDbClient, authDb_: AuthDbClient) {
   const authRouter = createAuthRouter({ auth });
   const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
-  const ticketsRouter = createTicketsRouter({ db: ticketsDb_, authClient: authSessionClient });
+  const ticketsRouter = createTicketsRouter({
+    db: ticketsDb_,
+    authClient: authSessionClient,
+    serviceToken: TEST_SERVICE_TOKEN,
+  });
 
   return {
     authClient: authRouterClient,
-    ticketsClient: createRouterClient(ticketsRouter),
+    ticketsClient: createRouterClient(ticketsRouter, {
+      context: { serviceToken: TEST_SERVICE_TOKEN },
+    }),
   };
 }
 
