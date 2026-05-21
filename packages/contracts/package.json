@@ -20,6 +20,10 @@
       "types": "./dist/tickets.d.ts",
       "import": "./dist/tickets.js"
     },
+    "./tickets-reserve": {
+      "types": "./dist/tickets-reserve.d.ts",
+      "import": "./dist/tickets-reserve.js"
+    },
     "./orders": {
       "types": "./dist/orders.d.ts",
       "import": "./dist/orders.js"

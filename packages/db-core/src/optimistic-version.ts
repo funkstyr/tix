@@ -26,13 +26,17 @@ export async function updateVersioned<TTable extends VersionedTable>(
   patch: Record<string, unknown>,
 ): Promise<UpdateVersionedResult> {
   // drizzle's `.set()` infers an exact column-keyed shape from the concrete table type,
-  // which can't see the generic table's `version` column statically. Cast at this seam
-  // — the runtime expects a key/value object of column name → value-or-SQL.
-  const setValues = { ...patch, version: sql`${table.version} + 1` } as never;
+  // which can't see the generic table's `version` column statically. The runtime shape
+  // is a record of column name → value-or-SQL; we declare that explicitly and confine
+  // the `as never` to the `.set()` boundary.
+  const setValues: Record<string, unknown> = {
+    ...patch,
+    version: sql`${table.version} + 1`,
+  };
 
   const updated = await tx
     .update(table)
-    .set(setValues)
+    .set(setValues as never)
     .where(and(eq(table.id, where.id), eq(table.version, where.version)))
     .returning({ id: table.id });
 

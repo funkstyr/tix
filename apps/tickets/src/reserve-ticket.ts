@@ -23,22 +23,24 @@ export async function reserveTicket(
   db: DbClient<typeof ticketsTables>,
   input: ReserveTicketInput,
 ): Promise<ReserveTicketResult> {
+  // Serial retry by design: each attempt depends on the previous attempt's version
+  // having lost the race. Parallelizing the reads/updates would defeat the
+  // optimistic-version check (ADR-0005, ADR-0007).
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    // eslint-disable-next-line no-await-in-loop
+    // eslint-disable-next-line no-await-in-loop -- serial retry by design
     const [row] = await db.db.select().from(tickets).where(eq(tickets.id, input.ticketId));
     if (!row) {
       throw new ORPCError("NOT_FOUND", { message: "ticket not found" });
     }
 
     if (row.quantityAvailable < input.quantity) {
-      throw new ORPCError("GONE", {
-        status: 410,
+      throw new ORPCError("CONFLICT", {
         message: "ticket is sold out",
         data: { reason: "sold_out" as const },
       });
     }
 
-    // eslint-disable-next-line no-await-in-loop
+    // eslint-disable-next-line no-await-in-loop -- serial retry by design
     const result = await updateVersioned(
       db.db,
       tickets,
@@ -56,5 +58,8 @@ export async function reserveTicket(
   }
 
   // Two reads + updates both lost the version race. Surface as retryable conflict.
-  throw new ORPCError("CONFLICT", { message: "reservation conflict after retry" });
+  throw new ORPCError("CONFLICT", {
+    message: "reservation conflict after retry",
+    data: { reason: "version_conflict" as const },
+  });
 }

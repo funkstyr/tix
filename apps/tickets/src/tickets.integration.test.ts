@@ -282,13 +282,14 @@ describe.skipIf(!dockerAvailable)("tickets.reserve", () => {
     expect(row?.version).toBe(2);
   });
 
-  it("returns 410 sold_out when quantityAvailable is less than requested", async () => {
+  it("returns CONFLICT sold_out when quantityAvailable is less than requested", async () => {
     const ticket = await createTicket(1);
 
     const oversell = getTicketsClient().reserve({ ticketId: ticket.id, quantity: 5 });
 
     await expect(oversell).rejects.toMatchObject({
-      status: 410,
+      code: "CONFLICT",
+      status: 409,
       data: { reason: "sold_out" },
     });
 
@@ -315,10 +316,11 @@ describe.skipIf(!dockerAvailable)("tickets.reserve", () => {
 
     const winnerStatus = rejected[0];
     if (winnerStatus?.status !== "rejected") throw new Error("expected one rejection");
-    // The loser's re-read sees quantityAvailable = 0, so this surfaces as a sold-out 410.
-    // A 409 only occurs when a third writer contends with the retry, which two callers can't trigger.
+    // The loser's re-read sees quantityAvailable = 0, so this surfaces as sold_out.
+    // A version_conflict only occurs when a third writer contends with the retry,
+    // which two callers can't trigger.
     expect(winnerStatus.reason).toMatchObject({
-      status: 410,
+      code: "CONFLICT",
       data: { reason: "sold_out" },
     });
 

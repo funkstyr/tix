@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
+import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
@@ -23,17 +24,6 @@ const createInput = tokenInput.and({
 
 const getByIdInput = type({
   ticketId: "string.uuid",
-});
-
-const reserveInput = type({
-  ticketId: "string.uuid",
-  quantity: "number.integer >= 1",
-});
-
-const reserveOutput = type({
-  ticketId: "string.uuid",
-  quantityAvailable: "number.integer",
-  version: "number.integer",
 });
 
 const ticketOutput = type({
@@ -128,8 +118,8 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
     });
 
   const reserve = base
-    .input(reserveInput)
-    .output(reserveOutput)
+    .input(reserveTicketInput)
+    .output(reserveTicketOutput)
     .handler(async ({ input, context }) => {
       if (context.serviceToken !== expectedServiceToken) {
         throw new ORPCError("UNAUTHORIZED", { message: "missing or invalid service token" });
