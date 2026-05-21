@@ -11,6 +11,14 @@
     "./subjects": {
       "types": "./dist/subjects.d.ts",
       "import": "./dist/subjects.js"
+    },
+    "./tickets": {
+      "types": "./dist/tickets.d.ts",
+      "import": "./dist/tickets.js"
+    },
+    "./orders": {
+      "types": "./dist/orders.d.ts",
+      "import": "./dist/orders.js"
     }
   },
   "scripts": {
