@@ -1,0 +1,20 @@
+{
+  "name": "@tix/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-types": "tsgo --noEmit",
+    "smoke:infra": "tsx smoke-infra.ts"
+  },
+  "dependencies": {
+    "nats": "catalog:",
+    "postgres": "catalog:"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "tsx": "catalog:"
+  }
+}
