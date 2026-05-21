@@ -168,7 +168,7 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
     expect(rows[0]?.version).toBe(1);
   });
 
-  it("rejects zero or negative quantityTotal before reaching the database", async () => {
+  it("rejects quantityTotal of zero before reaching the database", async () => {
     const seller = await signUpSeller("bob@example.com");
 
     const zero = getTicketsClient().create({
@@ -177,6 +177,16 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
       quantityTotal: 0,
       unitPriceCents: 4500,
     });
+
+    await expect(zero).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    const rows = await getTicketsDb().db.select().from(ticketsTable);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("rejects negative quantityTotal before reaching the database", async () => {
+    const seller = await signUpSeller("bob2@example.com");
+
     const negative = getTicketsClient().create({
       token: seller.token,
       title: "Owe me money",
@@ -184,7 +194,6 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
       unitPriceCents: 4500,
     });
 
-    await expect(zero).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(negative).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
     const rows = await getTicketsDb().db.select().from(ticketsTable);

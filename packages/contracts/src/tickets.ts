@@ -3,7 +3,7 @@ import { type } from "arktype";
 export const ticketCreatedV1 = type({
   "+": "reject",
   ticketId: "string.uuid",
-  sellerId: "string.uuid",
+  sellerId: "string >= 1",
   title: "string",
   quantityTotal: "number.integer >= 1",
   unitPriceCents: "number.integer >= 0",

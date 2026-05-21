@@ -1,0 +1,43 @@
+{
+  "name": "@tix/observability",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./logger": {
+      "types": "./dist/logger.d.ts",
+      "import": "./dist/logger.js"
+    },
+    "./request-logger": {
+      "types": "./dist/request-logger.d.ts",
+      "import": "./dist/request-logger.js"
+    },
+    "./rpc": {
+      "types": "./dist/rpc.d.ts",
+      "import": "./dist/rpc.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsgo --build",
+    "dev": "tsdown --watch",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "hono": "catalog:",
+    "pino": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "hono": "catalog:",
+    "pino": "catalog:"
+  }
+}

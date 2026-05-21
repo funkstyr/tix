@@ -5,10 +5,7 @@ import type { AuthRouter } from "auth/router";
 
 type AuthRouterClient = RouterClient<AuthRouter>;
 
-export type AuthSession = {
-  user: { id: string; email: string; name: string };
-  session: { id: string; expiresAt: string };
-};
+export type AuthSession = NonNullable<Awaited<ReturnType<AuthRouterClient["getSession"]>>>;
 
 export type AuthSessionClient = {
   getSession: (input: { token: string }) => Promise<AuthSession | null>;

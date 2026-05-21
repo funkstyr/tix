@@ -1,10 +1,10 @@
 import { serve } from "@hono/node-server";
 
 import { createDbClient } from "@tix/db-core/client";
+import { createLogger } from "@tix/observability/logger";
 
 import { createHttpAuthSessionClient } from "./auth-session-client.ts";
 import { createTicketsApp } from "./tickets-app.ts";
-import { createLogger } from "./tickets-logger.ts";
 import { ticketsTables } from "./tickets-schema.ts";
 
 const DEFAULT_PORT = 4002;

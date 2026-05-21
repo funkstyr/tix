@@ -1,10 +1,10 @@
 import { serve } from "@hono/node-server";
 
 import { createDbClient } from "@tix/db-core/client";
+import { createLogger } from "@tix/observability/logger";
 
 import { createAuthApp } from "./auth-app.ts";
 import { createAuth } from "./auth-instance.ts";
-import { createLogger } from "./auth-logger.ts";
 import { authTables } from "./auth-schema.ts";
 
 const DEFAULT_PORT = 4001;

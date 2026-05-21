@@ -25,6 +25,7 @@
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
+    "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "better-auth": "catalog:",
     "drizzle-orm": "catalog:",

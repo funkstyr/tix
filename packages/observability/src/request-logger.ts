@@ -1,9 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { pino, type Logger, type LoggerOptions } from "pino";
-
-export function createLogger(options: LoggerOptions = {}): Logger {
-  return pino({ level: "info", ...options });
-}
+import type { Logger } from "pino";
 
 export function requestLogger(logger: Logger): MiddlewareHandler {
   return async (c, next) => {

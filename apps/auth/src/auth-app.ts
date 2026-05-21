@@ -2,11 +2,11 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type { Logger } from "pino";
 
-import type { AuthInstance } from "./auth-instance.ts";
-import { requestLogger } from "./auth-logger.ts";
-import { createAuthRouter } from "./router.ts";
+import { requestLogger } from "@tix/observability/request-logger";
+import { RPC_PREFIX } from "@tix/observability/rpc";
 
-const RPC_PREFIX = "/rpc";
+import type { AuthInstance } from "./auth-instance.ts";
+import { createAuthRouter } from "./router.ts";
 
 export type CreateAuthAppDeps = {
   auth: AuthInstance;
