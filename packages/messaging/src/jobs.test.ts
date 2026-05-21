@@ -19,7 +19,12 @@ const dockerAvailable = ((): boolean => {
 })();
 
 let container: StartedTestContainer | undefined;
-let connection: ConnectionOptions;
+let connection: ConnectionOptions | undefined;
+
+function requireConnection(): ConnectionOptions {
+  if (!connection) throw new Error("docker container not started");
+  return connection;
+}
 
 beforeAll(async () => {
   if (!dockerAvailable) return;
@@ -33,6 +38,7 @@ afterAll(async () => {
 
 describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
   it("fires a delayed job within the requested delay window", async () => {
+    const conn = requireConnection();
     const queueName = `delay-${randomUUID()}`;
 
     let firedAt = 0;
@@ -41,7 +47,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
       resolveFired = r;
     });
 
-    const worker = createWorker<{ orderId: string }>(connection, {
+    const worker = createWorker<{ orderId: string }>(conn, {
       queueName,
       handler: () => {
         firedAt = Date.now();
@@ -49,7 +55,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
       },
     });
 
-    const scheduler = createScheduler(connection, { queueName });
+    const scheduler = createScheduler<{ orderId: string }>(conn, { queueName });
 
     try {
       const scheduledAt = Date.now();
@@ -65,23 +71,27 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
   }, 10_000);
 
   it("invokes the handler exactly once when scheduled twice with the same jobId", async () => {
+    const conn = requireConnection();
     const queueName = `idem-${randomUUID()}`;
 
+    // Window we wait after both schedules to verify no second invocation arrives.
+    const observationWindowMs = 1000;
+
     let invocations = 0;
-    const worker = createWorker<{ orderId: string }>(connection, {
+    const worker = createWorker<{ orderId: string }>(conn, {
       queueName,
       handler: () => {
         invocations++;
       },
     });
 
-    const scheduler = createScheduler(connection, { queueName });
+    const scheduler = createScheduler<{ orderId: string }>(conn, { queueName });
 
     try {
       await scheduler.scheduleDelayed("expire-order", { orderId: "o2" }, 100, "o2");
       await scheduler.scheduleDelayed("expire-order", { orderId: "o2" }, 100, "o2");
 
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, observationWindowMs));
 
       expect(invocations).toBe(1);
     } finally {
@@ -90,9 +100,10 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
   }, 10_000);
 
   it("surfaces handler errors via the BullMQ failed event", async () => {
+    const conn = requireConnection();
     const queueName = `fail-${randomUUID()}`;
 
-    const worker = createWorker<{ orderId: string }>(connection, {
+    const worker = createWorker<{ orderId: string }>(conn, {
       queueName,
       handler: () => {
         throw new Error("boom");
@@ -107,7 +118,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
       resolveFailure(err);
     });
 
-    const scheduler = createScheduler(connection, { queueName });
+    const scheduler = createScheduler<{ orderId: string }>(conn, { queueName });
 
     try {
       await scheduler.scheduleDelayed("expire-order", { orderId: "o3" }, 50, "o3");

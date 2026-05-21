@@ -536,9 +536,6 @@ importers:
       bullmq:
         specifier: 'catalog:'
         version: 5.76.10
-      pino:
-        specifier: 'catalog:'
-        version: 10.3.1
     devDependencies:
       '@tix/config':
         specifier: workspace:*
@@ -549,6 +546,9 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
+      pino:
+        specifier: 'catalog:'
+        version: 10.3.1
       testcontainers:
         specifier: 'catalog:'
         version: 11.14.0

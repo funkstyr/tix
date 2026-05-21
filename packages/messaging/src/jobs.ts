@@ -3,8 +3,8 @@ import type { Logger } from "pino";
 
 export type WorkerHandler<Payload> = (payload: Payload) => Promise<void> | void;
 
-export type DelayedScheduler = {
-  scheduleDelayed: <Payload>(
+export type DelayedScheduler<Payload> = {
+  scheduleDelayed: (
     jobName: string,
     payload: Payload,
     delayMs: number,
@@ -18,16 +18,16 @@ export type SchedulerOptions = {
   logger?: Logger;
 };
 
-export type WorkerSetupOptions<Payload> = {
+export type WorkerOptions<Payload> = {
   queueName: string;
   handler: WorkerHandler<Payload>;
   logger?: Logger;
 };
 
-export function createScheduler(
+export function createScheduler<Payload>(
   connection: ConnectionOptions,
   options: SchedulerOptions,
-): DelayedScheduler {
+): DelayedScheduler<Payload> {
   const queue = new Queue(options.queueName, { connection });
   const log = options.logger?.child({ queueName: options.queueName });
 
@@ -44,7 +44,7 @@ export function createScheduler(
 
 export function createWorker<Payload>(
   connection: ConnectionOptions,
-  options: WorkerSetupOptions<Payload>,
+  options: WorkerOptions<Payload>,
 ): Worker<Payload, void> {
   const log = options.logger?.child({ queueName: options.queueName });
 
@@ -52,6 +52,7 @@ export function createWorker<Payload>(
     options.queueName,
     async (job) => {
       const start = Date.now();
+
       log?.info({ jobId: job.id, jobName: job.name }, "job started");
 
       try {
