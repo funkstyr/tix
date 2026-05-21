@@ -4,7 +4,7 @@ export const orderCreatedV1 = type({
   "+": "reject",
   orderId: "string.uuid",
   ticketId: "string.uuid",
-  buyerId: "string.uuid",
+  buyerId: "string >= 1",
   quantity: "number.integer >= 1",
   expiresAt: "string.date.iso",
   createdAt: "string.date.iso",
