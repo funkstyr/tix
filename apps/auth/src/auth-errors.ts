@@ -1,22 +1,5 @@
 import { ORPCError } from "@orpc/server";
-
-type ApiErrorLike = {
-  status?: string | number;
-  statusCode?: number;
-  body?: { code?: string; message?: string } | undefined;
-};
-
-function isApiError(value: unknown): value is ApiErrorLike {
-  if (typeof value !== "object" || value === null) return false;
-
-  const v = value as Record<string, unknown>;
-
-  return (
-    typeof v["statusCode"] === "number" ||
-    typeof v["status"] === "string" ||
-    typeof v["status"] === "number"
-  );
-}
+import { APIError } from "better-auth/api";
 
 const STATUS_TO_ORPC_CODE: Record<number, string> = {
   400: "BAD_REQUEST",
@@ -29,7 +12,7 @@ const STATUS_TO_ORPC_CODE: Record<number, string> = {
 };
 
 export function rethrowAsOrpc(error: unknown): never {
-  if (!isApiError(error)) {
+  if (!(error instanceof APIError)) {
     throw error;
   }
 

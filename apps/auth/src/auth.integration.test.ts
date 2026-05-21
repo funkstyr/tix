@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createDbClient } from "@tix/db-core/client";
+import { createDbClient, type DbClient } from "@tix/db-core/client";
 
 import { createAuth } from "./auth-instance.ts";
 import { authTables, user as userTable } from "./auth-schema.ts";
@@ -31,18 +31,19 @@ const dockerAvailable = ((): boolean => {
   return candidates.some((p) => existsSync(p));
 })();
 
-let container: StartedTestContainer | undefined;
-let dbClient: ReturnType<typeof createDbClient<typeof authTables>> | undefined;
-let client: ReturnType<typeof createAuthRouterClient> | undefined;
+type AuthDbClient = DbClient<typeof authTables>;
+type AuthRouterClient = ReturnType<typeof buildRouterClient>;
 
-function createAuthRouterClient(deps: { db: typeof dbClient }) {
-  if (!deps.db) throw new Error("dbClient not initialized");
-
-  const auth = createAuth({ db: deps.db.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
+function buildRouterClient(dbClient: AuthDbClient) {
+  const auth = createAuth({ db: dbClient.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
   const router = createAuthRouter({ auth });
 
   return createRouterClient(router);
 }
+
+let container: StartedTestContainer | undefined;
+let dbClient: AuthDbClient | undefined;
+let client: AuthRouterClient | undefined;
 
 beforeAll(async () => {
   if (!dockerAvailable) return;
@@ -64,6 +65,8 @@ beforeAll(async () => {
 
   dbClient = createDbClient("auth", url, { schema: authTables });
   await migrate(dbClient.db, { migrationsFolder });
+
+  client = buildRouterClient(dbClient);
 }, 120_000);
 
 afterAll(async () => {
@@ -75,17 +78,15 @@ beforeEach(async () => {
   if (!dbClient) return;
 
   await dbClient.sql`TRUNCATE TABLE auth.session, auth.account, auth.user RESTART IDENTITY CASCADE`;
-
-  client = createAuthRouterClient({ db: dbClient });
 });
 
-function getClient(): NonNullable<typeof client> {
+function getClient(): AuthRouterClient {
   if (!client) throw new Error("client not initialized");
 
   return client;
 }
 
-function getDb(): NonNullable<typeof dbClient> {
+function getDb(): AuthDbClient {
   if (!dbClient) throw new Error("dbClient not initialized");
 
   return dbClient;

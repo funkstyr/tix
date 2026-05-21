@@ -16,10 +16,21 @@ function requireEnv(name: string): string {
   return value;
 }
 
-async function main(): Promise<void> {
-  const logger = createLogger({ name: "auth" });
+function parsePort(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_PORT;
 
-  const port = Number(process.env["AUTH_HTTP_PORT"] ?? DEFAULT_PORT);
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0 || n > 65535) {
+    throw new Error(`invalid AUTH_HTTP_PORT: ${raw}`);
+  }
+
+  return n;
+}
+
+async function main(): Promise<void> {
+  const logger = createLogger({ name: "auth", level: process.env["LOG_LEVEL"] ?? "info" });
+
+  const port = parsePort(process.env["AUTH_HTTP_PORT"]);
   const databaseUrl = requireEnv("DATABASE_URL");
   const secret = requireEnv("BETTER_AUTH_SECRET");
   const baseURL = process.env["AUTH_BASE_URL"] ?? `http://localhost:${port}`;
@@ -33,4 +44,7 @@ async function main(): Promise<void> {
   });
 }
 
-void main();
+main().catch((err: unknown) => {
+  createLogger({ name: "auth" }).fatal({ err }, "auth service failed to start");
+  process.exit(1);
+});

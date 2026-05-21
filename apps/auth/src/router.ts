@@ -1,4 +1,4 @@
-import { os } from "@orpc/server";
+import { ORPCError, os } from "@orpc/server";
 import { type } from "arktype";
 
 import { rethrowAsOrpc } from "./auth-errors.ts";
@@ -53,7 +53,9 @@ export function createAuthRouter(deps: AuthRouterDeps) {
       try {
         const result = await auth.api.signUpEmail({ body: input });
         if (result.token === null) {
-          throw new Error("sign-up did not return a session token");
+          throw new ORPCError("INTERNAL_SERVER_ERROR", {
+            message: "sign-up did not return a session token",
+          });
         }
 
         return { userId: result.user.id, email: result.user.email, token: result.token };
@@ -82,7 +84,7 @@ export function createAuthRouter(deps: AuthRouterDeps) {
       try {
         await auth.api.signOut({ headers: bearerHeaders(input.token) });
 
-        return { ok: true as const };
+        return { ok: true };
       } catch (error) {
         rethrowAsOrpc(error);
       }

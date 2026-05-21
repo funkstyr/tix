@@ -2,10 +2,7 @@ import type { MiddlewareHandler } from "hono";
 import { pino, type Logger, type LoggerOptions } from "pino";
 
 export function createLogger(options: LoggerOptions = {}): Logger {
-  return pino({
-    level: process.env["LOG_LEVEL"] ?? "info",
-    ...options,
-  });
+  return pino({ level: "info", ...options });
 }
 
 export function requestLogger(logger: Logger): MiddlewareHandler {
@@ -13,8 +10,6 @@ export function requestLogger(logger: Logger): MiddlewareHandler {
     const started = Date.now();
     const reqId = c.req.header("x-request-id") ?? crypto.randomUUID();
     const child = logger.child({ reqId });
-
-    c.set("logger", child);
 
     await next();
 

@@ -6,6 +6,11 @@ export default defineConfig({
   out: "./drizzle",
   schemaFilter: ["auth"],
   dbCredentials: {
-    url: process.env["DATABASE_URL"] ?? "postgres://localhost/placeholder",
+    get url(): string {
+      const u = process.env["DATABASE_URL"];
+      if (!u) throw new Error("DATABASE_URL is required for drizzle-kit migrate/push");
+
+      return u;
+    },
   },
 });
