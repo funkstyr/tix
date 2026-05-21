@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./instance": "./src/auth-instance.ts",
+    "./router": "./src/router.ts",
+    "./schema": "./src/auth-schema.ts"
+  },
   "scripts": {
     "build": "tsdown",
     "check-types": "tsgo --noEmit",
@@ -19,6 +25,7 @@
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
+    "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "better-auth": "catalog:",
     "drizzle-orm": "catalog:",

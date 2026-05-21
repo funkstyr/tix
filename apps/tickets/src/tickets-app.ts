@@ -3,25 +3,28 @@ import { Hono } from "hono";
 import type { Logger } from "pino";
 
 import { RPC_PREFIX } from "@tix/contracts/rpc";
+import type { DbClient } from "@tix/db-core/client";
 import { requestLogger } from "@tix/observability/request-logger";
 
-import type { AuthInstance } from "./auth-instance.ts";
-import { createAuthRouter } from "./router.ts";
+import type { AuthSessionClient } from "./auth-session-client.ts";
+import { createTicketsRouter } from "./router.ts";
+import type { ticketsTables } from "./tickets-schema.ts";
 
-export type CreateAuthAppDeps = {
-  auth: AuthInstance;
+export type CreateTicketsAppDeps = {
+  db: DbClient<typeof ticketsTables>;
+  authClient: AuthSessionClient;
   logger: Logger;
 };
 
-export function createAuthApp(deps: CreateAuthAppDeps): Hono {
-  const router = createAuthRouter({ auth: deps.auth });
+export function createTicketsApp(deps: CreateTicketsAppDeps): Hono {
+  const router = createTicketsRouter({ db: deps.db, authClient: deps.authClient });
   const rpc = new RPCHandler(router);
 
   const app = new Hono();
 
   app.use("*", requestLogger(deps.logger));
 
-  app.get("/health", (c) => c.json({ service: "auth", ok: true }));
+  app.get("/health", (c) => c.json({ service: "tickets", ok: true }));
 
   app.all(`${RPC_PREFIX}/*`, async (c) => {
     const { matched, response } = await rpc.handle(c.req.raw, {

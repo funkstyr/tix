@@ -8,6 +8,10 @@
   ],
   "type": "module",
   "exports": {
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
     "./subjects": {
       "types": "./dist/subjects.d.ts",
       "import": "./dist/subjects.js"
@@ -19,6 +23,10 @@
     "./orders": {
       "types": "./dist/orders.d.ts",
       "import": "./dist/orders.js"
+    },
+    "./rpc": {
+      "types": "./dist/rpc.d.ts",
+      "import": "./dist/rpc.js"
     }
   },
   "scripts": {
