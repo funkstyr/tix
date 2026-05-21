@@ -15,10 +15,6 @@
     "./request-logger": {
       "types": "./dist/request-logger.d.ts",
       "import": "./dist/request-logger.js"
-    },
-    "./rpc": {
-      "types": "./dist/rpc.d.ts",
-      "import": "./dist/rpc.js"
     }
   },
   "scripts": {

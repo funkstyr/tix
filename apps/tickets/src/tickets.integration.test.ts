@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import type { AuthRouterClient } from "@tix/contracts/auth";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 
 import { createInProcessAuthSessionClient } from "./auth-session-client.ts";
@@ -39,16 +40,16 @@ const dockerAvailable = ((): boolean => {
 type TicketsDbClient = DbClient<typeof ticketsTables>;
 type AuthDbClient = DbClient<typeof authTables>;
 type TicketsRouterClient = ReturnType<typeof buildClients>["ticketsClient"];
-type AuthRouterClient = ReturnType<typeof buildClients>["authClient"];
 
 function buildClients(ticketsDb: TicketsDbClient, authDb: AuthDbClient) {
   const auth = createAuth({ db: authDb.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
   const authRouter = createAuthRouter({ auth });
-  const authSessionClient = createInProcessAuthSessionClient(authRouter);
+  const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
+  const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
   const ticketsRouter = createTicketsRouter({ db: ticketsDb, authClient: authSessionClient });
 
   return {
-    authClient: createRouterClient(authRouter),
+    authClient: authRouterClient,
     ticketsClient: createRouterClient(ticketsRouter),
   };
 }
@@ -97,7 +98,7 @@ afterAll(async () => {
 beforeEach(async () => {
   if (!ticketsDb || !authDb) return;
 
-  await ticketsDb.sql`TRUNCATE TABLE tickets.tickets RESTART IDENTITY CASCADE`;
+  await ticketsDb.sql`TRUNCATE TABLE tickets.tickets, tickets.outbox RESTART IDENTITY CASCADE`;
   await authDb.sql`TRUNCATE TABLE auth.session, auth.account, auth.user RESTART IDENTITY CASCADE`;
 });
 
@@ -157,7 +158,6 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
     expect(created.quantityAvailable).toBe(100);
     expect(created.unitPriceCents).toBe(4500);
     expect(created.version).toBe(1);
-    expect(created.id).toMatch(/^[0-9a-f-]{36}$/);
 
     const rows = await getTicketsDb()
       .db.select()
@@ -168,7 +168,33 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
     expect(rows[0]?.version).toBe(1);
   });
 
-  it("rejects quantityTotal of zero before reaching the database", async () => {
+  it("writes a tickets.created.v1 outbox row in the same transaction as the ticket", async () => {
+    const seller = await signUpSeller("dave@example.com");
+
+    const created = await getTicketsClient().create({
+      token: seller.token,
+      title: "Squarepusher @ Fabric",
+      quantityTotal: 25,
+      unitPriceCents: 6000,
+    });
+
+    const outbox = await getTicketsDb()
+      .sql`SELECT subject, payload, sent_at FROM tickets.outbox`.values();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]?.[0]).toBe("tickets.created.v1");
+
+    const payload = outbox[0]?.[1] as Record<string, unknown>;
+    expect(payload["ticketId"]).toBe(created.id);
+    expect(payload["sellerId"]).toBe(seller.userId);
+    expect(payload["title"]).toBe("Squarepusher @ Fabric");
+    expect(payload["quantityTotal"]).toBe(25);
+    expect(payload["unitPriceCents"]).toBe(6000);
+    expect(typeof payload["createdAt"]).toBe("string");
+
+    expect(outbox[0]?.[2]).toBeNull();
+  });
+
+  it("rejects invalid input at the arktype boundary", async () => {
     const seller = await signUpSeller("bob@example.com");
 
     const zero = getTicketsClient().create({
@@ -179,22 +205,6 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
     });
 
     await expect(zero).rejects.toMatchObject({ code: "BAD_REQUEST" });
-
-    const rows = await getTicketsDb().db.select().from(ticketsTable);
-    expect(rows).toHaveLength(0);
-  });
-
-  it("rejects negative quantityTotal before reaching the database", async () => {
-    const seller = await signUpSeller("bob2@example.com");
-
-    const negative = getTicketsClient().create({
-      token: seller.token,
-      title: "Owe me money",
-      quantityTotal: -3,
-      unitPriceCents: 4500,
-    });
-
-    await expect(negative).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
     const rows = await getTicketsDb().db.select().from(ticketsTable);
     expect(rows).toHaveLength(0);

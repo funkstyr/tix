@@ -1,39 +1,16 @@
 import { ORPCError, os } from "@orpc/server";
-import { type } from "arktype";
+
+import {
+  credentialsOutput,
+  okOutput,
+  sessionOutput,
+  signInInput,
+  signUpInput,
+  tokenInput,
+} from "@tix/contracts/auth";
 
 import { rethrowAsOrpc } from "./auth-errors.ts";
 import type { AuthInstance } from "./auth-instance.ts";
-
-const signUpInput = type({
-  email: "string.email",
-  password: "string >= 8",
-  name: "string >= 1",
-});
-
-const signInInput = type({
-  email: "string.email",
-  password: "string >= 1",
-});
-
-const tokenInput = type({
-  token: "string >= 1",
-});
-
-const credentialsOutput = type({
-  userId: "string",
-  email: "string.email",
-  token: "string",
-});
-
-const okOutput = type({
-  ok: "true",
-});
-
-const sessionOutput = type({
-  "+": "delete",
-  user: { id: "string", email: "string.email", name: "string" },
-  session: { id: "string", expiresAt: "string" },
-}).or("null");
 
 function bearerHeaders(token: string): Headers {
   return new Headers({ authorization: `Bearer ${token}` });

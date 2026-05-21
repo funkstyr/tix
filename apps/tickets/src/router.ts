@@ -1,11 +1,13 @@
 import { ORPCError, os } from "@orpc/server";
 import { type } from "arktype";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 
+import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
 import type { DbClient } from "@tix/db-core/client";
 
 import type { AuthSession, AuthSessionClient } from "./auth-session-client.ts";
-import { tickets, type ticketsTables } from "./tickets-schema.ts";
+import { tickets, ticketsOutbox, type ticketsTables } from "./tickets-schema.ts";
 
 const tokenInput = type({
   token: "string >= 1",
@@ -57,20 +59,40 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
     .handler(async ({ input }) => {
       const session = await requireSession(authClient, input.token);
 
-      const [row] = await db.db
-        .insert(tickets)
-        .values({
-          sellerId: session.user.id,
-          title: input.title,
-          quantityTotal: input.quantityTotal,
-          quantityAvailable: input.quantityTotal,
-          unitPriceCents: input.unitPriceCents,
-        })
-        .returning();
+      const row = await db.db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(tickets)
+          .values({
+            sellerId: session.user.id,
+            title: input.title,
+            quantityTotal: input.quantityTotal,
+            quantityAvailable: input.quantityTotal,
+            unitPriceCents: input.unitPriceCents,
+          })
+          .returning();
 
-      if (!row) {
-        throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "ticket insert returned no row" });
-      }
+        // drizzle types .returning() as T[]; insert of one row produces one row.
+        if (!inserted) {
+          throw new ORPCError("INTERNAL_SERVER_ERROR", {
+            message: "ticket insert returned no row",
+          });
+        }
+
+        await tx.insert(ticketsOutbox).values({
+          subject: TICKETS_CREATED_V1,
+          eventId: randomUUID(),
+          payload: {
+            ticketId: inserted.id,
+            sellerId: inserted.sellerId,
+            title: inserted.title,
+            quantityTotal: inserted.quantityTotal,
+            unitPriceCents: inserted.unitPriceCents,
+            createdAt: inserted.createdAt.toISOString(),
+          },
+        });
+
+        return inserted;
+      });
 
       return {
         id: row.id,

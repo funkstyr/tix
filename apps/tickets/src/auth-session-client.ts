@@ -1,18 +1,17 @@
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { createRouterClient, type RouterClient } from "@orpc/server";
-import type { AuthRouter } from "auth/router";
 
-type AuthRouterClient = RouterClient<AuthRouter>;
+import type { AuthRouterClient, AuthSession } from "@tix/contracts/auth";
+import { RPC_PREFIX } from "@tix/contracts/rpc";
 
-export type AuthSession = NonNullable<Awaited<ReturnType<AuthRouterClient["getSession"]>>>;
+export type { AuthSession };
 
 export type AuthSessionClient = {
   getSession: (input: { token: string }) => Promise<AuthSession | null>;
 };
 
 export function createHttpAuthSessionClient(authBaseUrl: string): AuthSessionClient {
-  const link = new RPCLink({ url: `${authBaseUrl.replace(/\/$/, "")}/rpc` });
+  const link = new RPCLink({ url: `${authBaseUrl.replace(/\/$/, "")}${RPC_PREFIX}` });
   const client: AuthRouterClient = createORPCClient(link);
 
   return {
@@ -20,9 +19,7 @@ export function createHttpAuthSessionClient(authBaseUrl: string): AuthSessionCli
   };
 }
 
-export function createInProcessAuthSessionClient(authRouter: AuthRouter): AuthSessionClient {
-  const client: AuthRouterClient = createRouterClient(authRouter);
-
+export function createInProcessAuthSessionClient(client: AuthRouterClient): AuthSessionClient {
   return {
     getSession: (input) => client.getSession(input),
   };

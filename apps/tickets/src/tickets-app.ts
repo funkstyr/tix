@@ -2,9 +2,9 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type { Logger } from "pino";
 
+import { RPC_PREFIX } from "@tix/contracts/rpc";
 import type { DbClient } from "@tix/db-core/client";
 import { requestLogger } from "@tix/observability/request-logger";
-import { RPC_PREFIX } from "@tix/observability/rpc";
 
 import type { AuthSessionClient } from "./auth-session-client.ts";
 import { createTicketsRouter } from "./router.ts";

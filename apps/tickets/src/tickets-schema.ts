@@ -1,4 +1,4 @@
-import { integer, pgSchema, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgSchema, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const ticketsSchema = pgSchema("tickets");
 
@@ -13,4 +13,13 @@ export const tickets = ticketsSchema.table("tickets", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const ticketsTables = { tickets };
+export const ticketsOutbox = ticketsSchema.table("outbox", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subject: text("subject").notNull(),
+  payload: jsonb("payload").notNull(),
+  eventId: uuid("event_id").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
+
+export const ticketsTables = { tickets, outbox: ticketsOutbox };

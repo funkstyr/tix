@@ -409,9 +409,6 @@ importers:
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
-      auth:
-        specifier: workspace:*
-        version: link:../auth
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(kysely@0.28.17)(postgres@3.4.9)
@@ -434,6 +431,9 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
+      auth:
+        specifier: workspace:*
+        version: link:../auth
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
