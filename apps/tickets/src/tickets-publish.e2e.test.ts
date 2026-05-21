@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthRouterClient } from "@tix/contracts/auth";
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
@@ -125,6 +125,11 @@ afterAll(async () => {
   await pgContainer?.stop();
 });
 
+beforeEach(async () => {
+  if (!ticketsDb) return;
+  await ticketsDb.sql`TRUNCATE TABLE tickets.tickets, tickets.outbox RESTART IDENTITY CASCADE`;
+});
+
 function requireClients(): {
   tickets: NonNullable<typeof ticketsClient>;
   auth: AuthRouterClient;
@@ -164,6 +169,7 @@ describe.skipIf(!dockerAvailable)("tickets.create → tickets.created.v1 on NATS
       },
     });
 
+    let timeoutHandle: NodeJS.Timeout | undefined;
     try {
       const created = await tickets.create({
         token: seller.token,
@@ -174,9 +180,12 @@ describe.skipIf(!dockerAvailable)("tickets.create → tickets.created.v1 on NATS
 
       const observed = await Promise.race([
         received,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("did not receive event within 2s")), 2_000),
-        ),
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new Error("did not receive event within 2s")),
+            2_000,
+          );
+        }),
       ]);
 
       const validated = ticketCreatedV1(observed.payload);
@@ -190,6 +199,7 @@ describe.skipIf(!dockerAvailable)("tickets.create → tickets.created.v1 on NATS
         unitPriceCents: 7500,
       });
     } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       await consumer.stop();
     }
   }, 30_000);

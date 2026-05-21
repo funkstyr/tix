@@ -205,7 +205,8 @@ describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
   it("leaves sent_at null when publish throws and retries the row on the next poll", async () => {
     const { db } = getClient();
 
-    const goodIds = [randomUUID(), randomUUID()];
+    const goodIds = [randomUUID(), randomUUID()] as const;
+    const [firstGoodId] = goodIds;
     const flakyId = randomUUID();
 
     await db.transaction(async (tx) => {
@@ -236,7 +237,7 @@ describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
         const rows = await db
           .select()
           .from(outboxTable)
-          .where(eq(outboxTable.eventId, goodIds[0] ?? ""));
+          .where(eq(outboxTable.eventId, firstGoodId));
         return rows[0]?.sentAt !== null;
       });
 

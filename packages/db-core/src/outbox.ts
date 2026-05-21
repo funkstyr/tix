@@ -6,7 +6,7 @@ import { type defineOutbox } from "./schema.js";
 
 export type OutboxTable = ReturnType<typeof defineOutbox>;
 
-// Use a covariant `any` schema so callers can pass their service-specific schema.
+// `Record<string, unknown>` accepts any per-service schema via structural typing.
 type AnyDb = PostgresJsDatabase<Record<string, unknown>>;
 
 const fallbackLogger: Logger = pino({ level: "warn" });

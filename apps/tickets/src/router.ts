@@ -81,6 +81,7 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
 
         await enqueueEvent(tx, ticketsOutbox, {
           subject: TICKETS_CREATED_V1,
+          // uuidv7 is time-ordered, so the relay's `ORDER BY created_at` is a stable insert-order sort.
           eventId: uuidv7(),
           payload: {
             ticketId: inserted.id,

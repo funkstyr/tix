@@ -46,12 +46,19 @@ async function main(): Promise<void> {
   const publisher = createPublisher(nats, { logger });
   const relay = startOutboxRelay(db.db, ticketsOutbox, publisher.publish, { logger });
 
-  serve({ fetch: app.fetch, port }, (info) => {
+  const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, "tickets service listening");
   });
 
+  let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
     logger.info({ signal }, "shutting down tickets service");
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
     await relay.stop();
     await nats.close();
     await db.close();
