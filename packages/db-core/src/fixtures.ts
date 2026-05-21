@@ -3,7 +3,12 @@ import type { Sql } from "postgres";
 export async function bootstrapSchema(sql: Sql, schemaName: string): Promise<void> {
   const ident = quoteIdent(schemaName);
 
-  await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${ident}`);
+  const existing = await sql<{ exists: number }[]>`
+    SELECT 1 AS exists FROM pg_namespace WHERE nspname = ${schemaName}
+  `;
+  if (existing.length === 0) {
+    await sql.unsafe(`CREATE SCHEMA ${ident}`);
+  }
 
   await sql.unsafe(`
     CREATE TABLE IF NOT EXISTS ${ident}.outbox (
