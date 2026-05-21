@@ -1,11 +1,14 @@
 import { serve } from "@hono/node-server";
+import { connect } from "@nats-io/transport-node";
 
 import { createDbClient } from "@tix/db-core/client";
+import { startOutboxRelay } from "@tix/db-core/outbox";
+import { createPublisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
 import { createHttpAuthSessionClient } from "./auth-session-client.ts";
 import { createTicketsApp } from "./tickets-app.ts";
-import { ticketsTables } from "./tickets-schema.ts";
+import { ticketsOutbox, ticketsTables } from "./tickets-schema.ts";
 
 const DEFAULT_PORT = 4002;
 
@@ -33,14 +36,36 @@ async function main(): Promise<void> {
   const port = parsePort(process.env["TICKETS_HTTP_PORT"]);
   const databaseUrl = requireEnv("DATABASE_URL");
   const authBaseUrl = requireEnv("AUTH_BASE_URL");
+  const natsUrl = requireEnv("NATS_URL");
 
   const db = createDbClient("tickets", databaseUrl, { schema: ticketsTables });
   const authClient = createHttpAuthSessionClient(authBaseUrl);
   const app = createTicketsApp({ db, authClient, logger });
 
-  serve({ fetch: app.fetch, port }, (info) => {
+  const nats = await connect({ servers: natsUrl });
+  const publisher = createPublisher(nats, { logger });
+  const relay = startOutboxRelay(db.db, ticketsOutbox, publisher.publish, { logger });
+
+  const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, "tickets service listening");
   });
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    logger.info({ signal }, "shutting down tickets service");
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+    await relay.stop();
+    await nats.close();
+    await db.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 main().catch((err: unknown) => {
