@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@hono/node-server':
+      specifier: ^2.0.3
+      version: 2.0.3
     '@nats-io/jetstream':
       specifier: ^3.4.0
       version: 3.4.0
@@ -119,6 +122,9 @@ importers:
 
   apps/auth:
     dependencies:
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.0.3(hono@4.12.21)
       '@orpc/server':
         specifier: 'catalog:'
         version: 1.14.3
@@ -162,6 +168,9 @@ importers:
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
+      testcontainers:
+        specifier: 'catalog:'
+        version: 11.14.0
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
@@ -1247,6 +1256,12 @@ packages:
     resolution: {integrity: sha512-wtF6h+DY6M3YaDBPAmvuuA6jV8Sif9MjtOI5euKFWRgCDl5PeDpPsHR9u2l6St5ceY8AZgoNDww5+HvEsXFsGg==}
     engines: {node: '>=6'}
     hasBin: true
+
+  '@hono/node-server@2.0.3':
+    resolution: {integrity: sha512-a0jV+/HRe3G5zjFID3zObAQFdkl6zpxTuqktdDDXS3MJKcrZIkB8OkLpNBlY/WXFqv2HF4a0takPej+aNFczWA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4
 
   '@inquirer/ansi@1.0.2':
     resolution: {integrity: sha512-S8qNSZiYzFd0wAcyG5AXCvUHC5Sr7xpZ9wZ2py9XR88jUz8wooStVx5M6dRzczbBWjic9NP7+rY0Xi7qqK/aMQ==}
@@ -3948,6 +3963,10 @@ snapshots:
       long: 5.3.2
       protobufjs: 7.6.0
       yargs: 17.7.2
+
+  '@hono/node-server@2.0.3(hono@4.12.21)':
+    dependencies:
+      hono: 4.12.21
 
   '@inquirer/ansi@1.0.2': {}
 
