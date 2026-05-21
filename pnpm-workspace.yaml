@@ -4,9 +4,12 @@ packages:
   - "scripts"
 
 allowBuilds:
+  cpu-features: false
   esbuild: true
   lefthook: true
   msgpackr-extract: true
+  protobufjs: false
+  ssh2: false
 
 catalog:
   "@types/node": ^25.9.1
@@ -30,6 +33,7 @@ catalog:
   "@types/react": ^19.2.15
   "@types/react-dom": ^19.2.3
   stripe: ^22.1.1
+  testcontainers: ^11.7.2
   tsdown: ^0.22.0
   tsx: ^4.22.3
   vitest: ^4.1.7
