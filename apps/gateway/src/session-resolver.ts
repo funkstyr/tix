@@ -9,6 +9,8 @@ export type SessionResolverDeps = {
 export type ResolveSession = (req: Request) => Promise<CurrentUser | null>;
 
 export function createSessionResolver(deps: SessionResolverDeps): ResolveSession {
+  // Per-request memo: multiple middlewares / handlers can ask for the session
+  // on the same Request; coalesce to a single auth round-trip.
   const cache = new WeakMap<Request, Promise<CurrentUser | null>>();
 
   return (req) => {
@@ -46,7 +48,11 @@ function readCookie(header: string, name: string): string | null {
     const raw = part.slice(eq + 1).trim();
     if (raw === "") return null;
 
-    return decodeURIComponent(raw);
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return null;
+    }
   }
 
   return null;

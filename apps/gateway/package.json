@@ -22,12 +22,11 @@
     "pino": "catalog:"
   },
   "devDependencies": {
+    "@tix/auth-test-fixture": "workspace:*",
     "@tix/config": "workspace:*",
-    "@tix/db-core": "workspace:*",
+    "@tix/test-helpers": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "auth": "workspace:*",
-    "drizzle-orm": "catalog:",
     "testcontainers": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",

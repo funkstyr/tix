@@ -99,4 +99,14 @@ describe("createSessionResolver", () => {
 
     expect(getSession).toHaveBeenCalledWith({ token: "foo=bar+baz" });
   });
+
+  it("returns null when the cookie value is malformed URL-encoding", async () => {
+    const getSession = vi.fn<AuthSessionClient["getSession"]>();
+    const resolve = buildResolver(getSession);
+
+    const result = await resolve(reqWith(`${COOKIE_NAME}=%ZZ`));
+
+    expect(result).toBeNull();
+    expect(getSession).not.toHaveBeenCalled();
+  });
 });

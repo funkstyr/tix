@@ -1,48 +1,16 @@
-import { createRouterClient } from "@orpc/server";
-import { createAuth } from "auth/instance";
-import { createAuthRouter } from "auth/router";
-import { authTables } from "auth/schema";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import type { AuthRouterClient } from "@tix/contracts/auth";
-import {
-  type AuthSessionClient,
-  createInProcessAuthSessionClient,
-} from "@tix/contracts/auth-client";
-import { createDbClient, type DbClient } from "@tix/db-core/client";
+import { type AuthFixture, createAuthFixture } from "@tix/auth-test-fixture/fixture";
+import { dockerAvailable } from "@tix/test-helpers/docker-available";
 
 import { createSessionResolver } from "./session-resolver.ts";
 
-const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
-const TEST_BASE_URL = "http://localhost:4000";
 const COOKIE_NAME = "tix.session";
-
-const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
-
-const dockerAvailable = ((): boolean => {
-  if (process.env["DOCKER_HOST"]) return true;
-
-  const home = process.env["HOME"] ?? "";
-  const candidates = [
-    "/var/run/docker.sock",
-    `${home}/.docker/run/docker.sock`,
-    `${home}/.colima/default/docker.sock`,
-    `${home}/.orbstack/run/docker.sock`,
-  ];
-
-  return candidates.some((p) => existsSync(p));
-})();
-
-type AuthDbClient = DbClient<typeof authTables>;
+const TEST_BASE_URL = "http://localhost:4000";
 
 let container: StartedTestContainer | undefined;
-let authDb: AuthDbClient | undefined;
-let authClient: AuthRouterClient | undefined;
-let authSessionClient: AuthSessionClient | undefined;
+let fixture: AuthFixture | undefined;
 
 beforeAll(async () => {
   if (!dockerAvailable) return;
@@ -60,45 +28,32 @@ beforeAll(async () => {
 
   const host = container.getHost();
   const port = container.getMappedPort(5432);
-  const url = `postgres://postgres:postgres@${host}:${port}/gateway_test`;
+  const databaseUrl = `postgres://postgres:postgres@${host}:${port}/gateway_test`;
 
-  authDb = createDbClient("auth", url, { schema: authTables });
-  await migrate(authDb.db, { migrationsFolder: authMigrations });
-
-  const auth = createAuth({ db: authDb.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
-  const authRouter = createAuthRouter({ auth });
-  authClient = createRouterClient(authRouter);
-  authSessionClient = createInProcessAuthSessionClient(authClient);
+  fixture = await createAuthFixture({ databaseUrl, baseUrl: TEST_BASE_URL });
 }, 120_000);
 
 afterAll(async () => {
-  await authDb?.close();
+  await fixture?.close();
   await container?.stop();
 });
 
 beforeEach(async () => {
-  if (!authDb) return;
-
-  await authDb.sql`TRUNCATE TABLE auth.session, auth.account, auth.user RESTART IDENTITY CASCADE`;
+  await fixture?.truncate();
 });
 
-function getAuthClient(): AuthRouterClient {
-  if (!authClient) throw new Error("authClient not initialized");
+function getFixture(): AuthFixture {
+  if (!fixture) throw new Error("auth fixture not initialized");
 
-  return authClient;
-}
-
-function getAuthSessionClient(): AuthSessionClient {
-  if (!authSessionClient) throw new Error("authSessionClient not initialized");
-
-  return authSessionClient;
+  return fixture;
 }
 
 async function signUpBuyer(email: string): Promise<{ userId: string; token: string }> {
-  const result = await getAuthClient().signUp({
+  const [name = "buyer"] = email.split("@");
+  const result = await getFixture().authClient.signUp({
     email,
     password: "correct-horse-battery",
-    name: email.split("@")[0] ?? "buyer",
+    name,
   });
 
   return { userId: result.userId, token: result.token };
@@ -111,7 +66,7 @@ function reqWith(cookie: string): Request {
 describe.skipIf(!dockerAvailable)("session-resolver against a real auth service", () => {
   it("resolves the CurrentUser when the cookie carries a freshly-issued session token", async () => {
     const resolveSession = createSessionResolver({
-      authClient: getAuthSessionClient(),
+      authClient: getFixture().authSessionClient,
       sessionCookieName: COOKIE_NAME,
     });
     const { userId, token } = await signUpBuyer("buyer@example.com");
@@ -123,7 +78,7 @@ describe.skipIf(!dockerAvailable)("session-resolver against a real auth service"
 
   it("returns null when the cookie carries a token the auth service does not recognize", async () => {
     const resolveSession = createSessionResolver({
-      authClient: getAuthSessionClient(),
+      authClient: getFixture().authSessionClient,
       sessionCookieName: COOKIE_NAME,
     });
 
@@ -134,7 +89,7 @@ describe.skipIf(!dockerAvailable)("session-resolver against a real auth service"
 
   it("returns null when the request has no cookie header", async () => {
     const resolveSession = createSessionResolver({
-      authClient: getAuthSessionClient(),
+      authClient: getFixture().authSessionClient,
       sessionCookieName: COOKIE_NAME,
     });
 
