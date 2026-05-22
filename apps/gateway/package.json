@@ -12,9 +12,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hono/node-server": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",
+    "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:"
