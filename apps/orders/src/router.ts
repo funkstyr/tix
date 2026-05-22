@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
 import { ORDER_CREATED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
+import type { ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
@@ -79,8 +80,12 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
         });
       }
 
+      let reserveResult: ReserveTicketOutput;
       try {
-        await ticketsClient.reserve({ ticketId: input.ticketId, quantity: input.quantity });
+        reserveResult = await ticketsClient.reserve({
+          ticketId: input.ticketId,
+          quantity: input.quantity,
+        });
       } catch (err: unknown) {
         if (err instanceof ORPCError && err.code === "CONFLICT") {
           // Lost the race: between getById and reserve, another buyer claimed the seats.
@@ -97,6 +102,8 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
 
         throw err;
       }
+
+      const priceCents = reserveResult.unitPriceCents * input.quantity;
 
       // Reserve succeeded — from here, any failure must compensate via order.reservation_released.v1.
       const orderId = uuidv7();
@@ -132,6 +139,7 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
               ticketId: inserted.ticketId,
               buyerId: inserted.buyerId,
               quantity: inserted.quantity,
+              priceCents,
               expiresAt: inserted.expiresAt.toISOString(),
               createdAt: inserted.createdAt.toISOString(),
             },

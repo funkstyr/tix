@@ -15,6 +15,7 @@ const goodInput: ReserveTicketInput = {
 const goodOutput: ReserveTicketOutput = {
   ticketId: "11111111-1111-4111-8111-111111111111",
   quantityAvailable: 3,
+  unitPriceCents: 5000,
   version: 2,
 };
 
@@ -50,6 +51,7 @@ describe("reserveTicketOutput", () => {
     expectTypeOf<ReserveTicketOutput>().toEqualTypeOf<{
       ticketId: string;
       quantityAvailable: number;
+      unitPriceCents: number;
       version: number;
     }>();
   });

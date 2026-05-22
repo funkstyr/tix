@@ -16,6 +16,7 @@ export type ReserveTicketInput = {
 export type ReserveTicketResult = {
   ticketId: string;
   quantityAvailable: number;
+  unitPriceCents: number;
   version: number;
 };
 
@@ -52,6 +53,7 @@ export async function reserveTicket(
       return {
         ticketId: row.id,
         quantityAvailable: row.quantityAvailable - input.quantity,
+        unitPriceCents: row.unitPriceCents,
         version: row.version + 1,
       };
     }

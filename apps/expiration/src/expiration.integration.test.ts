@@ -172,6 +172,7 @@ async function publishOrderCreated(
     ticketId: randomUUID(),
     buyerId: `user-${randomUUID()}`,
     quantity: 1,
+    priceCents: 5_000,
     expiresAt,
     createdAt: new Date().toISOString(),
   };

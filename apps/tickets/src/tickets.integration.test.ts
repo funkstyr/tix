@@ -272,6 +272,7 @@ describe.skipIf(!dockerAvailable)("tickets.reserve", () => {
 
     expect(result.ticketId).toBe(ticket.id);
     expect(result.quantityAvailable).toBe(2);
+    expect(result.unitPriceCents).toBe(5000);
     expect(result.version).toBe(2);
 
     const [row] = await getTicketsDb()

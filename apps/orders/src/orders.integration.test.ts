@@ -302,6 +302,7 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
       ticketId: ticket.id,
       buyerId: buyer.userId,
       quantity: 2,
+      priceCents: 10_000,
     });
     expect(rows[0]?.sentAt).toBeNull();
   });
