@@ -303,10 +303,8 @@ describe("createGatewayRouter", () => {
     const client = withDownstreamStub("orders", { getById });
 
     await expect(
-      client.orders.getById({ orderId: ORDER_RECORD.id } as unknown as {
-        token: string;
-        orderId: string;
-      }),
+      // @ts-expect-error missing token verifies arktype boundary
+      client.orders.getById({ orderId: ORDER_RECORD.id }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(getById).not.toHaveBeenCalled();
   });
@@ -327,6 +325,22 @@ describe("createGatewayRouter", () => {
     expect(result).toEqual({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
+  });
+
+  it("forwards a null cookieHeader to payments.create when the request has no cookie", async () => {
+    const create = vi
+      .fn<DownstreamClients["payments"]["create"]>()
+      .mockResolvedValue({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
+    const client = withDownstreamStub("payments", { create });
+
+    const input = {
+      token: "session-token",
+      orderId: ORDER_RECORD.id,
+      paymentMethodId: "pm_card_visa",
+    };
+    await client.payments.create(input);
+
+    expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: null } });
   });
 
   it("propagates an ORPCError thrown by payments.create with the same code, message, and data", async () => {
@@ -372,13 +386,10 @@ describe("createGatewayRouter", () => {
     const client = withDownstreamStub("payments", { create });
 
     await expect(
+      // @ts-expect-error missing token verifies arktype boundary
       client.payments.create({
         orderId: ORDER_RECORD.id,
         paymentMethodId: "pm_card_visa",
-      } as unknown as {
-        token: string;
-        orderId: string;
-        paymentMethodId: string;
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(create).not.toHaveBeenCalled();
