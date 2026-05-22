@@ -22,7 +22,12 @@ async function main(): Promise<void> {
 
   const router = createGatewayRouter({ clients });
 
-  const app = createGatewayApp({ logger, webOrigin: env.webOrigin, router });
+  const app = createGatewayApp({
+    logger,
+    webOrigin: env.webOrigin,
+    router,
+    authBaseUrl: env.authBaseUrl,
+  });
 
   const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
     logger.info({ port: info.port }, "gateway service listening");
