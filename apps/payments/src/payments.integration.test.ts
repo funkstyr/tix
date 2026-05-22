@@ -124,7 +124,7 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
     const createPaymentIntent = vi
       .fn<PaymentIntentClient["createPaymentIntent"]>()
       .mockResolvedValue({
-        stripeId: "pi_test_happy_path_123",
+        stripeId: "pi_3OqVuk2eZvKYlo2C1Tt5KvP3",
         status: "succeeded",
       });
 
@@ -151,7 +151,7 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
     expect(row).toMatchObject({
       orderId,
       userId: buyer.userId,
-      stripeId: "pi_test_happy_path_123",
+      stripeId: "pi_3OqVuk2eZvKYlo2C1Tt5KvP3",
       amount: 4_500,
       currency: "usd",
       status: "succeeded",
@@ -165,7 +165,7 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
     expect(outboxRows[0]?.payload).toMatchObject({
       id: result.id,
       orderId,
-      stripeId: "pi_test_happy_path_123",
+      stripeId: "pi_3OqVuk2eZvKYlo2C1Tt5KvP3",
       amountCents: 4_500,
       currency: "usd",
       userId: buyer.userId,
@@ -185,7 +185,7 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
         await recordPayment(tx, {
           orderId,
           userId: buyer.userId,
-          stripeId: "pi_atomic_test_456",
+          stripeId: "pi_3OqAtomicTest456789ABCDEF",
           amountCents: 1_200,
           currency: "usd",
           status: "succeeded",
@@ -194,6 +194,104 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
       }),
     ).rejects.toThrow("force rollback");
 
+    const paymentRows = await db.db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.orderId, orderId));
+    expect(paymentRows).toHaveLength(0);
+
+    const outboxRows = await db.db
+      .select()
+      .from(paymentsOutboxTable)
+      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
+    expect(outboxRows).toHaveLength(0);
+  });
+});
+
+describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
+  it("rejects with NOT_FOUND when the order is unknown", async () => {
+    const buyer = await signUpBuyer();
+    const createPaymentIntent = vi.fn<PaymentIntentClient["createPaymentIntent"]>();
+    const client = buildClient({ createPaymentIntent });
+
+    const call = client.create({
+      token: buyer.token,
+      orderId: randomUUID(),
+      paymentMethodId: "pm_card_visa",
+    });
+
+    await expect(call).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(createPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("rejects with FORBIDDEN when the order belongs to another user", async () => {
+    const owner = await signUpBuyer();
+    const intruder = await signUpBuyer();
+    const orderId = await seedOrder(owner.userId, 2_500);
+
+    const createPaymentIntent = vi.fn<PaymentIntentClient["createPaymentIntent"]>();
+    const client = buildClient({ createPaymentIntent });
+
+    const call = client.create({
+      token: intruder.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    await expect(call).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(createPaymentIntent).not.toHaveBeenCalled();
+
+    const db = requireValue(paymentsDb, "paymentsDb");
+    const paymentRows = await db.db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.orderId, orderId));
+    expect(paymentRows).toHaveLength(0);
+  });
+
+  it("rejects with CONFLICT when the order is not in a payable state", async () => {
+    const buyer = await signUpBuyer();
+    const orderId = randomUUID();
+    await requireValue(paymentsDb, "paymentsDb").db.insert(orderReadModelTable).values({
+      id: orderId,
+      version: 2,
+      userId: buyer.userId,
+      priceCents: 3_300,
+      status: "cancelled",
+    });
+
+    const createPaymentIntent = vi.fn<PaymentIntentClient["createPaymentIntent"]>();
+    const client = buildClient({ createPaymentIntent });
+
+    const call = client.create({
+      token: buyer.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    await expect(call).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    expect(createPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("does not write a Payment row or outbox entry when Stripe throws", async () => {
+    const buyer = await signUpBuyer();
+    const orderId = await seedOrder(buyer.userId, 7_700);
+
+    const createPaymentIntent = vi
+      .fn<PaymentIntentClient["createPaymentIntent"]>()
+      .mockRejectedValue(new Error("stripe network error"));
+
+    const client = buildClient({ createPaymentIntent });
+
+    const call = client.create({
+      token: buyer.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    await expect(call).rejects.toThrow("stripe network error");
+
+    const db = requireValue(paymentsDb, "paymentsDb");
     const paymentRows = await db.db
       .select()
       .from(paymentsTable)

@@ -1,5 +1,11 @@
 import { type } from "arktype";
 
+export const paymentIntentStatus = type(
+  "'canceled' | 'processing' | 'requires_action' | 'requires_capture' | 'requires_confirmation' | 'requires_payment_method' | 'succeeded'",
+);
+
+export type PaymentIntentStatus = typeof paymentIntentStatus.infer;
+
 export const paymentCreatedV1 = type({
   "+": "reject",
   id: "string.uuid",
@@ -22,7 +28,7 @@ export type PaymentCreateInput = {
 
 export type PaymentCreateOutput = {
   id: string;
-  status: string;
+  status: PaymentIntentStatus;
 };
 
 export type PaymentsRouterClient = {

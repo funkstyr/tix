@@ -3,6 +3,7 @@ import { type } from "arktype";
 import { eq } from "drizzle-orm";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
+import { paymentIntentStatus } from "@tix/contracts/payments";
 import type { DbClient } from "@tix/db-core/client";
 
 import { recordPayment } from "./payment-repository.ts";
@@ -20,10 +21,11 @@ const createInput = tokenInput.and({
 
 const createOutput = type({
   id: "string.uuid",
-  status: "string",
+  status: paymentIntentStatus,
 });
 
 const DEFAULT_CURRENCY = "usd";
+const PAYABLE_ORDER_STATUS = "created";
 
 export type PaymentsRouterDeps = {
   db: DbClient<typeof paymentsTables>;
@@ -34,9 +36,7 @@ export type PaymentsRouterDeps = {
 export function createPaymentsRouter(deps: PaymentsRouterDeps) {
   const { db, authClient, paymentIntentClient } = deps;
 
-  const base = os;
-
-  const create = base
+  const create = os
     .input(createInput)
     .output(createOutput)
     .handler(async ({ input }) => {
@@ -51,6 +51,23 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
         throw new ORPCError("NOT_FOUND", { message: "order not found" });
       }
 
+      if (order.userId !== session.user.id) {
+        throw new ORPCError("FORBIDDEN", { message: "order belongs to another user" });
+      }
+
+      if (order.status !== PAYABLE_ORDER_STATUS) {
+        throw new ORPCError("CONFLICT", {
+          status: 409,
+          message: "order is not payable",
+          data: { reason: "not_payable" as const, status: order.status },
+        });
+      }
+
+      // Stripe charge sits outside the DB tx on purpose: PaymentIntent has
+      // network latency we don't want holding a row lock. If the DB write below
+      // fails after Stripe succeeds, a retry with the same orderId hits Stripe's
+      // 24h idempotency cache and returns the original intent — so we can recover
+      // without double-charging.
       const intent = await paymentIntentClient.createPaymentIntent({
         orderId: order.id,
         amountCents: order.priceCents,

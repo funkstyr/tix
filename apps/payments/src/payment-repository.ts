@@ -1,12 +1,14 @@
+import { ORPCError } from "@orpc/server";
 import { type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { v7 as uuidv7 } from "uuid";
 
+import { paymentCreatedV1, type PaymentIntentStatus } from "@tix/contracts/payments";
 import { PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
-import { payments, paymentsOutbox } from "./payments-schema.ts";
+import { payments, paymentsOutbox, type paymentsTables } from "./payments-schema.ts";
 
-type AnyDb = PostgresJsDatabase<Record<string, unknown>>;
+type PaymentsDb = PostgresJsDatabase<typeof paymentsTables>;
 
 export type RecordPaymentArgs = {
   orderId: string;
@@ -14,15 +16,18 @@ export type RecordPaymentArgs = {
   stripeId: string;
   amountCents: number;
   currency: string;
-  status: string;
+  status: PaymentIntentStatus;
 };
 
 export type RecordedPayment = {
   id: string;
-  status: string;
+  status: PaymentIntentStatus;
 };
 
-export async function recordPayment(tx: AnyDb, args: RecordPaymentArgs): Promise<RecordedPayment> {
+export async function recordPayment(
+  tx: PaymentsDb,
+  args: RecordPaymentArgs,
+): Promise<RecordedPayment> {
   const [inserted] = await tx
     .insert(payments)
     .values({
@@ -35,22 +40,26 @@ export async function recordPayment(tx: AnyDb, args: RecordPaymentArgs): Promise
     })
     .returning();
 
-  if (!inserted) throw new Error("payment insert returned no row");
+  if (!inserted) {
+    throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "payment insert returned no row" });
+  }
+
+  const payload = paymentCreatedV1.assert({
+    id: inserted.id,
+    orderId: inserted.orderId,
+    stripeId: inserted.stripeId,
+    amountCents: inserted.amount,
+    currency: inserted.currency,
+    userId: inserted.userId,
+    version: inserted.version,
+    createdAt: inserted.createdAt.toISOString(),
+  });
 
   await enqueueEvent(tx, paymentsOutbox, {
     subject: PAYMENT_CREATED_V1,
     eventId: uuidv7(),
-    payload: {
-      id: inserted.id,
-      orderId: inserted.orderId,
-      stripeId: inserted.stripeId,
-      amountCents: inserted.amount,
-      currency: inserted.currency,
-      userId: inserted.userId,
-      version: inserted.version,
-      createdAt: inserted.createdAt.toISOString(),
-    },
+    payload,
   });
 
-  return { id: inserted.id, status: inserted.status };
+  return { id: inserted.id, status: args.status };
 }

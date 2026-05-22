@@ -1,5 +1,7 @@
 import type Stripe from "stripe";
 
+import type { PaymentIntentStatus } from "@tix/contracts/payments";
+
 export type CreatePaymentIntentArgs = {
   orderId: string;
   amountCents: number;
@@ -9,7 +11,7 @@ export type CreatePaymentIntentArgs = {
 
 export type PaymentIntentResult = {
   stripeId: string;
-  status: string;
+  status: PaymentIntentStatus;
 };
 
 export type PaymentIntentClient = {
