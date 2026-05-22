@@ -2,6 +2,7 @@ import { ArkErrors, type } from "arktype";
 import type { Level } from "pino";
 
 const DEFAULT_PORT = 4000;
+const DEFAULT_SESSION_COOKIE_NAME = "tix.session";
 
 const envSchema = type({
   "GATEWAY_HTTP_PORT?": "string.numeric.parse",
@@ -10,6 +11,7 @@ const envSchema = type({
   TICKETS_BASE_URL: "string > 0",
   ORDERS_BASE_URL: "string > 0",
   PAYMENTS_BASE_URL: "string > 0",
+  "SESSION_COOKIE_NAME?": "string > 0",
   "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
 
@@ -20,6 +22,7 @@ export type GatewayEnv = {
   ticketsBaseUrl: string;
   ordersBaseUrl: string;
   paymentsBaseUrl: string;
+  sessionCookieName: string;
   logLevel: Level;
 };
 
@@ -41,6 +44,7 @@ export function parseEnv(env: Record<string, string | undefined>): GatewayEnv {
     ticketsBaseUrl: parsed.TICKETS_BASE_URL,
     ordersBaseUrl: parsed.ORDERS_BASE_URL,
     paymentsBaseUrl: parsed.PAYMENTS_BASE_URL,
+    sessionCookieName: parsed.SESSION_COOKIE_NAME ?? DEFAULT_SESSION_COOKIE_NAME,
     logLevel: parsed.LOG_LEVEL ?? "info",
   };
 }

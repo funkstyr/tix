@@ -30,9 +30,16 @@ export const okOutput = type({
 });
 export type Ok = typeof okOutput.infer;
 
+export const currentUser = type({
+  id: "string",
+  email: "string.email",
+  name: "string",
+});
+export type CurrentUser = typeof currentUser.infer;
+
 export const sessionOutput = type({
   "+": "delete",
-  user: { id: "string", email: "string.email", name: "string" },
+  user: currentUser,
   session: { id: "string", expiresAt: "string" },
 }).or("null");
 export type SessionResult = typeof sessionOutput.infer;

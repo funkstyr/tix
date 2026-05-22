@@ -20,4 +20,18 @@ describe("parseEnv", () => {
   it("throws when GATEWAY_HTTP_PORT is out of range", () => {
     expect(() => parseEnv({ ...baseEnv, GATEWAY_HTTP_PORT: "99999" })).toThrow(/GATEWAY_HTTP_PORT/);
   });
+
+  it("defaults sessionCookieName, port, and logLevel when not provided", () => {
+    const env = parseEnv(baseEnv);
+
+    expect(env.sessionCookieName).toBe("tix.session");
+    expect(env.port).toBe(4000);
+    expect(env.logLevel).toBe("info");
+  });
+
+  it("honors a custom SESSION_COOKIE_NAME", () => {
+    const env = parseEnv({ ...baseEnv, SESSION_COOKIE_NAME: "__Secure-tix.session" });
+
+    expect(env.sessionCookieName).toBe("__Secure-tix.session");
+  });
 });

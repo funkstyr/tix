@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./instance": "./src/auth-instance.ts",
+    "./migrations": "./src/migrations.ts",
     "./router": "./src/router.ts",
     "./schema": "./src/auth-schema.ts"
   },
