@@ -8,6 +8,7 @@
     "check": "pnpm lint && pnpm format && pnpm check-types && pnpm test && pnpm build",
     "check-types": "turbo check-types",
     "dev": "pnpm build:packages && turbo dev",
+    "e2e": "pnpm build:packages && pnpm --filter @tix/scripts run e2e",
     "fix": "pnpm lint:fix && pnpm format:fix",
     "format": "oxfmt --check",
     "format:fix": "oxfmt --write",

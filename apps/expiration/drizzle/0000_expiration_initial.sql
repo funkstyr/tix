@@ -1,4 +1,4 @@
-CREATE SCHEMA "expiration";
+CREATE SCHEMA IF NOT EXISTS "expiration";
 --> statement-breakpoint
 CREATE TABLE "expiration"."inbox" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

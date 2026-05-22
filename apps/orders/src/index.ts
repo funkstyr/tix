@@ -14,6 +14,7 @@ import { ordersOutbox, ordersTables } from "./orders-schema.ts";
 import { createHttpTicketsClient } from "./tickets-client.ts";
 
 const DEFAULT_PORT = 4003;
+const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -33,6 +34,17 @@ function parsePort(raw: string | undefined): number {
   return n;
 }
 
+function parseReservationTtl(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_RESERVATION_TTL_MS;
+
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`invalid RESERVATION_TTL_MS: ${raw}`);
+  }
+
+  return n;
+}
+
 async function main(): Promise<void> {
   const logger = createLogger({ name: "orders", level: process.env["LOG_LEVEL"] ?? "info" });
 
@@ -43,11 +55,12 @@ async function main(): Promise<void> {
   const ticketsServiceToken = requireEnv("TICKETS_SERVICE_TOKEN");
   const natsUrl = requireEnv("NATS_URL");
   const stream = process.env["ORDERS_STREAM"] ?? ORDERS_STREAM;
+  const reservationTtlMs = parseReservationTtl(process.env["RESERVATION_TTL_MS"]);
 
   const db = createDbClient("orders", databaseUrl, { schema: ordersTables });
   const authClient = createHttpAuthSessionClient(authBaseUrl);
   const ticketsClient = createHttpTicketsClient(ticketsBaseUrl, ticketsServiceToken);
-  const app = createOrdersApp({ db, authClient, ticketsClient, logger });
+  const app = createOrdersApp({ db, authClient, ticketsClient, reservationTtlMs, logger });
 
   const nats = await connect({ servers: natsUrl });
   const publisher = createPublisher(nats, { logger });

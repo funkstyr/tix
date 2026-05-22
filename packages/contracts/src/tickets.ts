@@ -1,5 +1,7 @@
 import { type } from "arktype";
 
+import type { ReserveTicketInput, ReserveTicketOutput } from "./tickets-reserve.ts";
+
 export const ticketCreatedV1 = type({
   "+": "reject",
   ticketId: "string.uuid",
@@ -20,3 +22,27 @@ export const ticketSnapshotOutput = type({
 });
 
 export type TicketSnapshot = typeof ticketSnapshotOutput.infer;
+
+export type TicketCreateInput = {
+  token: string;
+  title: string;
+  quantityTotal: number;
+  unitPriceCents: number;
+};
+
+export type TicketRecord = {
+  id: string;
+  sellerId: string;
+  title: string;
+  quantityTotal: number;
+  quantityAvailable: number;
+  unitPriceCents: number;
+  version: number;
+  createdAt: string;
+};
+
+export type TicketsRouterClient = {
+  create: (input: TicketCreateInput) => Promise<TicketRecord>;
+  reserve: (input: ReserveTicketInput) => Promise<ReserveTicketOutput>;
+  getById: (input: { ticketId: string }) => Promise<TicketRecord | null>;
+};

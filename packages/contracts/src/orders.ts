@@ -29,3 +29,25 @@ export const orderReservationReleasedV1 = type({
 });
 
 export type OrderReservationReleasedV1 = typeof orderReservationReleasedV1.infer;
+
+export type OrderCreateInput = {
+  token: string;
+  ticketId: string;
+  quantity: number;
+};
+
+export type OrderRecord = {
+  id: string;
+  buyerId: string;
+  ticketId: string;
+  quantity: number;
+  status: string;
+  expiresAt: string;
+  version: number;
+  createdAt: string;
+};
+
+export type OrdersRouterClient = {
+  create: (input: OrderCreateInput) => Promise<OrderRecord>;
+  getById: (input: { orderId: string }) => Promise<OrderRecord | null>;
+};

@@ -73,6 +73,7 @@ function buildClients(ordersDb: OrdersDbClient, ticketsDb: TicketsDbClient, auth
       db: ordersDb,
       authClient: authSessionClient,
       ticketsClient: client,
+      reservationTtlMs: 15 * 60 * 1000,
     });
 
     return createRouterClient(ordersRouter);

@@ -702,6 +702,24 @@ importers:
 
   scripts:
     dependencies:
+      '@nats-io/jetstream':
+        specifier: 'catalog:'
+        version: 3.4.0
+      '@nats-io/transport-node':
+        specifier: 'catalog:'
+        version: 3.4.0
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 1.14.3
+      '@tix/contracts':
+        specifier: workspace:*
+        version: link:../packages/contracts
+      '@tix/messaging':
+        specifier: workspace:*
+        version: link:../packages/messaging
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(kysely@0.28.17)(postgres@3.4.9)
       nats:
         specifier: 'catalog:'
         version: 2.29.3

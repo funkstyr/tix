@@ -15,6 +15,7 @@ export type CreateOrdersAppDeps = {
   db: DbClient<typeof ordersTables>;
   authClient: AuthSessionClient;
   ticketsClient: TicketsClient;
+  reservationTtlMs: number;
   logger: Logger;
 };
 
@@ -23,6 +24,7 @@ export function createOrdersApp(deps: CreateOrdersAppDeps): Hono {
     db: deps.db,
     authClient: deps.authClient,
     ticketsClient: deps.ticketsClient,
+    reservationTtlMs: deps.reservationTtlMs,
     logger: deps.logger,
   });
   const rpc = new RPCHandler(router);

@@ -8,6 +8,13 @@
       "when": 1779406628697,
       "tag": "0000_expiration_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779406628698,
+      "tag": "0001_expiration_inbox_event_id_text",
+      "breakpoints": true
     }
   ]
 }
