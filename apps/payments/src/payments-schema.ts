@@ -22,7 +22,7 @@ export const orderReadModel = paymentsSchema.table("order_read_model", {
   id: uuid("id").primaryKey(),
   version: integer("version").notNull(),
   userId: text("user_id").notNull(),
-  price: integer("price").notNull(),
+  priceCents: integer("price_cents").notNull(),
   status: text("status").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })

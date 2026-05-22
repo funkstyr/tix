@@ -4,7 +4,7 @@ CREATE TABLE "payments"."order_read_model" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"version" integer NOT NULL,
 	"user_id" text NOT NULL,
-	"price" integer NOT NULL,
+	"price_cents" integer NOT NULL,
 	"status" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL

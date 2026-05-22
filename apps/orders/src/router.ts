@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
 import { ORDER_CREATED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
+import type { ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
@@ -79,7 +80,7 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
         });
       }
 
-      let reserveResult;
+      let reserveResult: ReserveTicketOutput;
       try {
         reserveResult = await ticketsClient.reserve({
           ticketId: input.ticketId,

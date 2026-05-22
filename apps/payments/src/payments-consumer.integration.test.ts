@@ -163,7 +163,7 @@ describe.skipIf(!dockerAvailable)("payments consumer for order.created.v1", () =
       id: orderId,
       version: 1,
       userId: buyerId,
-      price: 12_500,
+      priceCents: 12_500,
       status: "created",
     });
   }, 30_000);
@@ -177,21 +177,32 @@ describe.skipIf(!dockerAvailable)("payments consumer for order.created.v1", () =
     await waitFor(() => readReadModel(orderId), 3_000);
 
     await publishOrderCreated({ orderId, buyerId, priceCents: 5_000, eventId });
-    // Let the consumer have a chance to (mis)process the redelivery.
-    await new Promise((r) => setTimeout(r, 500));
 
     const dbRef = requireValue(paymentsDb, "paymentsDb");
+    const countRows = async () => {
+      const [readModelRows, inboxRows] = await Promise.all([
+        dbRef.db.select().from(orderReadModelTable).where(eq(orderReadModelTable.id, orderId)),
+        dbRef.db.select().from(paymentsInboxTable).where(eq(paymentsInboxTable.eventId, eventId)),
+      ]);
+      return { readModel: readModelRows.length, inbox: inboxRows.length };
+    };
 
-    const readModelRows = await dbRef.db
-      .select()
-      .from(orderReadModelTable)
-      .where(eq(orderReadModelTable.id, orderId));
-    expect(readModelRows).toHaveLength(1);
-
-    const inboxRows = await dbRef.db
-      .select()
-      .from(paymentsInboxTable)
-      .where(eq(paymentsInboxTable.eventId, eventId));
-    expect(inboxRows).toHaveLength(1);
+    // Poll for stability: a (mis)processed redelivery would push either count
+    // above 1. Sampling repeatedly is robust against CI scheduling jitter.
+    await assertStable(countRows, { readModel: 1, inbox: 1 }, 1_500);
   }, 30_000);
 });
+
+async function assertStable<T>(
+  read: () => Promise<T>,
+  expected: T,
+  windowMs: number,
+): Promise<void> {
+  const deadline = Date.now() + windowMs;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line no-await-in-loop -- polling loop by design
+    expect(await read()).toEqual(expected);
+    // eslint-disable-next-line no-await-in-loop -- polling loop by design
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}

@@ -37,16 +37,18 @@ export async function startPaymentsOrderCreatedConsumer(
     handler: async ({ eventId, subject, payload }) => {
       await db.db.transaction(async (tx) => {
         const result = await withInboxDedupe(tx, paymentsInbox, { eventId, subject }, async () => {
-          // Upsert keeps the row idempotent if the inbox row was lost (e.g. a
-          // truncate during testing) but the read-model row survives — without
-          // ON CONFLICT we'd raise on the second-ever delivery.
+          // Inbox dedupe above is the primary guard. `onConflictDoNothing` is a
+          // belt-and-suspenders for the case where the inbox and the projection
+          // get out of sync (e.g. a test truncating only the inbox).
           await tx
             .insert(orderReadModel)
             .values({
               id: payload.orderId,
+              // `created` is the first state, so version starts at 1; later
+              // order.* events will bump it via updateVersioned.
               version: 1,
               userId: payload.buyerId,
-              price: payload.priceCents,
+              priceCents: payload.priceCents,
               status: "created",
             })
             .onConflictDoNothing({ target: orderReadModel.id });
