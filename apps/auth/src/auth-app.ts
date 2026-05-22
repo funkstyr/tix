@@ -23,6 +23,8 @@ export function createAuthApp(deps: CreateAuthAppDeps): Hono {
 
   app.get("/health", (c) => c.json({ service: "auth", ok: true }));
 
+  app.all("/api/auth/*", (c) => deps.auth.handler(c.req.raw));
+
   app.all(`${RPC_PREFIX}/*`, async (c) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: RPC_PREFIX,

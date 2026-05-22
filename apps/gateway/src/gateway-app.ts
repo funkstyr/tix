@@ -6,16 +6,23 @@ import type { Logger } from "pino";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import { requestLogger } from "@tix/observability/request-logger";
 
+import { AUTH_PROXY_PREFIX, createAuthProxy } from "./auth-proxy.ts";
 import type { GatewayRouter } from "./gateway-router.ts";
 
 export type GatewayAppDeps = {
   logger: Logger;
   webOrigin: string;
   router: GatewayRouter;
+  authBaseUrl: string;
+  fetch?: typeof globalThis.fetch;
 };
 
 export function createGatewayApp(deps: GatewayAppDeps): Hono {
   const rpc = new RPCHandler(deps.router);
+  const authProxy = createAuthProxy({
+    authBaseUrl: deps.authBaseUrl,
+    fetch: deps.fetch ?? globalThis.fetch,
+  });
 
   const app = new Hono();
 
@@ -30,6 +37,8 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
   app.use("*", requestLogger(deps.logger));
 
   app.get("/health", (c) => c.json({ service: "gateway", ok: true }));
+
+  app.all(`${AUTH_PROXY_PREFIX}/*`, (c) => authProxy(c.req.raw));
 
   app.all(`${RPC_PREFIX}/*`, async (c) => {
     const req = c.req.raw;
