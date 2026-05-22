@@ -6,7 +6,9 @@ export const expirationInbox = expirationSchema.table(
   "inbox",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    eventId: uuid("event_id").notNull(),
+    // event_id is text, not uuid: publishers pick their own msgId format (see
+    // defineInbox in @tix/db-core for the shared rationale).
+    eventId: text("event_id").notNull(),
     subject: text("subject").notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }).defaultNow().notNull(),
   },

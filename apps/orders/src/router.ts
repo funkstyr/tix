@@ -13,7 +13,8 @@ import { enqueueEvent } from "@tix/db-core/outbox";
 import { orders, ordersOutbox, type ordersTables } from "./orders-schema.ts";
 import type { TicketsClient } from "./tickets-client.ts";
 
-const RESERVATION_TTL_MS = 15 * 60 * 1000;
+const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
+const RESERVATION_TTL_MS = Number(process.env["RESERVATION_TTL_MS"]) || DEFAULT_RESERVATION_TTL_MS;
 
 const fallbackLogger: Logger = pino({ level: "warn" });
 

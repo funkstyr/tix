@@ -45,7 +45,8 @@ export const ticketsInbox = ticketsSchema.table(
   "inbox",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    eventId: uuid("event_id").notNull(),
+    // event_id is text, not uuid: publishers pick their own msgId format.
+    eventId: text("event_id").notNull(),
     subject: text("subject").notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }).defaultNow().notNull(),
   },

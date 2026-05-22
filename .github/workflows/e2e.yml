@@ -1,0 +1,49 @@
+name: E2E
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: ${{ github.event.workflow_run.event == 'pull_request' }}
+
+jobs:
+  e2e:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
+
+      - name: Bring up infra (postgres, nats, redis)
+        run: docker compose up -d --wait
+
+      - name: Run e2e smoke test
+        run: pnpm run e2e
+
+      - name: Tear down infra
+        if: always()
+        run: docker compose down -v

@@ -1,4 +1,4 @@
-CREATE SCHEMA "tickets";
+CREATE SCHEMA IF NOT EXISTS "tickets";
 --> statement-breakpoint
 CREATE TABLE "tickets"."tickets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

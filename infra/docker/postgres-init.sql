@@ -20,3 +20,9 @@ CREATE SCHEMA orders AUTHORIZATION orders_user;
 
 CREATE ROLE expiration_user WITH LOGIN PASSWORD :'expiration_password';
 CREATE SCHEMA expiration AUTHORIZATION expiration_user;
+
+-- Drizzle's `CREATE SCHEMA IF NOT EXISTS` (emitted by drizzle-kit at the top
+-- of each service's initial migration) requires CREATE on the database even
+-- when the schema already exists; per-service roles run their own migrations,
+-- so each needs that privilege. They still only own their own schema.
+GRANT CREATE ON DATABASE tix TO auth_user, tickets_user, orders_user, expiration_user;
