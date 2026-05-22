@@ -77,6 +77,22 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
         paymentMethodId: input.paymentMethodId,
       });
 
+      // Anything other than `succeeded` is non-terminal or non-payable in this
+      // PRD's scope: `requires_action` is 3DS (out of scope), `canceled` /
+      // `requires_payment_method` mean the buyer needs a different card,
+      // `processing` / `requires_confirmation` / `requires_capture` shouldn't
+      // appear under `confirm: true` for a card payment method. Refusing to
+      // record the row here keeps UNIQUE(order_id) open so the buyer can retry
+      // with a new payment method, and prevents `payment.created.v1` from
+      // firing for a charge that isn't actually money in the bank.
+      if (intent.status !== "succeeded") {
+        throw new ORPCError("UNPROCESSABLE_CONTENT", {
+          status: 422,
+          message: "payment intent did not succeed",
+          data: { reason: "intent_not_succeeded" as const, status: intent.status },
+        });
+      }
+
       const recorded = await db.db.transaction((tx) =>
         recordPayment(tx, {
           orderId: order.id,

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Creates the TICKETS and ORDERS JetStream streams idempotently.
+# Creates the TICKETS, ORDERS, and PAYMENTS JetStream streams idempotently.
 # Runs as a one-shot sidecar (natsio/nats-box) after the nats service is healthy.
 set -eu
 
@@ -40,5 +40,6 @@ ensure_stream() {
 
 ensure_stream TICKETS 'tickets.>'
 ensure_stream ORDERS 'order.>'
+ensure_stream PAYMENTS 'payment.>'
 
 echo "nats-init: ok"

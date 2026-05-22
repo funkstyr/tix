@@ -397,4 +397,39 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
     await expect(call).rejects.toThrow("stripe network error");
     await assertNoSideEffects(orderId);
   });
+
+  it.each([
+    "canceled",
+    "processing",
+    "requires_action",
+    "requires_capture",
+    "requires_confirmation",
+    "requires_payment_method",
+  ] as const)(
+    "rejects with UNPROCESSABLE_CONTENT and writes nothing when Stripe returns %s",
+    async (status) => {
+      const buyer = await signUpBuyer();
+      const orderId = await seedOrder(buyer.userId, 6_600);
+
+      const createPaymentIntent = vi
+        .fn<PaymentIntentClient["createPaymentIntent"]>()
+        .mockResolvedValue({ stripeId: "pi_3OqNonSucceeded000000ABCD", status });
+
+      const client = buildClient({ createPaymentIntent });
+
+      const call = client.create({
+        token: buyer.token,
+        orderId,
+        paymentMethodId: "pm_card_visa",
+      });
+
+      await expect(call).rejects.toMatchObject({
+        code: "UNPROCESSABLE_CONTENT",
+        status: 422,
+        data: { reason: "intent_not_succeeded", status },
+      });
+      expect(createPaymentIntent).toHaveBeenCalledTimes(1);
+      await assertNoSideEffects(orderId);
+    },
+  );
 });
