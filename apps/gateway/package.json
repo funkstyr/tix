@@ -24,13 +24,10 @@
   "devDependencies": {
     "@tix/auth-test-fixture": "workspace:*",
     "@tix/config": "workspace:*",
-    "@tix/db-core": "workspace:*",
     "@tix/test-helpers": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "drizzle-orm": "catalog:",
     "testcontainers": "catalog:",
-    "tickets": "workspace:*",
     "tsdown": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"

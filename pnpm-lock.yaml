@@ -281,9 +281,6 @@ importers:
       '@tix/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@tix/db-core':
-        specifier: workspace:*
-        version: link:../../packages/db-core
       '@tix/test-helpers':
         specifier: workspace:*
         version: link:../../packages/test-helpers
@@ -293,15 +290,9 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
-      drizzle-orm:
-        specifier: 'catalog:'
-        version: 0.45.2(kysely@0.28.17)(postgres@3.4.9)
       testcontainers:
         specifier: 'catalog:'
         version: 12.0.0
-      tickets:
-        specifier: workspace:*
-        version: link:../tickets
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)

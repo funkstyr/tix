@@ -1,13 +1,11 @@
 import { serve } from "@hono/node-server";
 
-import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
 import { createLogger } from "@tix/observability/logger";
 
 import { createDownstreamClients } from "./downstream-clients.ts";
 import { createGatewayApp } from "./gateway-app.ts";
 import { parseEnv } from "./gateway-env.ts";
 import { createGatewayRouter } from "./gateway-router.ts";
-import { createSessionResolver } from "./session-resolver.ts";
 
 const fallbackLogger = createLogger({ name: "gateway" });
 
@@ -22,13 +20,7 @@ async function main(): Promise<void> {
     authBaseUrl: env.authBaseUrl,
   });
 
-  const authSessionClient = createHttpAuthSessionClient(env.authBaseUrl);
-  const getCurrentUser = createSessionResolver({
-    authClient: authSessionClient,
-    sessionCookieName: env.sessionCookieName,
-  });
-
-  const router = createGatewayRouter({ clients, getCurrentUser });
+  const router = createGatewayRouter({ clients });
 
   const app = createGatewayApp({ logger, webOrigin: env.webOrigin, router });
 

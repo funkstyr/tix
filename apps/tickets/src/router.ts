@@ -147,7 +147,14 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
     .handler(async ({ input }) => {
       const limit = input.limit ?? DEFAULT_LIST_LIMIT;
 
-      const rows = await db.db.select().from(tickets).orderBy(desc(tickets.createdAt)).limit(limit);
+      // Secondary `desc(id)` is the tie-break when two rows share a millisecond
+      // on createdAt — uuidv7 is monotonic per source, so id-desc preserves
+      // insert order without depending on clock resolution.
+      const rows = await db.db
+        .select()
+        .from(tickets)
+        .orderBy(desc(tickets.createdAt), desc(tickets.id))
+        .limit(limit);
 
       return {
         items: rows.map((row) => ({

@@ -37,7 +37,6 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
     const { matched, response } = await rpc.handle(req, {
       prefix: RPC_PREFIX,
       context: {
-        request: req,
         cookieHeader: req.headers.get("cookie"),
       },
     });

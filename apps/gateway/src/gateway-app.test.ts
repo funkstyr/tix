@@ -1,3 +1,4 @@
+import pino from "pino";
 import { describe, expect, it } from "vitest";
 
 import { createLogger } from "@tix/observability/logger";
@@ -19,7 +20,7 @@ function buildApp() {
     },
     { fetch: async () => new Response(null, { status: 500 }) },
   );
-  const router = createGatewayRouter({ clients, getCurrentUser: async () => null });
+  const router = createGatewayRouter({ clients });
   return createGatewayApp({ logger, webOrigin: WEB_ORIGIN, router });
 }
 
@@ -69,6 +70,42 @@ describe("createGatewayApp", () => {
       );
 
       expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    });
+  });
+
+  describe("request logging", () => {
+    it("emits one info log per request with method, path, and status", async () => {
+      const entries: Array<{
+        level: number;
+        msg?: string;
+        method?: string;
+        path?: string;
+        status?: number;
+      }> = [];
+      const dest = {
+        write(chunk: string) {
+          entries.push(JSON.parse(chunk));
+        },
+      };
+      const logger = pino({ level: "info" }, dest);
+
+      const clients = createDownstreamClients(
+        {
+          ticketsBaseUrl: "http://tickets.test",
+          ordersBaseUrl: "http://orders.test",
+          paymentsBaseUrl: "http://payments.test",
+          authBaseUrl: "http://auth.test",
+        },
+        { fetch: async () => new Response(null, { status: 500 }) },
+      );
+      const router = createGatewayRouter({ clients });
+      const app = createGatewayApp({ logger, webOrigin: WEB_ORIGIN, router });
+
+      await app.fetch(new Request("http://gateway.test/health"));
+
+      const requestLogs = entries.filter((e) => e.msg === "request");
+      expect(requestLogs).toHaveLength(1);
+      expect(requestLogs[0]).toMatchObject({ method: "GET", path: "/health", status: 200 });
     });
   });
 });
