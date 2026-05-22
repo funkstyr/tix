@@ -3,8 +3,8 @@ import { eq } from "drizzle-orm";
 import { type Logger } from "pino";
 import { v7 as uuidv7 } from "uuid";
 
-import { orderExpiredV1 } from "@tix/contracts/orders";
-import { ORDER_EXPIRED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
+import { paymentCreatedV1 } from "@tix/contracts/payments";
+import { ORDER_COMPLETED_V1, PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
 import { type DbClient } from "@tix/db-core/client";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
@@ -14,9 +14,9 @@ import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { orders, ordersInbox, ordersOutbox, type ordersTables } from "./orders-schema.ts";
 import { transition } from "./state-machine.ts";
 
-export const ORDERS_EXPIRATION_CONSUMER_GROUP = "orders-expiration";
+export const ORDERS_PAYMENT_CREATED_CONSUMER_GROUP = "orders-payment-created";
 
-export type StartOrdersExpiredConsumerArgs = {
+export type StartOrdersPaymentCreatedConsumerArgs = {
   db: DbClient<typeof ordersTables>;
   nats: NatsConnection;
   stream: string;
@@ -24,8 +24,8 @@ export type StartOrdersExpiredConsumerArgs = {
   ackWaitMs?: number;
 };
 
-export async function startOrdersExpiredConsumer(
-  args: StartOrdersExpiredConsumerArgs,
+export async function startOrdersPaymentCreatedConsumer(
+  args: StartOrdersPaymentCreatedConsumerArgs,
 ): Promise<RunningConsumer> {
   const { db, nats, stream, logger, ackWaitMs } = args;
 
@@ -34,9 +34,9 @@ export async function startOrdersExpiredConsumer(
 
   return createConsumer(nats, {
     stream,
-    subjectFilter: ORDER_EXPIRED_V1,
-    group: ORDERS_EXPIRATION_CONSUMER_GROUP,
-    schema: orderExpiredV1,
+    subjectFilter: PAYMENT_CREATED_V1,
+    group: ORDERS_PAYMENT_CREATED_CONSUMER_GROUP,
+    schema: paymentCreatedV1,
     ...loggerOpt,
     ...ackWaitOpt,
     handler: async ({ eventId, subject, payload }) => {
@@ -46,20 +46,21 @@ export async function startOrdersExpiredConsumer(
           if (!order) {
             logger?.warn(
               { eventId, orderId: payload.orderId },
-              "order.expired.v1 for unknown order; skipping",
+              "payment.created.v1 for unknown order; skipping",
             );
             return;
           }
 
-          const next = transition(order.status, { kind: "deadline_passed" });
+          const next = transition(order.status, { kind: "payment_confirmed" });
           if (!next.ok) {
             logger?.info(
               { eventId, orderId: order.id, status: order.status, reason: next.reason },
-              "order.expired.v1 ignored by FSM",
+              "payment.created.v1 ignored by FSM",
             );
             return;
           }
 
+          const nextVersion = order.version + 1;
           const updated = await updateVersioned(
             tx,
             orders,
@@ -67,26 +68,23 @@ export async function startOrdersExpiredConsumer(
             { status: next.next },
           );
           if (updated.rowsAffected === 0) {
-            // Safe today because `deadline_passed` is the only wired transition:
-            // any concurrent writer must have already moved the row to a terminal
-            // state, where `order.expired` is correctly a no-op. Revisit when
-            // more transitions land — the inbox row commits regardless, so the
-            // event won't be re-delivered.
+            // Order moved to a terminal state under us (e.g. expired right
+            // before payment.created arrived). Inbox row commits regardless,
+            // so the event won't be re-delivered.
             logger?.warn(
               { eventId, orderId: order.id, version: order.version },
-              "order version changed under us; skipping release",
+              "order version changed under us; skipping payment_confirmed",
             );
             return;
           }
 
           await enqueueEvent(tx, ordersOutbox, {
-            subject: ORDER_RESERVATION_RELEASED_V1,
+            subject: ORDER_COMPLETED_V1,
             eventId: uuidv7(),
             payload: {
               orderId: order.id,
-              ticketId: order.ticketId,
-              quantity: order.quantity,
-              releasedAt: new Date().toISOString(),
+              version: nextVersion,
+              completedAt: new Date().toISOString(),
             },
           });
         });
@@ -94,7 +92,7 @@ export async function startOrdersExpiredConsumer(
         if (result.deduped) {
           logger?.info(
             { eventId, orderId: payload.orderId },
-            "skipping duplicate order.expired.v1",
+            "skipping duplicate payment.created.v1",
           );
         }
       });

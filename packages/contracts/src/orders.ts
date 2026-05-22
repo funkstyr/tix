@@ -24,6 +24,17 @@ export const orderCancelledV1 = type({
 
 export type OrderCancelledV1 = typeof orderCancelledV1.infer;
 
+export const orderCompletedV1 = type({
+  "+": "reject",
+  orderId: "string.uuid",
+  // post-transition version of the order row — consumers apply the complete only
+  // when their local read-model is at `version - 1`, dropping stale redeliveries.
+  version: "number.integer >= 1",
+  completedAt: "string.date.iso",
+});
+
+export type OrderCompletedV1 = typeof orderCompletedV1.infer;
+
 export const orderExpiredV1 = type({
   "+": "reject",
   orderId: "string.uuid",

@@ -19,5 +19,9 @@ export function transition(status: Status, event: Event): TransitionResult {
     return { ok: true, next: "expired" };
   }
 
+  if (status === "created" && event.kind === "payment_confirmed") {
+    return { ok: true, next: "complete" };
+  }
+
   return { ok: false, reason: "UnsupportedTransition" };
 }
