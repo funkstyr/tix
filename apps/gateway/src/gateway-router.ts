@@ -6,6 +6,7 @@ import {
   orderRecordOrNullOutput,
   orderRecordOutput,
 } from "@tix/contracts/orders";
+import { paymentCreateInput, paymentCreateOutput } from "@tix/contracts/payments";
 import {
   ticketCreateInput,
   ticketGetByIdInput,
@@ -75,7 +76,18 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
       }),
   };
 
-  return { tickets, orders };
+  const payments = {
+    create: base
+      .input(paymentCreateInput)
+      .output(paymentCreateOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.payments.create(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+  };
+
+  return { tickets, orders, payments };
 }
 
 export type GatewayRouter = ReturnType<typeof createGatewayRouter>;

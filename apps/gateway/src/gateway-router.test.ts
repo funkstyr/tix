@@ -310,4 +310,77 @@ describe("createGatewayRouter", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(getById).not.toHaveBeenCalled();
   });
+
+  it("delegates payments.create to the downstream payments client, forwarding input and cookie header", async () => {
+    const create = vi
+      .fn<DownstreamClients["payments"]["create"]>()
+      .mockResolvedValue({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
+    const client = withDownstreamStub("payments", { create }, { cookieHeader: "tix.session=abc" });
+
+    const input = {
+      token: "session-token",
+      orderId: ORDER_RECORD.id,
+      paymentMethodId: "pm_card_visa",
+    };
+    const result = await client.payments.create(input);
+
+    expect(result).toEqual({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
+  });
+
+  it("propagates an ORPCError thrown by payments.create with the same code, message, and data", async () => {
+    const create = vi.fn<DownstreamClients["payments"]["create"]>().mockRejectedValue(
+      new ORPCError("CONFLICT", {
+        status: 409,
+        message: "order is not payable",
+        data: { reason: "not_payable" as const, status: "cancelled" },
+      }),
+    );
+    const client = withDownstreamStub("payments", { create });
+
+    await expect(
+      client.payments.create({
+        token: "session-token",
+        orderId: ORDER_RECORD.id,
+        paymentMethodId: "pm_card_visa",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      message: "order is not payable",
+      data: { reason: "not_payable", status: "cancelled" },
+    });
+  });
+
+  it("rejects invalid payments.create input at the arktype boundary", async () => {
+    const create = vi.fn<DownstreamClients["payments"]["create"]>();
+    const client = withDownstreamStub("payments", { create });
+
+    await expect(
+      client.payments.create({
+        token: "session-token",
+        orderId: "not-a-uuid",
+        paymentMethodId: "pm_card_visa",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects payments.create with a missing token at the arktype boundary", async () => {
+    const create = vi.fn<DownstreamClients["payments"]["create"]>();
+    const client = withDownstreamStub("payments", { create });
+
+    await expect(
+      client.payments.create({
+        orderId: ORDER_RECORD.id,
+        paymentMethodId: "pm_card_visa",
+      } as unknown as {
+        token: string;
+        orderId: string;
+        paymentMethodId: string;
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(create).not.toHaveBeenCalled();
+  });
 });

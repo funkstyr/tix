@@ -28,16 +28,22 @@ export const paymentCreatedV1 = type({
 
 export type PaymentCreatedV1 = typeof paymentCreatedV1.infer;
 
-export type PaymentCreateInput = {
-  token: string;
-  orderId: string;
-  paymentMethodId: string;
-};
+export const paymentCreateInput = type({
+  "+": "reject",
+  token: "string >= 1",
+  orderId: "string.uuid",
+  paymentMethodId: "string >= 1",
+});
 
-export type PaymentCreateOutput = {
-  id: string;
-  status: PaymentIntentStatus;
-};
+export type PaymentCreateInput = typeof paymentCreateInput.infer;
+
+export const paymentCreateOutput = type({
+  "+": "reject",
+  id: "string.uuid",
+  status: paymentIntentStatus,
+});
+
+export type PaymentCreateOutput = typeof paymentCreateOutput.infer;
 
 export type PaymentsRouterClient = {
   create: (input: PaymentCreateInput) => Promise<PaymentCreateOutput>;
