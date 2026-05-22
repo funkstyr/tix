@@ -8,13 +8,17 @@
     "build": "tsdown",
     "check-types": "tsgo --noEmit",
     "dev": "tsx watch src/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "start": "node dist/index.js",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@nats-io/transport-node": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
+    "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
@@ -22,10 +26,12 @@
     "postgres": "catalog:"
   },
   "devDependencies": {
+    "@nats-io/jetstream": "catalog:",
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "drizzle-kit": "catalog:",
+    "testcontainers": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"
