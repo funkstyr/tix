@@ -208,6 +208,92 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
   });
 });
 
+describe.skipIf(!dockerAvailable)("payments.create — idempotency", () => {
+  it("sequential retries with the same orderId converge to one Payment row + one outbox entry", async () => {
+    const buyer = await signUpBuyer();
+    const orderId = await seedOrder(buyer.userId, 4_500);
+
+    const createPaymentIntent = vi
+      .fn<PaymentIntentClient["createPaymentIntent"]>()
+      .mockResolvedValue({
+        stripeId: "pi_3OqVuk2eZvKYlo2C1Tt5KvP3",
+        status: "succeeded",
+      });
+
+    const client = buildClient({ createPaymentIntent });
+
+    const first = await client.create({
+      token: buyer.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    const second = await client.create({
+      token: buyer.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second.status).toBe(first.status);
+
+    // Stripe is called on every retry by design — its idempotency-key cache
+    // (keyed on orderId) dedupes the actual charge server-side. Our local
+    // writes are deduped by UNIQUE(order_id) in payments.
+    expect(createPaymentIntent).toHaveBeenCalledTimes(2);
+
+    const db = requireValue(paymentsDb, "paymentsDb");
+
+    const paymentRows = await db.db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.orderId, orderId));
+    expect(paymentRows).toHaveLength(1);
+
+    const outboxRows = await db.db
+      .select()
+      .from(paymentsOutboxTable)
+      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
+    expect(outboxRows).toHaveLength(1);
+  });
+
+  it("concurrent retries with the same orderId converge to one Payment row + one outbox entry", async () => {
+    const buyer = await signUpBuyer();
+    const orderId = await seedOrder(buyer.userId, 4_500);
+
+    const createPaymentIntent = vi
+      .fn<PaymentIntentClient["createPaymentIntent"]>()
+      .mockResolvedValue({
+        stripeId: "pi_3OqConcurrent1234567890AB",
+        status: "succeeded",
+      });
+
+    const client = buildClient({ createPaymentIntent });
+
+    const [first, second] = await Promise.all([
+      client.create({ token: buyer.token, orderId, paymentMethodId: "pm_card_visa" }),
+      client.create({ token: buyer.token, orderId, paymentMethodId: "pm_card_visa" }),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    expect(second.status).toBe(first.status);
+
+    const db = requireValue(paymentsDb, "paymentsDb");
+
+    const paymentRows = await db.db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.orderId, orderId));
+    expect(paymentRows).toHaveLength(1);
+
+    const outboxRows = await db.db
+      .select()
+      .from(paymentsOutboxTable)
+      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
+    expect(outboxRows).toHaveLength(1);
+  });
+});
+
 describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
   async function assertNoSideEffects(orderId: string) {
     const db = requireValue(paymentsDb, "paymentsDb");

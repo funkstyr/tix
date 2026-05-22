@@ -4,7 +4,9 @@ export const paymentsSchema = pgSchema("payments");
 
 export const payments = paymentsSchema.table("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
-  orderId: uuid("order_id").notNull(),
+  // UNIQUE: order_id is the app-level idempotency key. The router relies on
+  // INSERT ... ON CONFLICT (order_id) DO NOTHING to dedupe concurrent retries.
+  orderId: uuid("order_id").notNull().unique(),
   userId: text("user_id").notNull(),
   stripeId: text("stripe_id").notNull().unique(),
   amount: integer("amount").notNull(),
