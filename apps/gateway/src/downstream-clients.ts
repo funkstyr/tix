@@ -4,7 +4,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { AuthRouterClient } from "@tix/contracts/auth";
 import type { OrdersRouterClient } from "@tix/contracts/orders";
 import type { PaymentsRouterClient } from "@tix/contracts/payments";
-import { RPC_PREFIX } from "@tix/contracts/rpc";
+import { joinRpcUrl } from "@tix/contracts/rpc";
 import type { TicketsRouterClient } from "@tix/contracts/tickets";
 
 export type CookieContext = { cookieHeader: string | null };
@@ -68,7 +68,7 @@ function makeClient<T>(
   fetchImpl: typeof globalThis.fetch | undefined,
 ): DownstreamRouterClient<T> {
   const link = new RPCLink<CookieContext>({
-    url: `${baseUrl.replace(/\/$/, "")}${RPC_PREFIX}`,
+    url: joinRpcUrl(baseUrl),
     headers: ({ context }) =>
       context.cookieHeader === null ? {} : { cookie: context.cookieHeader },
     ...(fetchImpl ? { fetch: fetchImpl } : {}),

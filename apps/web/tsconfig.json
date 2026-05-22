@@ -7,7 +7,7 @@
     },
     "jsx": "react-jsx",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "types": ["react", "react-dom"]
+    "types": ["react", "react-dom", "vite/client"]
   },
   "include": ["src"]
 }
