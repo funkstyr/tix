@@ -4,23 +4,30 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "vite build",
     "check-types": "tsgo --noEmit",
+    "dev": "vite",
+    "preview": "vite preview",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@orpc/client": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@tix/contracts": "workspace:*",
     "arktype": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@tanstack/router-plugin": "catalog:",
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
     "jsdom": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   }
 }

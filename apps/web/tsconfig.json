@@ -8,5 +8,6 @@
     "jsx": "react-jsx",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["react", "react-dom"]
-  }
+  },
+  "include": ["src"]
 }

@@ -32,7 +32,8 @@
     "**/drizzle/migrations/**",
     "**/.turbo/**",
     "**/dist/**",
-    "**/node_modules/**"
+    "**/node_modules/**",
+    "**/routeTree.gen.ts"
   ],
   "env": {
     "builtin": true

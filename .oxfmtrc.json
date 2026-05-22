@@ -25,5 +25,5 @@
   },
   "sortPackageJson": true,
   "sortTailwindcss": true,
-  "ignorePatterns": ["turbo/generators/templates/**"]
+  "ignorePatterns": ["turbo/generators/templates/**", "**/routeTree.gen.ts"]
 }
