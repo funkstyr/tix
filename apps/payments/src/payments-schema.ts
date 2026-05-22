@@ -2,7 +2,7 @@ import { integer, jsonb, pgSchema, text, timestamp, unique, uuid } from "drizzle
 
 export const paymentsSchema = pgSchema("payments");
 
-export const payments = paymentsSchema.table("payment", {
+export const payments = paymentsSchema.table("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
   orderId: uuid("order_id").notNull(),
   userId: text("user_id").notNull(),
@@ -12,7 +12,10 @@ export const payments = paymentsSchema.table("payment", {
   status: text("status").notNull(),
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export const orderReadModel = paymentsSchema.table("order_read_model", {
@@ -22,7 +25,10 @@ export const orderReadModel = paymentsSchema.table("order_read_model", {
   price: integer("price").notNull(),
   status: text("status").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export const paymentsOutbox = paymentsSchema.table("outbox", {

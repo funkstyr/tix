@@ -10,7 +10,7 @@ CREATE TABLE "payments"."order_read_model" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "payments"."payment" (
+CREATE TABLE "payments"."payments" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"order_id" uuid NOT NULL,
 	"user_id" text NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE "payments"."payment" (
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "payment_stripe_id_unique" UNIQUE("stripe_id")
+	CONSTRAINT "payments_stripe_id_unique" UNIQUE("stripe_id")
 );
 --> statement-breakpoint
 CREATE TABLE "payments"."inbox" (

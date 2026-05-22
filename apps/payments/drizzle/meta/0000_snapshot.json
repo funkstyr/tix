@@ -61,8 +61,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "payments.payment": {
-      "name": "payment",
+    "payments.payments": {
+      "name": "payments",
       "schema": "payments",
       "columns": {
         "id": {
@@ -134,8 +134,8 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "payment_stripe_id_unique": {
-          "name": "payment_stripe_id_unique",
+        "payments_stripe_id_unique": {
+          "name": "payments_stripe_id_unique",
           "nullsNotDistinct": false,
           "columns": ["stripe_id"]
         }
