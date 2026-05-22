@@ -1,17 +1,36 @@
-import { integer, jsonb, pgSchema, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  integer,
+  jsonb,
+  pgSchema,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const ticketsSchema = pgSchema("tickets");
 
-export const tickets = ticketsSchema.table("tickets", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  sellerId: text("seller_id").notNull(),
-  title: text("title").notNull(),
-  quantityTotal: integer("quantity_total").notNull(),
-  quantityAvailable: integer("quantity_available").notNull(),
-  unitPriceCents: integer("unit_price_cents").notNull(),
-  version: integer("version").notNull().default(1),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const tickets = ticketsSchema.table(
+  "tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sellerId: text("seller_id").notNull(),
+    title: text("title").notNull(),
+    quantityTotal: integer("quantity_total").notNull(),
+    quantityAvailable: integer("quantity_available").notNull(),
+    unitPriceCents: integer("unit_price_cents").notNull(),
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "tickets_quantity_available_bounds",
+      sql`${t.quantityAvailable} >= 0 AND ${t.quantityAvailable} <= ${t.quantityTotal}`,
+    ),
+  ],
+);
 
 export const ticketsOutbox = ticketsSchema.table("outbox", {
   id: uuid("id").primaryKey().defaultRandom(),

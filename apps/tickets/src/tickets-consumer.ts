@@ -13,7 +13,7 @@ import { tickets, ticketsInbox, type ticketsTables } from "./tickets-schema.ts";
 
 export const TICKETS_RELEASE_CONSUMER_GROUP = "tickets-release";
 
-const MAX_RESTORE_ATTEMPTS = 2;
+const RESTORE_ATTEMPT_LIMIT = 5;
 
 export type StartTicketsReleasedConsumerArgs = {
   db: DbClient<typeof ticketsTables>;
@@ -42,12 +42,16 @@ export async function startTicketsReleasedConsumer(
       await db.db.transaction(async (tx) => {
         const result = await withInboxDedupe(tx, ticketsInbox, { eventId, subject }, async () => {
           // Serial retry by design: each attempt depends on the previous attempt's
-          // version having lost the race. Two failures and we give up and let the
-          // inbox row commit — re-delivery would only re-fight the same race.
-          for (let attempt = 0; attempt < MAX_RESTORE_ATTEMPTS; attempt++) {
+          // version having lost the race. If we exhaust the budget we throw, which
+          // rolls back the inbox row inside this transaction and lets NATS redeliver
+          // — preferring a redelivery over silently losing the quantity restoration.
+          for (let attempt = 0; attempt < RESTORE_ATTEMPT_LIMIT; attempt++) {
             // eslint-disable-next-line no-await-in-loop -- serial retry by design
             const [row] = await tx.select().from(tickets).where(eq(tickets.id, payload.ticketId));
             if (!row) {
+              // Unknown ticketId is treated as a no-op (inbox commits, no redelivery):
+              // a Ticket that never existed isn't coming back, and we don't want to
+              // wedge the consumer on a poison message.
               logger?.warn(
                 { eventId, ticketId: payload.ticketId },
                 "order.reservation_released.v1 for unknown ticket; skipping",
@@ -66,9 +70,8 @@ export async function startTicketsReleasedConsumer(
             if (updated.rowsAffected === 1) return;
           }
 
-          logger?.warn(
-            { eventId, ticketId: payload.ticketId, quantity: payload.quantity },
-            "ticket version conflict after retry; acking without restore (inbox commits)",
+          throw new Error(
+            `ticket ${payload.ticketId} version conflict after ${RESTORE_ATTEMPT_LIMIT} attempts; rolling back for redelivery`,
           );
         });
 

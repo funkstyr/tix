@@ -3,7 +3,6 @@ import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -11,6 +10,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
+import { dockerAvailable } from "@tix/test-helpers/docker-available";
+import { requireValue } from "@tix/test-helpers/require-value";
+import { waitFor } from "@tix/test-helpers/wait-for";
 
 import { startTicketsReleasedConsumer } from "./tickets-consumer.ts";
 import {
@@ -20,18 +22,6 @@ import {
 } from "./tickets-schema.ts";
 
 const ticketsMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
-
-const dockerAvailable = ((): boolean => {
-  if (process.env["DOCKER_HOST"]) return true;
-  const home = process.env["HOME"] ?? "";
-  const candidates = [
-    "/var/run/docker.sock",
-    `${home}/.docker/run/docker.sock`,
-    `${home}/.colima/default/docker.sock`,
-    `${home}/.orbstack/run/docker.sock`,
-  ];
-  return candidates.some((p) => existsSync(p));
-})();
 
 type TicketsDbClient = DbClient<typeof ticketsTables>;
 
@@ -78,8 +68,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   if (!dockerAvailable) return;
-  const dbRef = requireDb();
-  const nc = requireNats();
+  const dbRef = requireValue(ticketsDb, "ticketsDb");
+  const nc = requireValue(nats, "nats");
 
   await dbRef.sql`TRUNCATE TABLE tickets.tickets, tickets.outbox, tickets.inbox RESTART IDENTITY CASCADE`;
 
@@ -118,16 +108,6 @@ afterEach(async () => {
   streamName = undefined;
 });
 
-function requireDb(): TicketsDbClient {
-  if (!ticketsDb) throw new Error("ticketsDb not initialized");
-  return ticketsDb;
-}
-
-function requireNats(): NatsConnection {
-  if (!nats) throw new Error("nats not initialized");
-  return nats;
-}
-
 type SeedTicketArgs = { quantityTotal?: number; quantityAvailable?: number };
 
 async function seedTicket(args: SeedTicketArgs = {}): Promise<{
@@ -135,7 +115,7 @@ async function seedTicket(args: SeedTicketArgs = {}): Promise<{
   quantityTotal: number;
   quantityAvailable: number;
 }> {
-  const dbRef = requireDb();
+  const dbRef = requireValue(ticketsDb, "ticketsDb");
   const id = randomUUID();
   const quantityTotal = args.quantityTotal ?? 4;
   const quantityAvailable = args.quantityAvailable ?? 2;
@@ -158,7 +138,7 @@ async function publishReleased(args: {
   quantity: number;
   eventId: string;
 }): Promise<void> {
-  const publisher = createPublisher(requireNats());
+  const publisher = createPublisher(requireValue(nats, "nats"));
   await publisher.publish(
     ORDER_RESERVATION_RELEASED_V1,
     {
@@ -171,22 +151,10 @@ async function publishReleased(args: {
   );
 }
 
-async function waitFor<T>(read: () => Promise<T | undefined>, timeoutMs: number): Promise<T> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    // eslint-disable-next-line no-await-in-loop
-    const value = await read();
-    if (value !== undefined) return value;
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  throw new Error(`condition not satisfied within ${timeoutMs}ms`);
-}
-
 async function readTicket(
   ticketId: string,
 ): Promise<{ quantityAvailable: number; version: number } | undefined> {
-  const [row] = await requireDb()
+  const [row] = await requireValue(ticketsDb, "ticketsDb")
     .db.select()
     .from(ticketsTable)
     .where(eq(ticketsTable.id, ticketId));
@@ -229,7 +197,7 @@ describe.skipIf(!dockerAvailable)("tickets consumer for order.reservation_releas
     // Let the consumer have a chance to (mis)process the redelivery.
     await new Promise((r) => setTimeout(r, 500));
 
-    const dbRef = requireDb();
+    const dbRef = requireValue(ticketsDb, "ticketsDb");
     const inboxRows = await dbRef.db
       .select()
       .from(ticketsInboxTable)
@@ -268,7 +236,7 @@ describe.skipIf(!dockerAvailable)("tickets consumer for order.reservation_releas
     // Two successful versioned updates → version bumped twice.
     expect(after.version).toBe(3);
 
-    const dbRef = requireDb();
+    const dbRef = requireValue(ticketsDb, "ticketsDb");
     const inboxRows = await dbRef.db.select().from(ticketsInboxTable);
     expect(inboxRows).toHaveLength(2);
   }, 30_000);

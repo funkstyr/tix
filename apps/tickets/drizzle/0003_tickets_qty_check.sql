@@ -1,0 +1,1 @@
+ALTER TABLE "tickets"."tickets" ADD CONSTRAINT "tickets_quantity_available_bounds" CHECK ("tickets"."tickets"."quantity_available" >= 0 AND "tickets"."tickets"."quantity_available" <= "tickets"."tickets"."quantity_total");

@@ -1,0 +1,37 @@
+{
+  "name": "@tix/test-helpers",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./docker-available": {
+      "types": "./dist/docker-available.d.ts",
+      "import": "./dist/docker-available.js"
+    },
+    "./require-value": {
+      "types": "./dist/require-value.d.ts",
+      "import": "./dist/require-value.js"
+    },
+    "./wait-for": {
+      "types": "./dist/wait-for.d.ts",
+      "import": "./dist/wait-for.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsgo --build",
+    "dev": "tsdown --watch",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -32,6 +32,7 @@
   "devDependencies": {
     "@nats-io/jetstream": "catalog:",
     "@tix/config": "workspace:*",
+    "@tix/test-helpers": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "auth": "workspace:*",

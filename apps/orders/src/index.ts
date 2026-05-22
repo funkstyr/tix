@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { connect } from "@nats-io/transport-node";
 
 import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
+import { ORDERS_STREAM } from "@tix/contracts/subjects";
 import { createDbClient } from "@tix/db-core/client";
 import { startOutboxRelay } from "@tix/db-core/outbox";
 import { createPublisher } from "@tix/messaging/jetstream";
@@ -13,7 +14,6 @@ import { ordersOutbox, ordersTables } from "./orders-schema.ts";
 import { createHttpTicketsClient } from "./tickets-client.ts";
 
 const DEFAULT_PORT = 4003;
-const DEFAULT_STREAM = "ORDERS";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   const ticketsBaseUrl = requireEnv("TICKETS_BASE_URL");
   const ticketsServiceToken = requireEnv("TICKETS_SERVICE_TOKEN");
   const natsUrl = requireEnv("NATS_URL");
-  const stream = process.env["ORDERS_STREAM"] ?? DEFAULT_STREAM;
+  const stream = process.env["ORDERS_STREAM"] ?? ORDERS_STREAM;
 
   const db = createDbClient("orders", databaseUrl, { schema: ordersTables });
   const authClient = createHttpAuthSessionClient(authBaseUrl);
