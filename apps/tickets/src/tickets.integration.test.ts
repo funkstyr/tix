@@ -250,6 +250,42 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
     });
     expect(missing).toBeNull();
   });
+
+  it("tickets.list returns rows newest first and honors the limit", async () => {
+    const seller = await signUpSeller("lister@example.com");
+
+    const first = await getTicketsClient().create({
+      token: seller.token,
+      title: "First",
+      quantityTotal: 5,
+      unitPriceCents: 1000,
+    });
+    const second = await getTicketsClient().create({
+      token: seller.token,
+      title: "Second",
+      quantityTotal: 5,
+      unitPriceCents: 2000,
+    });
+    const third = await getTicketsClient().create({
+      token: seller.token,
+      title: "Third",
+      quantityTotal: 5,
+      unitPriceCents: 3000,
+    });
+
+    const all = await getTicketsClient().list({});
+    expect(all.items.map((t) => t.id)).toEqual([third.id, second.id, first.id]);
+    expect(all.items[0]?.title).toBe("Third");
+
+    const limited = await getTicketsClient().list({ limit: 2 });
+    expect(limited.items).toHaveLength(2);
+    expect(limited.items.map((t) => t.id)).toEqual([third.id, second.id]);
+  });
+
+  it("tickets.list returns an empty list when no rows exist", async () => {
+    const result = await getTicketsClient().list({});
+    expect(result.items).toEqual([]);
+  });
 });
 
 describe.skipIf(!dockerAvailable)("tickets.reserve", () => {

@@ -1,9 +1,13 @@
 import { serve } from "@hono/node-server";
 
+import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
 import { createLogger } from "@tix/observability/logger";
 
+import { createDownstreamClients } from "./downstream-clients.ts";
 import { createGatewayApp } from "./gateway-app.ts";
 import { parseEnv } from "./gateway-env.ts";
+import { createGatewayRouter } from "./gateway-router.ts";
+import { createSessionResolver } from "./session-resolver.ts";
 
 const fallbackLogger = createLogger({ name: "gateway" });
 
@@ -11,7 +15,22 @@ async function main(): Promise<void> {
   const env = parseEnv(process.env);
   const logger = createLogger({ name: "gateway", level: env.logLevel });
 
-  const app = createGatewayApp({ logger, webOrigin: env.webOrigin });
+  const clients = createDownstreamClients({
+    ticketsBaseUrl: env.ticketsBaseUrl,
+    ordersBaseUrl: env.ordersBaseUrl,
+    paymentsBaseUrl: env.paymentsBaseUrl,
+    authBaseUrl: env.authBaseUrl,
+  });
+
+  const authSessionClient = createHttpAuthSessionClient(env.authBaseUrl);
+  const getCurrentUser = createSessionResolver({
+    authClient: authSessionClient,
+    sessionCookieName: env.sessionCookieName,
+  });
+
+  const router = createGatewayRouter({ clients, getCurrentUser });
+
+  const app = createGatewayApp({ logger, webOrigin: env.webOrigin, router });
 
   const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
     logger.info({ port: info.port }, "gateway service listening");

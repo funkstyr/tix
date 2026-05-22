@@ -2,13 +2,25 @@ import { describe, expect, it } from "vitest";
 
 import { createLogger } from "@tix/observability/logger";
 
+import { createDownstreamClients } from "./downstream-clients.ts";
 import { createGatewayApp } from "./gateway-app.ts";
+import { createGatewayRouter } from "./gateway-router.ts";
 
 const WEB_ORIGIN = "https://app.tix.test";
 
 function buildApp() {
   const logger = createLogger({ name: "gateway-test", level: "silent" });
-  return createGatewayApp({ logger, webOrigin: WEB_ORIGIN });
+  const clients = createDownstreamClients(
+    {
+      ticketsBaseUrl: "http://tickets.test",
+      ordersBaseUrl: "http://orders.test",
+      paymentsBaseUrl: "http://payments.test",
+      authBaseUrl: "http://auth.test",
+    },
+    { fetch: async () => new Response(null, { status: 500 }) },
+  );
+  const router = createGatewayRouter({ clients, getCurrentUser: async () => null });
+  return createGatewayApp({ logger, webOrigin: WEB_ORIGIN, router });
 }
 
 describe("createGatewayApp", () => {

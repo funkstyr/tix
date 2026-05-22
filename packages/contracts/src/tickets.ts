@@ -41,8 +41,32 @@ export type TicketRecord = {
   createdAt: string;
 };
 
+export const ticketsListInput = type({
+  "limit?": "1 <= number.integer <= 200",
+});
+
+export type TicketsListInput = typeof ticketsListInput.infer;
+
+export const ticketRecordOutput = type({
+  id: "string.uuid",
+  sellerId: "string",
+  title: "string",
+  quantityTotal: "number.integer",
+  quantityAvailable: "number.integer",
+  unitPriceCents: "number.integer",
+  version: "number.integer",
+  createdAt: "string.date.iso",
+});
+
+export const ticketsListOutput = type({
+  items: ticketRecordOutput.array(),
+});
+
+export type TicketsListOutput = typeof ticketsListOutput.infer;
+
 export type TicketsRouterClient = {
   create: (input: TicketCreateInput) => Promise<TicketRecord>;
   reserve: (input: ReserveTicketInput) => Promise<ReserveTicketOutput>;
   getById: (input: { ticketId: string }) => Promise<TicketRecord | null>;
+  list: (input: TicketsListInput) => Promise<TicketsListOutput>;
 };
