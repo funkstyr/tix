@@ -96,39 +96,31 @@ function requireHarness(): {
 
 beforeEach(async () => {
   if (!dockerAvailable) return;
-  const {
-    db: dbRef,
-    nats: natsRef,
-    redis: redisRef,
-  } = {
-    db: db!,
-    nats: nats!,
-    redis: redis!,
-  };
+  streamName = `S_${randomUUID().replace(/-/g, "")}`;
+  const harness = requireHarness();
 
-  await dbRef.sql`TRUNCATE TABLE expiration.inbox RESTART IDENTITY CASCADE`;
+  await harness.db.sql`TRUNCATE TABLE expiration.inbox RESTART IDENTITY CASCADE`;
 
-  const purgeQueue = new Queue(EXPIRATION_QUEUE, { connection: redisRef });
+  const purgeQueue = new Queue(EXPIRATION_QUEUE, { connection: harness.redis });
   try {
     await purgeQueue.obliterate({ force: true });
   } finally {
     await purgeQueue.close();
   }
 
-  streamName = `S_${randomUUID().replace(/-/g, "")}`;
-  const manager = await jetstreamManager(natsRef);
+  const manager = await jetstreamManager(harness.nats);
   await manager.streams.add({
-    name: streamName,
+    name: harness.stream,
     subjects: [ORDER_CREATED_V1],
     retention: RetentionPolicy.Limits,
     storage: StorageType.Memory,
   });
 
   service = await startExpirationService({
-    db: dbRef,
-    nats: natsRef,
-    stream: streamName,
-    redis: redisRef,
+    db: harness.db,
+    nats: harness.nats,
+    stream: harness.stream,
+    redis: harness.redis,
   });
 });
 

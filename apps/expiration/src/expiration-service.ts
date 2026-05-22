@@ -45,11 +45,12 @@ export async function startExpirationService(
     ...loggerOpt,
   });
 
-  // Stub for this slice; #14 will publish order.expired.v1 from here.
+  // The publisher for order.expired.v1 isn't wired yet; throw so jobs land on
+  // BullMQ's failed list instead of being silently acked and lost.
   const worker = createWorker<ExpireOrderPayload>(redis, {
     queueName: EXPIRATION_QUEUE,
     handler: ({ orderId }) => {
-      logger?.info({ orderId }, "would expire orderId");
+      throw new Error(`expiration worker not implemented: order ${orderId}`);
     },
     ...loggerOpt,
   });
