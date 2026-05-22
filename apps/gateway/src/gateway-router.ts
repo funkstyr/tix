@@ -1,6 +1,13 @@
 import { os } from "@orpc/server";
 
-import { ticketsListInput, ticketsListOutput } from "@tix/contracts/tickets";
+import {
+  ticketCreateInput,
+  ticketGetByIdInput,
+  ticketRecordOrNullOutput,
+  ticketRecordOutput,
+  ticketsListInput,
+  ticketsListOutput,
+} from "@tix/contracts/tickets";
 
 import type { DownstreamClients } from "./downstream-clients.ts";
 
@@ -17,6 +24,22 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
   const base = os.$context<GatewayInitialContext>();
 
   const tickets = {
+    create: base
+      .input(ticketCreateInput)
+      .output(ticketRecordOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.tickets.create(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+    getById: base
+      .input(ticketGetByIdInput)
+      .output(ticketRecordOrNullOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.tickets.getById(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
     list: base
       .input(ticketsListInput)
       .output(ticketsListOutput)

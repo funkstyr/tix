@@ -1,11 +1,17 @@
 import { ORPCError, os } from "@orpc/server";
-import { type } from "arktype";
 import { desc, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
-import { ticketsListInput, ticketsListOutput } from "@tix/contracts/tickets";
+import {
+  ticketCreateInput,
+  ticketGetByIdInput,
+  ticketRecordOrNullOutput,
+  ticketRecordOutput,
+  ticketsListInput,
+  ticketsListOutput,
+} from "@tix/contracts/tickets";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
 import { enqueueEvent } from "@tix/db-core/outbox";
@@ -13,34 +19,7 @@ import { enqueueEvent } from "@tix/db-core/outbox";
 import { reserveTicket } from "./reserve-ticket.ts";
 import { tickets, ticketsOutbox, type ticketsTables } from "./tickets-schema.ts";
 
-const tokenInput = type({
-  token: "string >= 1",
-});
-
-const createInput = tokenInput.and({
-  title: "string >= 1",
-  quantityTotal: "number.integer >= 1",
-  unitPriceCents: "number.integer >= 0",
-});
-
-const getByIdInput = type({
-  ticketId: "string.uuid",
-});
-
 const DEFAULT_LIST_LIMIT = 50;
-
-const ticketOutput = type({
-  id: "string.uuid",
-  sellerId: "string",
-  title: "string",
-  quantityTotal: "number.integer",
-  quantityAvailable: "number.integer",
-  unitPriceCents: "number.integer",
-  version: "number.integer",
-  createdAt: "string.date.iso",
-});
-
-const ticketOrNullOutput = ticketOutput.or("null");
 
 export type TicketsRouterContext = {
   serviceToken?: string;
@@ -58,8 +37,8 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
   const base = os.$context<TicketsRouterContext>();
 
   const create = base
-    .input(createInput)
-    .output(ticketOutput)
+    .input(ticketCreateInput)
+    .output(ticketRecordOutput)
     .handler(async ({ input }) => {
       const session = await requireSession(authClient, input.token);
 
@@ -123,8 +102,8 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
     });
 
   const getById = base
-    .input(getByIdInput)
-    .output(ticketOrNullOutput)
+    .input(ticketGetByIdInput)
+    .output(ticketRecordOrNullOutput)
     .handler(async ({ input }) => {
       const [row] = await db.db.select().from(tickets).where(eq(tickets.id, input.ticketId));
       if (!row) return null;

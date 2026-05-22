@@ -40,9 +40,13 @@ function emptyClients(): DownstreamClients {
   };
 }
 
-function buildClient(clients: DownstreamClients) {
+function withTicketsStub(
+  ticketsPartial: Partial<DownstreamClients["tickets"]>,
+  context: GatewayInitialContext = { cookieHeader: null },
+) {
+  const clients = emptyClients();
+  clients.tickets = ticketsPartial as unknown as DownstreamClients["tickets"];
   const router = createGatewayRouter({ clients });
-  const context: GatewayInitialContext = { cookieHeader: null };
 
   return createRouterClient(router, { context });
 }
@@ -52,13 +56,7 @@ describe("createGatewayRouter", () => {
     const list = vi
       .fn<DownstreamClients["tickets"]["list"]>()
       .mockResolvedValue({ items: [TICKET_RECORD] });
-    const clients = emptyClients();
-    clients.tickets = { list } as unknown as DownstreamClients["tickets"];
-
-    const router = createGatewayRouter({ clients });
-    const client = createRouterClient(router, {
-      context: { cookieHeader: "tix.session=abc" } satisfies GatewayInitialContext,
-    });
+    const client = withTicketsStub({ list }, { cookieHeader: "tix.session=abc" });
 
     const result = await client.tickets.list({ limit: 10 });
 
@@ -72,10 +70,8 @@ describe("createGatewayRouter", () => {
 
   it("forwards a null cookieHeader when the request has no cookie", async () => {
     const list = vi.fn<DownstreamClients["tickets"]["list"]>().mockResolvedValue({ items: [] });
-    const clients = emptyClients();
-    clients.tickets = { list } as unknown as DownstreamClients["tickets"];
+    const client = withTicketsStub({ list });
 
-    const client = buildClient(clients);
     await client.tickets.list({});
 
     expect(list).toHaveBeenCalledWith({}, { context: { cookieHeader: null } });
@@ -89,10 +85,7 @@ describe("createGatewayRouter", () => {
         data: { reason: "sold_out" as const },
       }),
     );
-    const clients = emptyClients();
-    clients.tickets = { list } as unknown as DownstreamClients["tickets"];
-
-    const client = buildClient(clients);
+    const client = withTicketsStub({ list });
 
     await expect(client.tickets.list({})).rejects.toMatchObject({
       code: "CONFLICT",
@@ -104,12 +97,103 @@ describe("createGatewayRouter", () => {
 
   it("rejects invalid input at the arktype boundary without reaching the downstream client", async () => {
     const list = vi.fn<DownstreamClients["tickets"]["list"]>();
-    const clients = emptyClients();
-    clients.tickets = { list } as unknown as DownstreamClients["tickets"];
-
-    const client = buildClient(clients);
+    const client = withTicketsStub({ list });
 
     await expect(client.tickets.list({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(list).not.toHaveBeenCalled();
+  });
+
+  it("delegates tickets.create to the downstream tickets client, forwarding input and cookie header", async () => {
+    const create = vi.fn<DownstreamClients["tickets"]["create"]>().mockResolvedValue(TICKET_RECORD);
+    const client = withTicketsStub({ create }, { cookieHeader: "tix.session=abc" });
+
+    const input = {
+      token: "session-token",
+      title: "Aphex Twin @ Warehouse",
+      quantityTotal: 50,
+      unitPriceCents: 4500,
+    };
+    const result = await client.tickets.create(input);
+
+    expect(result).toEqual(TICKET_RECORD);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
+  });
+
+  it("propagates ORPCError thrown by tickets.create", async () => {
+    const create = vi.fn<DownstreamClients["tickets"]["create"]>().mockRejectedValue(
+      new ORPCError("UNAUTHORIZED", {
+        status: 401,
+        message: "invalid or expired session",
+      }),
+    );
+    const client = withTicketsStub({ create });
+
+    await expect(
+      client.tickets.create({
+        token: "stale",
+        title: "Aphex Twin @ Warehouse",
+        quantityTotal: 50,
+        unitPriceCents: 4500,
+      }),
+    ).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+      message: "invalid or expired session",
+    });
+  });
+
+  it("rejects invalid tickets.create input at the arktype boundary", async () => {
+    const create = vi.fn<DownstreamClients["tickets"]["create"]>();
+    const client = withTicketsStub({ create });
+
+    await expect(
+      client.tickets.create({
+        token: "session-token",
+        title: "Aphex Twin @ Warehouse",
+        quantityTotal: 0,
+        unitPriceCents: 4500,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("delegates tickets.getById to the downstream tickets client, forwarding cookie header", async () => {
+    const getById = vi
+      .fn<DownstreamClients["tickets"]["getById"]>()
+      .mockResolvedValue(TICKET_RECORD);
+    const client = withTicketsStub({ getById }, { cookieHeader: "tix.session=abc" });
+
+    const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
+
+    expect(result).toEqual(TICKET_RECORD);
+    expect(getById).toHaveBeenCalledTimes(1);
+    expect(getById).toHaveBeenCalledWith(
+      { ticketId: TICKET_RECORD.id },
+      { context: { cookieHeader: "tix.session=abc" } },
+    );
+  });
+
+  it("returns null when tickets.getById finds no ticket", async () => {
+    const getById = vi.fn<DownstreamClients["tickets"]["getById"]>().mockResolvedValue(null);
+    const client = withTicketsStub({ getById });
+
+    const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
+
+    expect(result).toBeNull();
+    expect(getById).toHaveBeenCalledWith(
+      { ticketId: TICKET_RECORD.id },
+      { context: { cookieHeader: null } },
+    );
+  });
+
+  it("rejects invalid tickets.getById input at the arktype boundary", async () => {
+    const getById = vi.fn<DownstreamClients["tickets"]["getById"]>();
+    const client = withTicketsStub({ getById });
+
+    await expect(client.tickets.getById({ ticketId: "not-a-uuid" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    expect(getById).not.toHaveBeenCalled();
   });
 });

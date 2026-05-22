@@ -23,30 +23,6 @@ export const ticketSnapshotOutput = type({
 
 export type TicketSnapshot = typeof ticketSnapshotOutput.infer;
 
-export type TicketCreateInput = {
-  token: string;
-  title: string;
-  quantityTotal: number;
-  unitPriceCents: number;
-};
-
-export type TicketRecord = {
-  id: string;
-  sellerId: string;
-  title: string;
-  quantityTotal: number;
-  quantityAvailable: number;
-  unitPriceCents: number;
-  version: number;
-  createdAt: string;
-};
-
-export const ticketsListInput = type({
-  "limit?": "1 <= number.integer <= 200",
-});
-
-export type TicketsListInput = typeof ticketsListInput.infer;
-
 export const ticketRecordOutput = type({
   id: "string.uuid",
   sellerId: "string",
@@ -58,6 +34,31 @@ export const ticketRecordOutput = type({
   createdAt: "string.date.iso",
 });
 
+export const ticketRecordOrNullOutput = ticketRecordOutput.or("null");
+
+export type TicketRecord = typeof ticketRecordOutput.infer;
+
+export const ticketCreateInput = type({
+  token: "string >= 1",
+  title: "string >= 1",
+  quantityTotal: "number.integer >= 1",
+  unitPriceCents: "number.integer >= 0",
+});
+
+export type TicketCreateInput = typeof ticketCreateInput.infer;
+
+export const ticketGetByIdInput = type({
+  ticketId: "string.uuid",
+});
+
+export type TicketGetByIdInput = typeof ticketGetByIdInput.infer;
+
+export const ticketsListInput = type({
+  "limit?": "1 <= number.integer <= 200",
+});
+
+export type TicketsListInput = typeof ticketsListInput.infer;
+
 export const ticketsListOutput = type({
   items: ticketRecordOutput.array(),
 });
@@ -67,6 +68,6 @@ export type TicketsListOutput = typeof ticketsListOutput.infer;
 export type TicketsRouterClient = {
   create: (input: TicketCreateInput) => Promise<TicketRecord>;
   reserve: (input: ReserveTicketInput) => Promise<ReserveTicketOutput>;
-  getById: (input: { ticketId: string }) => Promise<TicketRecord | null>;
+  getById: (input: TicketGetByIdInput) => Promise<TicketRecord | null>;
   list: (input: TicketsListInput) => Promise<TicketsListOutput>;
 };
