@@ -411,6 +411,9 @@ importers:
       stripe:
         specifier: 'catalog:'
         version: 22.1.1(@types/node@25.9.1)
+      uuid:
+        specifier: 'catalog:'
+        version: 14.0.0
     devDependencies:
       '@nats-io/jetstream':
         specifier: 'catalog:'
@@ -427,6 +430,9 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
+      auth:
+        specifier: workspace:*
+        version: link:../auth
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
