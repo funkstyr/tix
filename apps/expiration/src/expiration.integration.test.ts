@@ -8,12 +8,14 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { ORDER_CREATED_V1 } from "@tix/contracts/subjects";
+import { orderExpiredV1 } from "@tix/contracts/orders";
+import { ORDER_CREATED_V1, ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
-import { createPublisher } from "@tix/messaging/jetstream";
+import { createConsumer, createPublisher, type Publisher } from "@tix/messaging/jetstream";
 
 import { expirationInbox, expirationTables } from "./expiration-schema.ts";
 import {
+  EXPIRATION_JOB_NAME,
   EXPIRATION_QUEUE,
   startExpirationService,
   type ExpireOrderPayload,
@@ -111,7 +113,7 @@ beforeEach(async () => {
   const manager = await jetstreamManager(harness.nats);
   await manager.streams.add({
     name: harness.stream,
-    subjects: [ORDER_CREATED_V1],
+    subjects: [ORDER_CREATED_V1, ORDER_EXPIRED_V1],
     retention: RetentionPolicy.Limits,
     storage: StorageType.Memory,
   });
@@ -174,6 +176,35 @@ async function waitForJob(
     await new Promise((r) => setTimeout(r, 25));
   }
   throw new Error(`job ${jobId} did not appear within ${timeoutMs}ms`);
+}
+
+async function awaitExpiredEvent(
+  nc: NatsConnection,
+  stream: string,
+  expectedOrderId: string,
+): Promise<{ orderId: string; expiredAt: string; eventId: string }> {
+  let resolveEvent!: (e: { orderId: string; expiredAt: string; eventId: string }) => void;
+  const received = new Promise<{ orderId: string; expiredAt: string; eventId: string }>((r) => {
+    resolveEvent = r;
+  });
+
+  const consumer = await createConsumer(nc, {
+    stream,
+    subjectFilter: ORDER_EXPIRED_V1,
+    group: `test-expired-${randomUUID()}`,
+    schema: orderExpiredV1,
+    handler: ({ payload, eventId }) => {
+      if (payload.orderId === expectedOrderId) {
+        resolveEvent({ orderId: payload.orderId, expiredAt: payload.expiredAt, eventId });
+      }
+    },
+  });
+
+  try {
+    return await received;
+  } finally {
+    await consumer.stop();
+  }
 }
 
 describe.skipIf(!dockerAvailable)("expiration consumer", () => {
@@ -259,6 +290,78 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
 
       const inboxRows = await dbRef.db.select().from(expirationInbox);
       expect(inboxRows).toHaveLength(2);
+    } finally {
+      await queue.close();
+    }
+  }, 30_000);
+});
+
+describe.skipIf(!dockerAvailable)("expiration worker", () => {
+  it("fires a delayed job and publishes order.expired.v1 within 200-1500ms", async () => {
+    const { nats: nc, stream } = requireHarness();
+    if (!service) throw new Error("service not started");
+
+    const orderId = randomUUID();
+    const scheduledAt = Date.now();
+    await service.scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, { orderId }, 200, orderId);
+
+    const event = await awaitExpiredEvent(nc, stream, orderId);
+    const elapsed = Date.now() - scheduledAt;
+
+    expect(event.orderId).toBe(orderId);
+    expect(orderExpiredV1(event)).not.toBeInstanceOf(Error);
+    expect(elapsed).toBeGreaterThanOrEqual(200);
+    expect(elapsed).toBeLessThan(1_500);
+  }, 30_000);
+
+  it("retries publish on transient failure and eventually publishes", async () => {
+    const { db: dbRef, nats: nc, redis: redisRef, stream } = requireHarness();
+
+    // Tear down the auto-started service so we can inject a publisher that throws on the first call.
+    await service?.stop();
+
+    const realPublisher = createPublisher(nc);
+    let attempts = 0;
+    const flakyPublisher: Publisher = {
+      publish: async (subject, payload, opts) => {
+        attempts++;
+        if (attempts === 1) throw new Error("simulated NATS unavailable");
+        return await realPublisher.publish(subject, payload, opts);
+      },
+    };
+
+    service = await startExpirationService({
+      db: dbRef,
+      nats: nc,
+      stream,
+      redis: redisRef,
+      publisher: flakyPublisher,
+    });
+
+    const orderId = randomUUID();
+    await service.scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, { orderId }, 50, orderId);
+
+    const event = await awaitExpiredEvent(nc, stream, orderId);
+
+    expect(event.orderId).toBe(orderId);
+    expect(attempts).toBeGreaterThanOrEqual(2);
+  }, 30_000);
+
+  it("leaves no delayed or waiting jobs after a successful fire", async () => {
+    const { nats: nc, redis: redisRef, stream } = requireHarness();
+    if (!service) throw new Error("service not started");
+
+    const orderId = randomUUID();
+    await service.scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, { orderId }, 100, orderId);
+
+    await awaitExpiredEvent(nc, stream, orderId);
+
+    const queue = new Queue<ExpireOrderPayload, void>(EXPIRATION_QUEUE, { connection: redisRef });
+    try {
+      const counts = await queue.getJobCounts("delayed", "waiting", "active");
+      expect(counts["delayed"] ?? 0).toBe(0);
+      expect(counts["waiting"] ?? 0).toBe(0);
+      expect(counts["active"] ?? 0).toBe(0);
     } finally {
       await queue.close();
     }

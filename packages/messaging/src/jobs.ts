@@ -1,4 +1,4 @@
-import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type ConnectionOptions, type JobsOptions, Queue, Worker } from "bullmq";
 import type { Logger } from "pino";
 
 export type WorkerHandler<Payload> = (payload: Payload) => Promise<void> | void;
@@ -16,6 +16,7 @@ export type DelayedScheduler<Payload> = {
 export type SchedulerOptions = {
   queueName: string;
   logger?: Logger;
+  defaultJobOptions?: Pick<JobsOptions, "attempts" | "backoff">;
 };
 
 export type WorkerOptions<Payload> = {
@@ -28,7 +29,11 @@ export function createScheduler<Payload>(
   connection: ConnectionOptions,
   options: SchedulerOptions,
 ): DelayedScheduler<Payload> {
-  const queue = new Queue(options.queueName, { connection });
+  const queueOpts =
+    options.defaultJobOptions === undefined
+      ? { connection }
+      : { connection, defaultJobOptions: options.defaultJobOptions };
+  const queue = new Queue(options.queueName, queueOpts);
   const log = options.logger?.child({ queueName: options.queueName });
 
   return {
@@ -69,6 +74,15 @@ export function createWorker<Payload>(
         throw err;
       }
     },
-    { connection },
+    // BullMQ requires `maxRetriesPerRequest: null` on worker connections; without it,
+    // ioredis queues retries that surface as unhandled rejections during shutdown.
+    { connection: withWorkerConnectionDefaults(connection) },
   );
+}
+
+function withWorkerConnectionDefaults(connection: ConnectionOptions): ConnectionOptions {
+  if (connection && typeof connection === "object" && !("connect" in connection)) {
+    return { ...connection, maxRetriesPerRequest: null };
+  }
+  return connection;
 }
