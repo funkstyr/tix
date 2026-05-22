@@ -32,6 +32,10 @@
       "types": "./dist/orders.d.ts",
       "import": "./dist/orders.js"
     },
+    "./payments": {
+      "types": "./dist/payments.d.ts",
+      "import": "./dist/payments.js"
+    },
     "./rpc": {
       "types": "./dist/rpc.d.ts",
       "import": "./dist/rpc.js"
