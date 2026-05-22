@@ -8,7 +8,10 @@ import { createDbClient } from "@tix/db-core/client";
 import { createLogger } from "@tix/observability/logger";
 
 import { createPaymentsApp } from "./payments-app.ts";
-import { startPaymentsOrderCreatedConsumer } from "./payments-consumer.ts";
+import {
+  startPaymentsOrderCancelledConsumer,
+  startPaymentsOrderCreatedConsumer,
+} from "./payments-consumer.ts";
 import { paymentsTables } from "./payments-schema.ts";
 
 const DEFAULT_PORT = 4004;
@@ -65,6 +68,13 @@ async function main(): Promise<void> {
     logger,
   });
 
+  const orderCancelledConsumer = await startPaymentsOrderCancelledConsumer({
+    db,
+    nats,
+    stream: env.stream,
+    logger,
+  });
+
   const app = createPaymentsApp({ logger });
 
   const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
@@ -80,6 +90,7 @@ async function main(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
+    await orderCancelledConsumer.stop();
     await orderCreatedConsumer.stop();
     await nats.close();
     await db.close();

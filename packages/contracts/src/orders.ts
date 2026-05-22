@@ -13,6 +13,17 @@ export const orderCreatedV1 = type({
 
 export type OrderCreatedV1 = typeof orderCreatedV1.infer;
 
+export const orderCancelledV1 = type({
+  "+": "reject",
+  orderId: "string.uuid",
+  // post-transition version of the order row — consumers apply the cancel only
+  // when their local read-model is at `version - 1`, dropping stale redeliveries.
+  version: "number.integer >= 1",
+  cancelledAt: "string.date.iso",
+});
+
+export type OrderCancelledV1 = typeof orderCancelledV1.infer;
+
 export const orderExpiredV1 = type({
   "+": "reject",
   orderId: "string.uuid",
