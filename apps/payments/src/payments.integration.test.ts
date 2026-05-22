@@ -260,8 +260,8 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
     await assertNoSideEffects(orderId);
   });
 
-  it.each(["cancelled", "expired", "complete"] as const)(
-    "rejects with BAD_REQUEST when the order is %s",
+  it.each(["awaiting_payment", "cancelled", "expired", "complete"] as const)(
+    "rejects with CONFLICT when the order is %s",
     async (status) => {
       const buyer = await signUpBuyer();
       const orderId = randomUUID();
@@ -283,7 +283,8 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
       });
 
       await expect(call).rejects.toMatchObject({
-        code: "BAD_REQUEST",
+        code: "CONFLICT",
+        status: 409,
         data: { reason: "not_payable", status },
       });
       expect(createPaymentIntent).not.toHaveBeenCalled();
@@ -308,18 +309,6 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
     });
 
     await expect(call).rejects.toThrow("stripe network error");
-
-    const db = requireValue(paymentsDb, "paymentsDb");
-    const paymentRows = await db.db
-      .select()
-      .from(paymentsTable)
-      .where(eq(paymentsTable.orderId, orderId));
-    expect(paymentRows).toHaveLength(0);
-
-    const outboxRows = await db.db
-      .select()
-      .from(paymentsOutboxTable)
-      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
-    expect(outboxRows).toHaveLength(0);
+    await assertNoSideEffects(orderId);
   });
 });
