@@ -17,11 +17,27 @@ export type DownstreamRouterClient<T> = {
     : never;
 };
 
+type DroppedMethods<T> = {
+  [K in keyof T]: T[K] extends (input: never) => unknown
+    ? T[K] extends () => unknown
+      ? K
+      : never
+    : K;
+}[keyof T];
+
+// If a router method isn't a single-input function (e.g. `() => Promise<T>`,
+// or two required args), its key surfaces in `DroppedMethods<T>` and the
+// wrapped client collapses to a sentinel — any call against it then fails to
+// compile, turning a silent shape drift into a type error.
+type CheckedDownstream<T> = [DroppedMethods<T>] extends [never]
+  ? DownstreamRouterClient<T>
+  : { __unsupported_router_method_shape__: DroppedMethods<T> };
+
 export type DownstreamClients = {
-  tickets: DownstreamRouterClient<TicketsRouterClient>;
-  orders: DownstreamRouterClient<OrdersRouterClient>;
-  payments: DownstreamRouterClient<PaymentsRouterClient>;
-  auth: DownstreamRouterClient<AuthRouterClient>;
+  tickets: CheckedDownstream<TicketsRouterClient>;
+  orders: CheckedDownstream<OrdersRouterClient>;
+  payments: CheckedDownstream<PaymentsRouterClient>;
+  auth: CheckedDownstream<AuthRouterClient>;
 };
 
 export type DownstreamServiceUrls = {
