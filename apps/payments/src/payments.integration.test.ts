@@ -1,17 +1,9 @@
 import { createRouterClient } from "@orpc/server";
-import { createAuth } from "auth/instance";
-import { createAuthRouter } from "auth/router";
-import { authTables } from "auth/schema";
 import { eq } from "drizzle-orm";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AuthRouterClient } from "@tix/contracts/auth";
-import { createInProcessAuthSessionClient } from "@tix/contracts/auth-client";
-import { createDbClient, type DbClient } from "@tix/db-core/client";
+import { PAYMENT_INTENT_STATUSES } from "@tix/contracts/payments";
 import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
 
@@ -20,67 +12,31 @@ import {
   orderReadModel as orderReadModelTable,
   payments as paymentsTable,
   paymentsOutbox as paymentsOutboxTable,
-  paymentsTables,
 } from "./payments-schema.ts";
+import {
+  type PaymentsTestStack,
+  seedOrder as fixtureSeedOrder,
+  signUpBuyer as fixtureSignUpBuyer,
+  startPaymentsTestStack,
+  stopPaymentsTestStack,
+  truncatePaymentsTestStack,
+} from "./payments-test-fixtures.ts";
 import { createPaymentsRouter } from "./router.ts";
 import type { PaymentIntentClient } from "./stripe-payment-intent.ts";
 
-const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
-const TEST_BASE_URL = "http://localhost:4004";
-
-const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
-const paymentsMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
-
-type PaymentsDbClient = DbClient<typeof paymentsTables>;
-type AuthDbClient = DbClient<typeof authTables>;
-
-let pgContainer: StartedTestContainer | undefined;
-let paymentsDb: PaymentsDbClient | undefined;
-let authDb: AuthDbClient | undefined;
-let authClient: AuthRouterClient | undefined;
-let authSessionClient: ReturnType<typeof createInProcessAuthSessionClient> | undefined;
+let stack: PaymentsTestStack | undefined;
 
 beforeAll(async () => {
   if (!dockerAvailable) return;
-
-  pgContainer = await new GenericContainer("postgres:16-alpine")
-    .withEnvironment({
-      POSTGRES_USER: "postgres",
-      POSTGRES_PASSWORD: "postgres",
-      POSTGRES_DB: "payments_router_test",
-    })
-    .withExposedPorts(5432)
-    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-    .withStartupTimeout(60_000)
-    .start();
-
-  const host = pgContainer.getHost();
-  const port = pgContainer.getMappedPort(5432);
-  const url = `postgres://postgres:postgres@${host}:${port}/payments_router_test`;
-
-  authDb = createDbClient("auth", url, { schema: authTables });
-  await migrate(authDb.db, { migrationsFolder: authMigrations });
-
-  paymentsDb = createDbClient("payments", url, { schema: paymentsTables });
-  await migrate(paymentsDb.db, { migrationsFolder: paymentsMigrations });
-
-  const auth = createAuth({ db: authDb.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
-  const authRouter = createAuthRouter({ auth });
-  authClient = createRouterClient(authRouter);
-  authSessionClient = createInProcessAuthSessionClient(authClient);
+  stack = await startPaymentsTestStack("payments_router_test");
 }, 180_000);
 
 afterAll(async () => {
-  await paymentsDb?.close();
-  await authDb?.close();
-  await pgContainer?.stop();
+  if (stack) await stopPaymentsTestStack(stack);
 });
 
 beforeEach(async () => {
-  if (!paymentsDb || !authDb) return;
-
-  await paymentsDb.sql`TRUNCATE TABLE payments.payments, payments.order_read_model, payments.outbox, payments.inbox RESTART IDENTITY CASCADE`;
-  await authDb.sql`TRUNCATE TABLE auth.session, auth.account, auth.user RESTART IDENTITY CASCADE`;
+  if (stack) await truncatePaymentsTestStack(stack);
 });
 
 afterEach(() => {
@@ -88,9 +44,10 @@ afterEach(() => {
 });
 
 function buildClient(paymentIntentClient: PaymentIntentClient) {
+  const s = requireValue(stack, "stack");
   const router = createPaymentsRouter({
-    db: requireValue(paymentsDb, "paymentsDb"),
-    authClient: requireValue(authSessionClient, "authSessionClient"),
+    db: s.paymentsDb,
+    authClient: s.authSessionClient,
     paymentIntentClient,
   });
 
@@ -98,22 +55,15 @@ function buildClient(paymentIntentClient: PaymentIntentClient) {
 }
 
 async function signUpBuyer(): Promise<{ userId: string; token: string }> {
-  const result = await requireValue(authClient, "authClient").signUp({
-    email: `buyer-${randomUUID()}@example.com`,
-    password: "correct-horse-battery",
-    name: "buyer",
-  });
-
-  return { userId: result.userId, token: result.token };
+  return fixtureSignUpBuyer(requireValue(stack, "stack").authClient);
 }
 
 async function seedOrder(buyerId: string, priceCents: number): Promise<string> {
-  const orderId = randomUUID();
-  await requireValue(paymentsDb, "paymentsDb")
-    .db.insert(orderReadModelTable)
-    .values({ id: orderId, version: 1, userId: buyerId, priceCents, status: "created" });
+  return fixtureSeedOrder(requireValue(stack, "stack").paymentsDb, buyerId, priceCents);
+}
 
-  return orderId;
+function getPaymentsDb() {
+  return requireValue(stack, "stack").paymentsDb;
 }
 
 describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
@@ -146,7 +96,7 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
       paymentMethodId: "pm_card_visa",
     });
 
-    const db = requireValue(paymentsDb, "paymentsDb");
+    const db = getPaymentsDb();
     const [row] = await db.db.select().from(paymentsTable).where(eq(paymentsTable.id, result.id));
     expect(row).toMatchObject({
       orderId,
@@ -178,7 +128,7 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
     const buyer = await signUpBuyer();
     const orderId = await seedOrder(buyer.userId, 1_200);
 
-    const db = requireValue(paymentsDb, "paymentsDb");
+    const db = getPaymentsDb();
 
     await expect(
       db.db.transaction(async (tx) => {
@@ -242,7 +192,7 @@ describe.skipIf(!dockerAvailable)("payments.create — idempotency", () => {
     // writes are deduped by UNIQUE(order_id) in payments.
     expect(createPaymentIntent).toHaveBeenCalledTimes(2);
 
-    const db = requireValue(paymentsDb, "paymentsDb");
+    const db = getPaymentsDb();
 
     const paymentRows = await db.db
       .select()
@@ -278,7 +228,7 @@ describe.skipIf(!dockerAvailable)("payments.create — idempotency", () => {
     expect(second.id).toBe(first.id);
     expect(second.status).toBe(first.status);
 
-    const db = requireValue(paymentsDb, "paymentsDb");
+    const db = getPaymentsDb();
 
     const paymentRows = await db.db
       .select()
@@ -296,7 +246,7 @@ describe.skipIf(!dockerAvailable)("payments.create — idempotency", () => {
 
 describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
   async function assertNoSideEffects(orderId: string) {
-    const db = requireValue(paymentsDb, "paymentsDb");
+    const db = getPaymentsDb();
     const paymentRows = await db.db
       .select()
       .from(paymentsTable)
@@ -351,7 +301,7 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
     async (status) => {
       const buyer = await signUpBuyer();
       const orderId = randomUUID();
-      await requireValue(paymentsDb, "paymentsDb").db.insert(orderReadModelTable).values({
+      await getPaymentsDb().db.insert(orderReadModelTable).values({
         id: orderId,
         version: 2,
         userId: buyer.userId,
@@ -398,14 +348,9 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
     await assertNoSideEffects(orderId);
   });
 
-  it.each([
-    "canceled",
-    "processing",
-    "requires_action",
-    "requires_capture",
-    "requires_confirmation",
-    "requires_payment_method",
-  ] as const)(
+  const nonSucceededStatuses = PAYMENT_INTENT_STATUSES.filter((s) => s !== "succeeded");
+
+  it.each(nonSucceededStatuses)(
     "rejects with UNPROCESSABLE_CONTENT and writes nothing when Stripe returns %s",
     async (status) => {
       const buyer = await signUpBuyer();

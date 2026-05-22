@@ -77,14 +77,10 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
         paymentMethodId: input.paymentMethodId,
       });
 
-      // Anything other than `succeeded` is non-terminal or non-payable in this
-      // PRD's scope: `requires_action` is 3DS (out of scope), `canceled` /
-      // `requires_payment_method` mean the buyer needs a different card,
-      // `processing` / `requires_confirmation` / `requires_capture` shouldn't
-      // appear under `confirm: true` for a card payment method. Refusing to
-      // record the row here keeps UNIQUE(order_id) open so the buyer can retry
-      // with a new payment method, and prevents `payment.created.v1` from
-      // firing for a charge that isn't actually money in the bank.
+      // Only `succeeded` is money-in-the-bank — 3DS, processing, and
+      // requires-* are out of PRD scope. Skipping the row keeps
+      // UNIQUE(order_id) open for a retry with a different card and prevents
+      // `payment.created.v1` firing for a charge that didn't actually clear.
       if (intent.status !== "succeeded") {
         throw new ORPCError("UNPROCESSABLE_CONTENT", {
           status: 422,
