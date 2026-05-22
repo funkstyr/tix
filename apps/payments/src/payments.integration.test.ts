@@ -1,0 +1,209 @@
+import { createRouterClient } from "@orpc/server";
+import { createAuth } from "auth/instance";
+import { createAuthRouter } from "auth/router";
+import { authTables } from "auth/schema";
+import { eq } from "drizzle-orm";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { AuthRouterClient } from "@tix/contracts/auth";
+import { createInProcessAuthSessionClient } from "@tix/contracts/auth-client";
+import { createDbClient, type DbClient } from "@tix/db-core/client";
+import { dockerAvailable } from "@tix/test-helpers/docker-available";
+import { requireValue } from "@tix/test-helpers/require-value";
+
+import { recordPayment } from "./payment-repository.ts";
+import {
+  orderReadModel as orderReadModelTable,
+  payments as paymentsTable,
+  paymentsOutbox as paymentsOutboxTable,
+  paymentsTables,
+} from "./payments-schema.ts";
+import { createPaymentsRouter } from "./router.ts";
+import type { PaymentIntentClient } from "./stripe-payment-intent.ts";
+
+const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
+const TEST_BASE_URL = "http://localhost:4004";
+
+const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
+const paymentsMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+
+type PaymentsDbClient = DbClient<typeof paymentsTables>;
+type AuthDbClient = DbClient<typeof authTables>;
+
+let pgContainer: StartedTestContainer | undefined;
+let paymentsDb: PaymentsDbClient | undefined;
+let authDb: AuthDbClient | undefined;
+let authClient: AuthRouterClient | undefined;
+let authSessionClient: ReturnType<typeof createInProcessAuthSessionClient> | undefined;
+
+beforeAll(async () => {
+  if (!dockerAvailable) return;
+
+  pgContainer = await new GenericContainer("postgres:16-alpine")
+    .withEnvironment({
+      POSTGRES_USER: "postgres",
+      POSTGRES_PASSWORD: "postgres",
+      POSTGRES_DB: "payments_router_test",
+    })
+    .withExposedPorts(5432)
+    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+    .withStartupTimeout(60_000)
+    .start();
+
+  const host = pgContainer.getHost();
+  const port = pgContainer.getMappedPort(5432);
+  const url = `postgres://postgres:postgres@${host}:${port}/payments_router_test`;
+
+  authDb = createDbClient("auth", url, { schema: authTables });
+  await migrate(authDb.db, { migrationsFolder: authMigrations });
+
+  paymentsDb = createDbClient("payments", url, { schema: paymentsTables });
+  await migrate(paymentsDb.db, { migrationsFolder: paymentsMigrations });
+
+  const auth = createAuth({ db: authDb.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
+  const authRouter = createAuthRouter({ auth });
+  authClient = createRouterClient(authRouter);
+  authSessionClient = createInProcessAuthSessionClient(authClient);
+}, 180_000);
+
+afterAll(async () => {
+  await paymentsDb?.close();
+  await authDb?.close();
+  await pgContainer?.stop();
+});
+
+beforeEach(async () => {
+  if (!paymentsDb || !authDb) return;
+
+  await paymentsDb.sql`TRUNCATE TABLE payments.payments, payments.order_read_model, payments.outbox, payments.inbox RESTART IDENTITY CASCADE`;
+  await authDb.sql`TRUNCATE TABLE auth.session, auth.account, auth.user RESTART IDENTITY CASCADE`;
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function buildClient(paymentIntentClient: PaymentIntentClient) {
+  const router = createPaymentsRouter({
+    db: requireValue(paymentsDb, "paymentsDb"),
+    authClient: requireValue(authSessionClient, "authSessionClient"),
+    paymentIntentClient,
+  });
+
+  return createRouterClient(router);
+}
+
+async function signUpBuyer(): Promise<{ userId: string; token: string }> {
+  const result = await requireValue(authClient, "authClient").signUp({
+    email: `buyer-${randomUUID()}@example.com`,
+    password: "correct-horse-battery",
+    name: "buyer",
+  });
+
+  return { userId: result.userId, token: result.token };
+}
+
+async function seedOrder(buyerId: string, priceCents: number): Promise<string> {
+  const orderId = randomUUID();
+  await requireValue(paymentsDb, "paymentsDb")
+    .db.insert(orderReadModelTable)
+    .values({ id: orderId, version: 1, userId: buyerId, priceCents, status: "created" });
+
+  return orderId;
+}
+
+describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
+  it("charges via Stripe, writes a Payment row, and enqueues payment.created.v1", async () => {
+    const buyer = await signUpBuyer();
+    const orderId = await seedOrder(buyer.userId, 4_500);
+
+    const createPaymentIntent = vi
+      .fn<PaymentIntentClient["createPaymentIntent"]>()
+      .mockResolvedValue({
+        stripeId: "pi_test_happy_path_123",
+        status: "succeeded",
+      });
+
+    const client = buildClient({ createPaymentIntent });
+
+    const result = await client.create({
+      token: buyer.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    expect(result.status).toBe("succeeded");
+
+    expect(createPaymentIntent).toHaveBeenCalledTimes(1);
+    expect(createPaymentIntent).toHaveBeenCalledWith({
+      orderId,
+      amountCents: 4_500,
+      currency: "usd",
+      paymentMethodId: "pm_card_visa",
+    });
+
+    const db = requireValue(paymentsDb, "paymentsDb");
+    const [row] = await db.db.select().from(paymentsTable).where(eq(paymentsTable.id, result.id));
+    expect(row).toMatchObject({
+      orderId,
+      userId: buyer.userId,
+      stripeId: "pi_test_happy_path_123",
+      amount: 4_500,
+      currency: "usd",
+      status: "succeeded",
+    });
+
+    const outboxRows = await db.db
+      .select()
+      .from(paymentsOutboxTable)
+      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
+    expect(outboxRows).toHaveLength(1);
+    expect(outboxRows[0]?.payload).toMatchObject({
+      id: result.id,
+      orderId,
+      stripeId: "pi_test_happy_path_123",
+      amountCents: 4_500,
+      currency: "usd",
+      userId: buyer.userId,
+      version: 1,
+    });
+    expect(outboxRows[0]?.sentAt).toBeNull();
+  });
+
+  it("writes the Payment row and outbox entry in the same transaction", async () => {
+    const buyer = await signUpBuyer();
+    const orderId = await seedOrder(buyer.userId, 1_200);
+
+    const db = requireValue(paymentsDb, "paymentsDb");
+
+    await expect(
+      db.db.transaction(async (tx) => {
+        await recordPayment(tx, {
+          orderId,
+          userId: buyer.userId,
+          stripeId: "pi_atomic_test_456",
+          amountCents: 1_200,
+          currency: "usd",
+          status: "succeeded",
+        });
+        throw new Error("force rollback");
+      }),
+    ).rejects.toThrow("force rollback");
+
+    const paymentRows = await db.db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.orderId, orderId));
+    expect(paymentRows).toHaveLength(0);
+
+    const outboxRows = await db.db
+      .select()
+      .from(paymentsOutboxTable)
+      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
+    expect(outboxRows).toHaveLength(0);
+  });
+});
