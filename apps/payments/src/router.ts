@@ -1,28 +1,13 @@
 import { ORPCError, os } from "@orpc/server";
-import { type } from "arktype";
 import { eq } from "drizzle-orm";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
-import { paymentIntentStatus } from "@tix/contracts/payments";
+import { paymentCreateInput, paymentCreateOutput } from "@tix/contracts/payments";
 import type { DbClient } from "@tix/db-core/client";
 
 import { recordPayment } from "./payment-repository.ts";
 import { orderReadModel, type paymentsTables } from "./payments-schema.ts";
 import type { PaymentIntentClient } from "./stripe-payment-intent.ts";
-
-const tokenInput = type({
-  token: "string >= 1",
-});
-
-const createInput = tokenInput.and({
-  orderId: "string.uuid",
-  paymentMethodId: "string >= 1",
-});
-
-const createOutput = type({
-  id: "string.uuid",
-  status: paymentIntentStatus,
-});
 
 const DEFAULT_CURRENCY = "usd";
 const PAYABLE_ORDER_STATUS = "created";
@@ -37,8 +22,8 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
   const { db, authClient, paymentIntentClient } = deps;
 
   const create = os
-    .input(createInput)
-    .output(createOutput)
+    .input(paymentCreateInput)
+    .output(paymentCreateOutput)
     .handler(async ({ input }) => {
       const session = await requireSession(authClient, input.token);
 
