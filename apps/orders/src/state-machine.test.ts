@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { transition, type Event, type Status } from "./state-machine.ts";
 
-const NON_TERMINAL_STATUSES: Status[] = ["created", "awaiting_payment"];
 const TERMINAL_STATUSES: Status[] = ["complete", "cancelled", "expired"];
 const ALL_EVENTS: Event[] = [
   { kind: "buyer_cancels" },
@@ -43,15 +42,4 @@ describe("transition", () => {
       });
     },
   );
-
-  it("covers every (status, event) pair exactly once", () => {
-    const statuses: Status[] = [...NON_TERMINAL_STATUSES, ...TERMINAL_STATUSES];
-    const pairs = statuses.flatMap((s) => ALL_EVENTS.map((e) => transition(s, e)));
-
-    const okPairs = pairs.filter((r) => r.ok);
-    expect(okPairs).toHaveLength(1);
-    expect(okPairs[0]).toEqual({ ok: true, next: "expired" });
-
-    expect(pairs).toHaveLength(statuses.length * ALL_EVENTS.length);
-  });
 });

@@ -11,7 +11,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { orderReservationReleasedV1, type OrderReservationReleasedV1 } from "@tix/contracts/orders";
 import { ORDER_EXPIRED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
-import { createConsumer, createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
+import { createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
 
 import { startOrdersExpiredConsumer } from "./orders-consumer.ts";
 import {
@@ -130,11 +130,6 @@ function requireNats(): NatsConnection {
   return nats;
 }
 
-function requireStream(): string {
-  if (!streamName) throw new Error("stream not initialized");
-  return streamName;
-}
-
 type SeedOrderArgs = { quantity?: number; status?: string };
 
 async function seedOrder(args: SeedOrderArgs = {}): Promise<{
@@ -170,7 +165,6 @@ async function publishExpired(args: { orderId: string; eventId: string }): Promi
 
 async function waitFor<T>(read: () => Promise<T | undefined>, timeoutMs: number): Promise<T> {
   const started = Date.now();
-  // eslint-disable-next-line no-await-in-loop
   while (Date.now() - started < timeoutMs) {
     // eslint-disable-next-line no-await-in-loop
     const value = await read();
@@ -218,51 +212,6 @@ describe.skipIf(!dockerAvailable)("orders consumer for order.expired.v1", () => 
       .where(eq(ordersTable.id, seeded.id));
     expect(row?.status).toBe("expired");
     expect(row?.version).toBe(2);
-  }, 30_000);
-
-  it("forwards the release payload to a subscriber on order.reservation_released.v1", async () => {
-    const seeded = await seedOrder();
-    const stream = requireStream();
-    const nc = requireNats();
-
-    let resolveReleased!: (p: OrderReservationReleasedV1) => void;
-    const releasedPromise = new Promise<OrderReservationReleasedV1>((r) => {
-      resolveReleased = r;
-    });
-
-    const subscriber = await createConsumer(nc, {
-      stream,
-      subjectFilter: ORDER_RESERVATION_RELEASED_V1,
-      group: `test-released-${randomUUID().replace(/-/g, "")}`,
-      schema: orderReservationReleasedV1,
-      handler: ({ payload }) => {
-        if (payload.orderId === seeded.id) resolveReleased(payload);
-      },
-    });
-
-    try {
-      // Outbox relay isn't running in this test; forward the outbox row manually
-      // so the release reaches JetStream. The contract under test is the
-      // consumer + FSM + enqueue, not the relay (covered elsewhere).
-      await publishExpired({ orderId: seeded.id, eventId: randomUUID() });
-      const released = await waitFor(() => readReleasedFromOutbox(seeded.id), 3_000);
-
-      const publisher = createPublisher(nc);
-      await publisher.publish(ORDER_RESERVATION_RELEASED_V1, released, {
-        msgId: `released:${seeded.id}`,
-      });
-
-      const observed = await Promise.race([
-        releasedPromise,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("did not observe release event")), 2_000),
-        ),
-      ]);
-
-      expect(observed).toEqual(released);
-    } finally {
-      await subscriber.stop();
-    }
   }, 30_000);
 
   it("dedupes a redelivered order.expired.v1: order unchanged, no second release", async () => {

@@ -185,7 +185,6 @@ async function waitForJob(
   timeoutMs: number,
 ): Promise<void> {
   const started = Date.now();
-  // eslint-disable-next-line no-await-in-loop
   while (Date.now() - started < timeoutMs) {
     // eslint-disable-next-line no-await-in-loop
     const job = await queue.getJob(jobId);

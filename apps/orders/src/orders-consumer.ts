@@ -68,6 +68,11 @@ export async function startOrdersExpiredConsumer(
             { status: next.next },
           );
           if (updated.rowsAffected === 0) {
+            // Safe today because `deadline_passed` is the only wired transition:
+            // any concurrent writer must have already moved the row to a terminal
+            // state, where `order.expired` is correctly a no-op. Revisit when
+            // more transitions land — the inbox row commits regardless, so the
+            // event won't be re-delivered.
             logger?.warn(
               { eventId, orderId: order.id, version: order.version },
               "order version changed under us; skipping release",
