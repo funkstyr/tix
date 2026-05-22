@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { orderReservationReleasedV1, type OrderReservationReleasedV1 } from "@tix/contracts/orders";
+import {
+  type OrderRecord,
+  orderReservationReleasedV1,
+  type OrderReservationReleasedV1,
+} from "@tix/contracts/orders";
 import { ORDER_EXPIRED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
@@ -110,7 +114,7 @@ afterEach(async () => {
   streamName = undefined;
 });
 
-type SeedOrderArgs = { quantity?: number; status?: string };
+type SeedOrderArgs = { quantity?: number; status?: OrderRecord["status"] };
 
 async function seedOrder(args: SeedOrderArgs = {}): Promise<{
   id: string;

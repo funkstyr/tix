@@ -7,7 +7,9 @@ export const orders = ordersSchema.table("orders", {
   buyerId: text("buyer_id").notNull(),
   ticketId: uuid("ticket_id").notNull(),
   quantity: integer("quantity").notNull(),
-  status: text("status").notNull(),
+  status: text("status", {
+    enum: ["created", "awaiting_payment", "complete", "cancelled", "expired"],
+  }).notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

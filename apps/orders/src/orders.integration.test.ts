@@ -413,7 +413,7 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
     expect(ticketRow?.quantityAvailable).toBe(3);
   });
 
-  it("orders.getById returns the created Order", async () => {
+  it("orders.getById returns the created Order to its buyer", async () => {
     const seller = await signUpUser("seller-getby@example.com");
     const buyer = await signUpUser("buyer-getby@example.com");
     const ticket = await createTicket(seller.token, 4);
@@ -424,7 +424,10 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
       quantity: 1,
     });
 
-    const fetched = await getOrdersClient().getById({ orderId: created.id });
+    const fetched = await getOrdersClient().getById({
+      token: buyer.token,
+      orderId: created.id,
+    });
 
     expect(fetched).not.toBeNull();
     expect(fetched?.id).toBe(created.id);
@@ -434,9 +437,48 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
   });
 
   it("orders.getById returns null for an unknown id", async () => {
+    const buyer = await signUpUser("buyer-getby-unknown@example.com");
+
     const missing = await getOrdersClient().getById({
+      token: buyer.token,
       orderId: "00000000-0000-4000-8000-000000000000",
     });
     expect(missing).toBeNull();
+  });
+
+  it("orders.getById rejects an unauthenticated caller with 401", async () => {
+    const seller = await signUpUser("seller-getby-unauth@example.com");
+    const buyer = await signUpUser("buyer-getby-unauth@example.com");
+    const ticket = await createTicket(seller.token, 2);
+    const created = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 1,
+    });
+
+    await expect(
+      getOrdersClient().getById({ token: INVALID_TOKEN, orderId: created.id }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+  });
+
+  // Non-ownership returns null (not 403) so existence isn't a side channel
+  // an attacker could probe with a guessed/leaked orderId.
+  it("orders.getById returns null when the caller is not the buyer", async () => {
+    const seller = await signUpUser("seller-getby-other@example.com");
+    const buyer = await signUpUser("buyer-getby-other@example.com");
+    const intruder = await signUpUser("intruder-getby@example.com");
+    const ticket = await createTicket(seller.token, 2);
+    const created = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 1,
+    });
+
+    const fetched = await getOrdersClient().getById({
+      token: intruder.token,
+      orderId: created.id,
+    });
+
+    expect(fetched).toBeNull();
   });
 });

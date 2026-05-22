@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   );
 
   await withStep("assert-expired", async () => {
-    const o = await orders.getById({ orderId: order.id });
+    const o = await orders.getById({ token: buyer.token, orderId: order.id });
     if (!o) throw new Error(`order ${order.id} not found after expiry`);
     if (o.status !== "expired") {
       throw new Error(`expected order.status="expired", got "${o.status}"`);
