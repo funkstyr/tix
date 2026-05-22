@@ -209,19 +209,36 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
 });
 
 describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
+  async function assertNoSideEffects(orderId: string) {
+    const db = requireValue(paymentsDb, "paymentsDb");
+    const paymentRows = await db.db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.orderId, orderId));
+    expect(paymentRows).toHaveLength(0);
+
+    const outboxRows = await db.db
+      .select()
+      .from(paymentsOutboxTable)
+      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
+    expect(outboxRows).toHaveLength(0);
+  }
+
   it("rejects with NOT_FOUND when the order is unknown", async () => {
     const buyer = await signUpBuyer();
+    const orderId = randomUUID();
     const createPaymentIntent = vi.fn<PaymentIntentClient["createPaymentIntent"]>();
     const client = buildClient({ createPaymentIntent });
 
     const call = client.create({
       token: buyer.token,
-      orderId: randomUUID(),
+      orderId,
       paymentMethodId: "pm_card_visa",
     });
 
     await expect(call).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(createPaymentIntent).not.toHaveBeenCalled();
+    await assertNoSideEffects(orderId);
   });
 
   it("rejects with FORBIDDEN when the order belongs to another user", async () => {
@@ -240,38 +257,40 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
 
     await expect(call).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(createPaymentIntent).not.toHaveBeenCalled();
-
-    const db = requireValue(paymentsDb, "paymentsDb");
-    const paymentRows = await db.db
-      .select()
-      .from(paymentsTable)
-      .where(eq(paymentsTable.orderId, orderId));
-    expect(paymentRows).toHaveLength(0);
+    await assertNoSideEffects(orderId);
   });
 
-  it("rejects with CONFLICT when the order is not in a payable state", async () => {
-    const buyer = await signUpBuyer();
-    const orderId = randomUUID();
-    await requireValue(paymentsDb, "paymentsDb").db.insert(orderReadModelTable).values({
-      id: orderId,
-      version: 2,
-      userId: buyer.userId,
-      priceCents: 3_300,
-      status: "cancelled",
-    });
+  it.each(["awaiting_payment", "cancelled", "expired", "complete"] as const)(
+    "rejects with CONFLICT when the order is %s",
+    async (status) => {
+      const buyer = await signUpBuyer();
+      const orderId = randomUUID();
+      await requireValue(paymentsDb, "paymentsDb").db.insert(orderReadModelTable).values({
+        id: orderId,
+        version: 2,
+        userId: buyer.userId,
+        priceCents: 3_300,
+        status,
+      });
 
-    const createPaymentIntent = vi.fn<PaymentIntentClient["createPaymentIntent"]>();
-    const client = buildClient({ createPaymentIntent });
+      const createPaymentIntent = vi.fn<PaymentIntentClient["createPaymentIntent"]>();
+      const client = buildClient({ createPaymentIntent });
 
-    const call = client.create({
-      token: buyer.token,
-      orderId,
-      paymentMethodId: "pm_card_visa",
-    });
+      const call = client.create({
+        token: buyer.token,
+        orderId,
+        paymentMethodId: "pm_card_visa",
+      });
 
-    await expect(call).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
-    expect(createPaymentIntent).not.toHaveBeenCalled();
-  });
+      await expect(call).rejects.toMatchObject({
+        code: "CONFLICT",
+        status: 409,
+        data: { reason: "not_payable", status },
+      });
+      expect(createPaymentIntent).not.toHaveBeenCalled();
+      await assertNoSideEffects(orderId);
+    },
+  );
 
   it("does not write a Payment row or outbox entry when Stripe throws", async () => {
     const buyer = await signUpBuyer();
@@ -290,18 +309,6 @@ describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
     });
 
     await expect(call).rejects.toThrow("stripe network error");
-
-    const db = requireValue(paymentsDb, "paymentsDb");
-    const paymentRows = await db.db
-      .select()
-      .from(paymentsTable)
-      .where(eq(paymentsTable.orderId, orderId));
-    expect(paymentRows).toHaveLength(0);
-
-    const outboxRows = await db.db
-      .select()
-      .from(paymentsOutboxTable)
-      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
-    expect(outboxRows).toHaveLength(0);
+    await assertNoSideEffects(orderId);
   });
 });
