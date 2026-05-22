@@ -56,8 +56,7 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
       }
 
       if (order.status !== PAYABLE_ORDER_STATUS) {
-        throw new ORPCError("CONFLICT", {
-          status: 409,
+        throw new ORPCError("BAD_REQUEST", {
           message: "order is not payable",
           data: { reason: "not_payable" as const, status: order.status },
         });
