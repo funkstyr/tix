@@ -43,11 +43,12 @@ export const orderReservationReleasedV1 = type({
 export type OrderReservationReleasedV1 = typeof orderReservationReleasedV1.infer;
 
 export const orderRecordOutput = type({
+  "+": "reject",
   id: "string.uuid",
-  buyerId: "string",
+  buyerId: "string >= 1",
   ticketId: "string.uuid",
   quantity: "number.integer",
-  status: "string",
+  status: "'created' | 'awaiting_payment' | 'complete' | 'cancelled' | 'expired'",
   expiresAt: "string.date.iso",
   version: "number.integer",
   createdAt: "string.date.iso",
@@ -58,6 +59,7 @@ export const orderRecordOrNullOutput = orderRecordOutput.or("null");
 export type OrderRecord = typeof orderRecordOutput.infer;
 
 export const orderCreateInput = type({
+  "+": "reject",
   token: "string >= 1",
   ticketId: "string.uuid",
   quantity: "number.integer >= 1",
@@ -66,6 +68,8 @@ export const orderCreateInput = type({
 export type OrderCreateInput = typeof orderCreateInput.infer;
 
 export const orderGetByIdInput = type({
+  "+": "reject",
+  token: "string >= 1",
   orderId: "string.uuid",
 });
 

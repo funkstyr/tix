@@ -20,7 +20,7 @@ const ORDER_RECORD = {
   buyerId: "buyer-1",
   ticketId: "00000000-0000-4000-8000-000000000001",
   quantity: 2,
-  status: "created",
+  status: "created" as const,
   expiresAt: "2026-05-22T00:15:00.000Z",
   version: 1,
   createdAt: "2026-05-22T00:00:00.000Z",
@@ -51,23 +51,13 @@ function emptyClients(): DownstreamClients {
   };
 }
 
-function withTicketsStub(
-  ticketsPartial: Partial<DownstreamClients["tickets"]>,
+function withDownstreamStub<K extends keyof DownstreamClients>(
+  name: K,
+  partial: Partial<DownstreamClients[K]>,
   context: GatewayInitialContext = { cookieHeader: null },
 ) {
   const clients = emptyClients();
-  clients.tickets = ticketsPartial as unknown as DownstreamClients["tickets"];
-  const router = createGatewayRouter({ clients });
-
-  return createRouterClient(router, { context });
-}
-
-function withOrdersStub(
-  ordersPartial: Partial<DownstreamClients["orders"]>,
-  context: GatewayInitialContext = { cookieHeader: null },
-) {
-  const clients = emptyClients();
-  clients.orders = ordersPartial as unknown as DownstreamClients["orders"];
+  clients[name] = partial as unknown as DownstreamClients[K];
   const router = createGatewayRouter({ clients });
 
   return createRouterClient(router, { context });
@@ -78,7 +68,7 @@ describe("createGatewayRouter", () => {
     const list = vi
       .fn<DownstreamClients["tickets"]["list"]>()
       .mockResolvedValue({ items: [TICKET_RECORD] });
-    const client = withTicketsStub({ list }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("tickets", { list }, { cookieHeader: "tix.session=abc" });
 
     const result = await client.tickets.list({ limit: 10 });
 
@@ -92,7 +82,7 @@ describe("createGatewayRouter", () => {
 
   it("forwards a null cookieHeader when the request has no cookie", async () => {
     const list = vi.fn<DownstreamClients["tickets"]["list"]>().mockResolvedValue({ items: [] });
-    const client = withTicketsStub({ list });
+    const client = withDownstreamStub("tickets", { list });
 
     await client.tickets.list({});
 
@@ -107,7 +97,7 @@ describe("createGatewayRouter", () => {
         data: { reason: "sold_out" as const },
       }),
     );
-    const client = withTicketsStub({ list });
+    const client = withDownstreamStub("tickets", { list });
 
     await expect(client.tickets.list({})).rejects.toMatchObject({
       code: "CONFLICT",
@@ -119,7 +109,7 @@ describe("createGatewayRouter", () => {
 
   it("rejects invalid input at the arktype boundary without reaching the downstream client", async () => {
     const list = vi.fn<DownstreamClients["tickets"]["list"]>();
-    const client = withTicketsStub({ list });
+    const client = withDownstreamStub("tickets", { list });
 
     await expect(client.tickets.list({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(list).not.toHaveBeenCalled();
@@ -127,7 +117,7 @@ describe("createGatewayRouter", () => {
 
   it("delegates tickets.create to the downstream tickets client, forwarding input and cookie header", async () => {
     const create = vi.fn<DownstreamClients["tickets"]["create"]>().mockResolvedValue(TICKET_RECORD);
-    const client = withTicketsStub({ create }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("tickets", { create }, { cookieHeader: "tix.session=abc" });
 
     const input = {
       token: "session-token",
@@ -149,7 +139,7 @@ describe("createGatewayRouter", () => {
         message: "invalid or expired session",
       }),
     );
-    const client = withTicketsStub({ create });
+    const client = withDownstreamStub("tickets", { create });
 
     await expect(
       client.tickets.create({
@@ -167,7 +157,7 @@ describe("createGatewayRouter", () => {
 
   it("rejects invalid tickets.create input at the arktype boundary", async () => {
     const create = vi.fn<DownstreamClients["tickets"]["create"]>();
-    const client = withTicketsStub({ create });
+    const client = withDownstreamStub("tickets", { create });
 
     await expect(
       client.tickets.create({
@@ -184,7 +174,7 @@ describe("createGatewayRouter", () => {
     const getById = vi
       .fn<DownstreamClients["tickets"]["getById"]>()
       .mockResolvedValue(TICKET_RECORD);
-    const client = withTicketsStub({ getById }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("tickets", { getById }, { cookieHeader: "tix.session=abc" });
 
     const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
 
@@ -198,7 +188,7 @@ describe("createGatewayRouter", () => {
 
   it("returns null when tickets.getById finds no ticket", async () => {
     const getById = vi.fn<DownstreamClients["tickets"]["getById"]>().mockResolvedValue(null);
-    const client = withTicketsStub({ getById });
+    const client = withDownstreamStub("tickets", { getById });
 
     const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
 
@@ -211,7 +201,7 @@ describe("createGatewayRouter", () => {
 
   it("rejects invalid tickets.getById input at the arktype boundary", async () => {
     const getById = vi.fn<DownstreamClients["tickets"]["getById"]>();
-    const client = withTicketsStub({ getById });
+    const client = withDownstreamStub("tickets", { getById });
 
     await expect(client.tickets.getById({ ticketId: "not-a-uuid" })).rejects.toMatchObject({
       code: "BAD_REQUEST",
@@ -221,7 +211,7 @@ describe("createGatewayRouter", () => {
 
   it("delegates orders.create to the downstream orders client, forwarding input and cookie header", async () => {
     const create = vi.fn<DownstreamClients["orders"]["create"]>().mockResolvedValue(ORDER_RECORD);
-    const client = withOrdersStub({ create }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("orders", { create }, { cookieHeader: "tix.session=abc" });
 
     const input = {
       token: "session-token",
@@ -243,7 +233,7 @@ describe("createGatewayRouter", () => {
         data: { reason: "sold_out" as const },
       }),
     );
-    const client = withOrdersStub({ create });
+    const client = withDownstreamStub("orders", { create });
 
     await expect(
       client.orders.create({
@@ -261,7 +251,7 @@ describe("createGatewayRouter", () => {
 
   it("rejects invalid orders.create input at the arktype boundary", async () => {
     const create = vi.fn<DownstreamClients["orders"]["create"]>();
-    const client = withOrdersStub({ create });
+    const client = withDownstreamStub("orders", { create });
 
     await expect(
       client.orders.create({
@@ -275,38 +265,49 @@ describe("createGatewayRouter", () => {
 
   it("delegates orders.getById to the downstream orders client, forwarding cookie header", async () => {
     const getById = vi.fn<DownstreamClients["orders"]["getById"]>().mockResolvedValue(ORDER_RECORD);
-    const client = withOrdersStub({ getById }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("orders", { getById }, { cookieHeader: "tix.session=abc" });
 
-    const result = await client.orders.getById({ orderId: ORDER_RECORD.id });
+    const input = { token: "session-token", orderId: ORDER_RECORD.id };
+    const result = await client.orders.getById(input);
 
     expect(result).toEqual(ORDER_RECORD);
     expect(getById).toHaveBeenCalledTimes(1);
-    expect(getById).toHaveBeenCalledWith(
-      { orderId: ORDER_RECORD.id },
-      { context: { cookieHeader: "tix.session=abc" } },
-    );
+    expect(getById).toHaveBeenCalledWith(input, {
+      context: { cookieHeader: "tix.session=abc" },
+    });
   });
 
   it("returns null when orders.getById finds no order", async () => {
     const getById = vi.fn<DownstreamClients["orders"]["getById"]>().mockResolvedValue(null);
-    const client = withOrdersStub({ getById });
+    const client = withDownstreamStub("orders", { getById });
 
-    const result = await client.orders.getById({ orderId: ORDER_RECORD.id });
+    const input = { token: "session-token", orderId: ORDER_RECORD.id };
+    const result = await client.orders.getById(input);
 
     expect(result).toBeNull();
-    expect(getById).toHaveBeenCalledWith(
-      { orderId: ORDER_RECORD.id },
-      { context: { cookieHeader: null } },
-    );
+    expect(getById).toHaveBeenCalledWith(input, { context: { cookieHeader: null } });
   });
 
   it("rejects invalid orders.getById input at the arktype boundary", async () => {
     const getById = vi.fn<DownstreamClients["orders"]["getById"]>();
-    const client = withOrdersStub({ getById });
+    const client = withDownstreamStub("orders", { getById });
 
-    await expect(client.orders.getById({ orderId: "not-a-uuid" })).rejects.toMatchObject({
-      code: "BAD_REQUEST",
-    });
+    await expect(
+      client.orders.getById({ token: "session-token", orderId: "not-a-uuid" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it("rejects orders.getById with a missing token at the arktype boundary", async () => {
+    const getById = vi.fn<DownstreamClients["orders"]["getById"]>();
+    const client = withDownstreamStub("orders", { getById });
+
+    await expect(
+      client.orders.getById({ orderId: ORDER_RECORD.id } as unknown as {
+        token: string;
+        orderId: string;
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(getById).not.toHaveBeenCalled();
   });
 });

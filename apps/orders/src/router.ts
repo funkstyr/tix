@@ -152,8 +152,13 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
     .input(orderGetByIdInput)
     .output(orderRecordOrNullOutput)
     .handler(async ({ input }) => {
+      const session = await requireSession(authClient, input.token);
+
       const [row] = await db.db.select().from(orders).where(eq(orders.id, input.orderId));
       if (!row) return null;
+
+      // Treat non-ownership identically to "not found" so existence isn't a side channel.
+      if (row.buyerId !== session.user.id) return null;
 
       return {
         id: row.id,
