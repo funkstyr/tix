@@ -24,6 +24,10 @@
       "types": "./dist/outbox.d.ts",
       "import": "./dist/outbox.js"
     },
+    "./inbox": {
+      "types": "./dist/inbox.d.ts",
+      "import": "./dist/inbox.js"
+    },
     "./optimistic-version": {
       "types": "./dist/optimistic-version.d.ts",
       "import": "./dist/optimistic-version.js"
