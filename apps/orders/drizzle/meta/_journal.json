@@ -15,6 +15,13 @@
       "when": 1779404004535,
       "tag": "0001_orders_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779413649145,
+      "tag": "0002_orders_inbox",
+      "breakpoints": true
     }
   ]
 }

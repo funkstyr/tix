@@ -1,0 +1,23 @@
+export type Status = "created" | "awaiting_payment" | "complete" | "cancelled" | "expired";
+
+export type Event =
+  | { kind: "buyer_cancels" }
+  | { kind: "buyer_initiates_payment" }
+  | { kind: "payment_confirmed" }
+  | { kind: "deadline_passed" };
+
+export type TransitionError = "UnsupportedTransition" | "InvalidFromTerminal";
+
+export type TransitionResult = { ok: true; next: Status } | { ok: false; reason: TransitionError };
+
+const TERMINAL_STATUSES: ReadonlySet<Status> = new Set(["complete", "cancelled", "expired"]);
+
+export function transition(status: Status, event: Event): TransitionResult {
+  if (TERMINAL_STATUSES.has(status)) return { ok: false, reason: "InvalidFromTerminal" };
+
+  if (status === "created" && event.kind === "deadline_passed") {
+    return { ok: true, next: "expired" };
+  }
+
+  return { ok: false, reason: "UnsupportedTransition" };
+}
