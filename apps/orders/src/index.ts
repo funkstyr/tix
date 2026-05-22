@@ -8,10 +8,12 @@ import { createPublisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
 import { createOrdersApp } from "./orders-app.ts";
+import { startOrdersExpiredConsumer } from "./orders-consumer.ts";
 import { ordersOutbox, ordersTables } from "./orders-schema.ts";
 import { createHttpTicketsClient } from "./tickets-client.ts";
 
 const DEFAULT_PORT = 4003;
+const DEFAULT_STREAM = "ORDERS";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -40,6 +42,7 @@ async function main(): Promise<void> {
   const ticketsBaseUrl = requireEnv("TICKETS_BASE_URL");
   const ticketsServiceToken = requireEnv("TICKETS_SERVICE_TOKEN");
   const natsUrl = requireEnv("NATS_URL");
+  const stream = process.env["ORDERS_STREAM"] ?? DEFAULT_STREAM;
 
   const db = createDbClient("orders", databaseUrl, { schema: ordersTables });
   const authClient = createHttpAuthSessionClient(authBaseUrl);
@@ -49,6 +52,7 @@ async function main(): Promise<void> {
   const nats = await connect({ servers: natsUrl });
   const publisher = createPublisher(nats, { logger });
   const relay = startOutboxRelay(db.db, ordersOutbox, publisher.publish, { logger });
+  const expiredConsumer = await startOrdersExpiredConsumer({ db, nats, stream, logger });
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, "orders service listening");
@@ -63,6 +67,7 @@ async function main(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
+    await expiredConsumer.stop();
     await relay.stop();
     await nats.close();
     await db.close();

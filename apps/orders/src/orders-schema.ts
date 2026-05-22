@@ -1,4 +1,4 @@
-import { integer, jsonb, pgSchema, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgSchema, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 export const ordersSchema = pgSchema("orders");
 
@@ -22,4 +22,15 @@ export const ordersOutbox = ordersSchema.table("outbox", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });
 
-export const ordersTables = { orders, outbox: ordersOutbox };
+export const ordersInbox = ordersSchema.table(
+  "inbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id").notNull(),
+    subject: text("subject").notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [unique("inbox_event_subject_uq").on(t.eventId, t.subject)],
+);
+
+export const ordersTables = { orders, outbox: ordersOutbox, inbox: ordersInbox };
