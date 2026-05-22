@@ -29,6 +29,13 @@
       "when": 1779384352722,
       "tag": "0003_tickets_qty_check",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779384352723,
+      "tag": "0004_tickets_inbox_event_id_text",
+      "breakpoints": true
     }
   ]
 }

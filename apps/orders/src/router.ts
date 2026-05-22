@@ -13,9 +13,6 @@ import { enqueueEvent } from "@tix/db-core/outbox";
 import { orders, ordersOutbox, type ordersTables } from "./orders-schema.ts";
 import type { TicketsClient } from "./tickets-client.ts";
 
-const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
-const RESERVATION_TTL_MS = Number(process.env["RESERVATION_TTL_MS"]) || DEFAULT_RESERVATION_TTL_MS;
-
 const fallbackLogger: Logger = pino({ level: "warn" });
 
 const tokenInput = type({
@@ -48,11 +45,12 @@ export type OrdersRouterDeps = {
   db: DbClient<typeof ordersTables>;
   authClient: AuthSessionClient;
   ticketsClient: TicketsClient;
+  reservationTtlMs: number;
   logger?: Logger;
 };
 
 export function createOrdersRouter(deps: OrdersRouterDeps) {
-  const { db, authClient, ticketsClient, logger = fallbackLogger } = deps;
+  const { db, authClient, ticketsClient, reservationTtlMs, logger = fallbackLogger } = deps;
 
   const base = os;
 
@@ -103,7 +101,7 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
       // Reserve succeeded — from here, any failure must compensate via order.reservation_released.v1.
       const orderId = uuidv7();
       const createdAt = new Date();
-      const expiresAt = new Date(createdAt.getTime() + RESERVATION_TTL_MS);
+      const expiresAt = new Date(createdAt.getTime() + reservationTtlMs);
 
       try {
         const row = await db.db.transaction(async (tx) => {

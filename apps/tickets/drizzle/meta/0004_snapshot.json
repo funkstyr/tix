@@ -1,6 +1,6 @@
 {
-  "id": "331a1bd3-a125-4b0e-a2b4-6e724bf243d9",
-  "prevId": "05569616-f136-428a-8a50-aa2a080779b9",
+  "id": "a3333333-3333-4333-8333-333333333333",
+  "prevId": "3c73b533-1ecf-4d65-a014-dbd34c2b2faa",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -65,7 +65,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "tickets_quantity_available_bounds": {
+          "name": "tickets_quantity_available_bounds",
+          "value": "\"tickets\".\"tickets\".\"quantity_available\" >= 0 AND \"tickets\".\"tickets\".\"quantity_available\" <= \"tickets\".\"tickets\".\"quantity_total\""
+        }
+      },
       "isRLSEnabled": false
     },
     "tickets.inbox": {
@@ -81,7 +86,7 @@
         },
         "event_id": {
           "name": "event_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },

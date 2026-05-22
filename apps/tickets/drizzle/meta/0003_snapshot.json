@@ -86,7 +86,7 @@
         },
         "event_id": {
           "name": "event_id",
-          "type": "text",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },

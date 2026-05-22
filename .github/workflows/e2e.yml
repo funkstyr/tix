@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+# Group by the source branch on workflow_run, or the dispatched ref otherwise.
+# On workflow_run, github.ref points at the workflow file (typically main), not
+# the PR branch — head_branch is the only handle on the originating branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: ${{ github.event.workflow_run.event == 'pull_request' }}
