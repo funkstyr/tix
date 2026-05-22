@@ -15,6 +15,17 @@ const TICKET_RECORD = {
   createdAt: "2026-05-22T00:00:00.000Z",
 };
 
+const ORDER_RECORD = {
+  id: "00000000-0000-4000-8000-0000000000a1",
+  buyerId: "buyer-1",
+  ticketId: "00000000-0000-4000-8000-000000000001",
+  quantity: 2,
+  status: "created",
+  expiresAt: "2026-05-22T00:15:00.000Z",
+  version: 1,
+  createdAt: "2026-05-22T00:00:00.000Z",
+};
+
 // Trapping proxy: any property read explodes immediately, so a test that
 // accidentally reaches into an unimplemented downstream client fails loudly
 // instead of NPE'ing deep inside oRPC.
@@ -46,6 +57,17 @@ function withTicketsStub(
 ) {
   const clients = emptyClients();
   clients.tickets = ticketsPartial as unknown as DownstreamClients["tickets"];
+  const router = createGatewayRouter({ clients });
+
+  return createRouterClient(router, { context });
+}
+
+function withOrdersStub(
+  ordersPartial: Partial<DownstreamClients["orders"]>,
+  context: GatewayInitialContext = { cookieHeader: null },
+) {
+  const clients = emptyClients();
+  clients.orders = ordersPartial as unknown as DownstreamClients["orders"];
   const router = createGatewayRouter({ clients });
 
   return createRouterClient(router, { context });
@@ -192,6 +214,97 @@ describe("createGatewayRouter", () => {
     const client = withTicketsStub({ getById });
 
     await expect(client.tickets.getById({ ticketId: "not-a-uuid" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it("delegates orders.create to the downstream orders client, forwarding input and cookie header", async () => {
+    const create = vi.fn<DownstreamClients["orders"]["create"]>().mockResolvedValue(ORDER_RECORD);
+    const client = withOrdersStub({ create }, { cookieHeader: "tix.session=abc" });
+
+    const input = {
+      token: "session-token",
+      ticketId: ORDER_RECORD.ticketId,
+      quantity: 2,
+    };
+    const result = await client.orders.create(input);
+
+    expect(result).toEqual(ORDER_RECORD);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
+  });
+
+  it("propagates an ORPCError thrown by orders.create with the same code, message, and data", async () => {
+    const create = vi.fn<DownstreamClients["orders"]["create"]>().mockRejectedValue(
+      new ORPCError("GONE", {
+        status: 410,
+        message: "ticket is sold out",
+        data: { reason: "sold_out" as const },
+      }),
+    );
+    const client = withOrdersStub({ create });
+
+    await expect(
+      client.orders.create({
+        token: "session-token",
+        ticketId: ORDER_RECORD.ticketId,
+        quantity: 2,
+      }),
+    ).rejects.toMatchObject({
+      code: "GONE",
+      status: 410,
+      message: "ticket is sold out",
+      data: { reason: "sold_out" },
+    });
+  });
+
+  it("rejects invalid orders.create input at the arktype boundary", async () => {
+    const create = vi.fn<DownstreamClients["orders"]["create"]>();
+    const client = withOrdersStub({ create });
+
+    await expect(
+      client.orders.create({
+        token: "session-token",
+        ticketId: ORDER_RECORD.ticketId,
+        quantity: 0,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("delegates orders.getById to the downstream orders client, forwarding cookie header", async () => {
+    const getById = vi.fn<DownstreamClients["orders"]["getById"]>().mockResolvedValue(ORDER_RECORD);
+    const client = withOrdersStub({ getById }, { cookieHeader: "tix.session=abc" });
+
+    const result = await client.orders.getById({ orderId: ORDER_RECORD.id });
+
+    expect(result).toEqual(ORDER_RECORD);
+    expect(getById).toHaveBeenCalledTimes(1);
+    expect(getById).toHaveBeenCalledWith(
+      { orderId: ORDER_RECORD.id },
+      { context: { cookieHeader: "tix.session=abc" } },
+    );
+  });
+
+  it("returns null when orders.getById finds no order", async () => {
+    const getById = vi.fn<DownstreamClients["orders"]["getById"]>().mockResolvedValue(null);
+    const client = withOrdersStub({ getById });
+
+    const result = await client.orders.getById({ orderId: ORDER_RECORD.id });
+
+    expect(result).toBeNull();
+    expect(getById).toHaveBeenCalledWith(
+      { orderId: ORDER_RECORD.id },
+      { context: { cookieHeader: null } },
+    );
+  });
+
+  it("rejects invalid orders.getById input at the arktype boundary", async () => {
+    const getById = vi.fn<DownstreamClients["orders"]["getById"]>();
+    const client = withOrdersStub({ getById });
+
+    await expect(client.orders.getById({ orderId: "not-a-uuid" })).rejects.toMatchObject({
       code: "BAD_REQUEST",
     });
     expect(getById).not.toHaveBeenCalled();

@@ -42,24 +42,36 @@ export const orderReservationReleasedV1 = type({
 
 export type OrderReservationReleasedV1 = typeof orderReservationReleasedV1.infer;
 
-export type OrderCreateInput = {
-  token: string;
-  ticketId: string;
-  quantity: number;
-};
+export const orderRecordOutput = type({
+  id: "string.uuid",
+  buyerId: "string",
+  ticketId: "string.uuid",
+  quantity: "number.integer",
+  status: "string",
+  expiresAt: "string.date.iso",
+  version: "number.integer",
+  createdAt: "string.date.iso",
+});
 
-export type OrderRecord = {
-  id: string;
-  buyerId: string;
-  ticketId: string;
-  quantity: number;
-  status: string;
-  expiresAt: string;
-  version: number;
-  createdAt: string;
-};
+export const orderRecordOrNullOutput = orderRecordOutput.or("null");
+
+export type OrderRecord = typeof orderRecordOutput.infer;
+
+export const orderCreateInput = type({
+  token: "string >= 1",
+  ticketId: "string.uuid",
+  quantity: "number.integer >= 1",
+});
+
+export type OrderCreateInput = typeof orderCreateInput.infer;
+
+export const orderGetByIdInput = type({
+  orderId: "string.uuid",
+});
+
+export type OrderGetByIdInput = typeof orderGetByIdInput.infer;
 
 export type OrdersRouterClient = {
   create: (input: OrderCreateInput) => Promise<OrderRecord>;
-  getById: (input: { orderId: string }) => Promise<OrderRecord | null>;
+  getById: (input: OrderGetByIdInput) => Promise<OrderRecord | null>;
 };

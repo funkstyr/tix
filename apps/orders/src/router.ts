@@ -1,11 +1,16 @@
 import { ORPCError, os } from "@orpc/server";
-import { type } from "arktype";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import { pino } from "pino";
 import { v7 as uuidv7 } from "uuid";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
+import {
+  orderCreateInput,
+  orderGetByIdInput,
+  orderRecordOrNullOutput,
+  orderRecordOutput,
+} from "@tix/contracts/orders";
 import { ORDER_CREATED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import type { ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
@@ -15,32 +20,6 @@ import { orders, ordersOutbox, type ordersTables } from "./orders-schema.ts";
 import type { TicketsClient } from "./tickets-client.ts";
 
 const fallbackLogger: Logger = pino({ level: "warn" });
-
-const tokenInput = type({
-  token: "string >= 1",
-});
-
-const createInput = tokenInput.and({
-  ticketId: "string.uuid",
-  quantity: "number.integer >= 1",
-});
-
-const getByIdInput = type({
-  orderId: "string.uuid",
-});
-
-const orderOutput = type({
-  id: "string.uuid",
-  buyerId: "string",
-  ticketId: "string.uuid",
-  quantity: "number.integer",
-  status: "string",
-  expiresAt: "string.date.iso",
-  version: "number.integer",
-  createdAt: "string.date.iso",
-});
-
-const orderOrNullOutput = orderOutput.or("null");
 
 export type OrdersRouterDeps = {
   db: DbClient<typeof ordersTables>;
@@ -56,8 +35,8 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
   const base = os;
 
   const create = base
-    .input(createInput)
-    .output(orderOutput)
+    .input(orderCreateInput)
+    .output(orderRecordOutput)
     .handler(async ({ input }) => {
       const session = await requireSession(authClient, input.token);
 
@@ -170,8 +149,8 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
     });
 
   const getById = base
-    .input(getByIdInput)
-    .output(orderOrNullOutput)
+    .input(orderGetByIdInput)
+    .output(orderRecordOrNullOutput)
     .handler(async ({ input }) => {
       const [row] = await db.db.select().from(orders).where(eq(orders.id, input.orderId));
       if (!row) return null;

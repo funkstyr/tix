@@ -1,6 +1,12 @@
 import { os } from "@orpc/server";
 
 import {
+  orderCreateInput,
+  orderGetByIdInput,
+  orderRecordOrNullOutput,
+  orderRecordOutput,
+} from "@tix/contracts/orders";
+import {
   ticketCreateInput,
   ticketGetByIdInput,
   ticketRecordOrNullOutput,
@@ -50,7 +56,26 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
       }),
   };
 
-  return { tickets };
+  const orders = {
+    create: base
+      .input(orderCreateInput)
+      .output(orderRecordOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.orders.create(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+    getById: base
+      .input(orderGetByIdInput)
+      .output(orderRecordOrNullOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.orders.getById(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+  };
+
+  return { tickets, orders };
 }
 
 export type GatewayRouter = ReturnType<typeof createGatewayRouter>;
