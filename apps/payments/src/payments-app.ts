@@ -9,6 +9,7 @@ export type CreatePaymentsAppDeps = {
   logger: Logger;
 };
 
+// TODO: wire payments router — `/rpc/*` 404s until procedures are registered here
 const paymentsRouter = {} as const;
 
 export function createPaymentsApp(deps: CreatePaymentsAppDeps): Hono {

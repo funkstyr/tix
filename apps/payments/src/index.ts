@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { ArkErrors, type } from "arktype";
+import type { Level } from "pino";
 
 import { createLogger } from "@tix/observability/logger";
 
@@ -14,7 +15,7 @@ const envSchema = type({
 
 type Env = {
   port: number;
-  logLevel: string;
+  logLevel: Level;
 };
 
 function parseEnv(): Env {
@@ -30,6 +31,8 @@ function parseEnv(): Env {
 
   return { port, logLevel: parsed.LOG_LEVEL ?? "info" };
 }
+
+const fallbackLogger = createLogger({ name: "payments" });
 
 async function main(): Promise<void> {
   const { port, logLevel } = parseEnv();
@@ -57,6 +60,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  createLogger({ name: "payments" }).fatal({ err }, "payments service failed to start");
+  fallbackLogger.fatal({ err }, "payments service failed to start");
   process.exit(1);
 });
