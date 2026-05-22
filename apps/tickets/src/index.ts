@@ -2,12 +2,14 @@ import { serve } from "@hono/node-server";
 import { connect } from "@nats-io/transport-node";
 
 import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
+import { ORDERS_STREAM } from "@tix/contracts/subjects";
 import { createDbClient } from "@tix/db-core/client";
 import { startOutboxRelay } from "@tix/db-core/outbox";
 import { createPublisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
 import { createTicketsApp } from "./tickets-app.ts";
+import { startTicketsReleasedConsumer } from "./tickets-consumer.ts";
 import { ticketsOutbox, ticketsTables } from "./tickets-schema.ts";
 
 const DEFAULT_PORT = 4002;
@@ -38,6 +40,7 @@ async function main(): Promise<void> {
   const authBaseUrl = requireEnv("AUTH_BASE_URL");
   const natsUrl = requireEnv("NATS_URL");
   const serviceToken = requireEnv("TICKETS_SERVICE_TOKEN");
+  const ordersStream = process.env["ORDERS_STREAM"] ?? ORDERS_STREAM;
 
   const db = createDbClient("tickets", databaseUrl, { schema: ticketsTables });
   const authClient = createHttpAuthSessionClient(authBaseUrl);
@@ -46,6 +49,12 @@ async function main(): Promise<void> {
   const nats = await connect({ servers: natsUrl });
   const publisher = createPublisher(nats, { logger });
   const relay = startOutboxRelay(db.db, ticketsOutbox, publisher.publish, { logger });
+  const releasedConsumer = await startTicketsReleasedConsumer({
+    db,
+    nats,
+    stream: ordersStream,
+    logger,
+  });
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, "tickets service listening");
@@ -60,6 +69,7 @@ async function main(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
+    await releasedConsumer.stop();
     await relay.stop();
     await nats.close();
     await db.close();

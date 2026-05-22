@@ -15,6 +15,20 @@
       "when": 1779384352720,
       "tag": "0001_tickets_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779384352721,
+      "tag": "0002_tickets_inbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779384352722,
+      "tag": "0003_tickets_qty_check",
+      "breakpoints": true
     }
   ]
 }

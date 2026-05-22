@@ -1,12 +1,11 @@
 import { connect } from "@nats-io/transport-node";
 
+import { ORDERS_STREAM } from "@tix/contracts/subjects";
 import { createDbClient } from "@tix/db-core/client";
 import { createLogger } from "@tix/observability/logger";
 
 import { expirationTables } from "./expiration-schema.ts";
 import { startExpirationService } from "./expiration-service.ts";
-
-const DEFAULT_STREAM = "ORDERS";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -33,7 +32,7 @@ async function main(): Promise<void> {
   const databaseUrl = requireEnv("DATABASE_URL");
   const natsUrl = requireEnv("NATS_URL");
   const redisUrl = requireEnv("REDIS_URL");
-  const stream = process.env["EXPIRATION_STREAM"] ?? DEFAULT_STREAM;
+  const stream = process.env["EXPIRATION_STREAM"] ?? ORDERS_STREAM;
 
   const db = createDbClient("expiration", databaseUrl, { schema: expirationTables });
   const nats = await connect({ servers: natsUrl });
