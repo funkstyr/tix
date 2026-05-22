@@ -1,4 +1,4 @@
-import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type ConnectionOptions, type JobsOptions, Queue, Worker } from "bullmq";
 import type { Logger } from "pino";
 
 export type WorkerHandler<Payload> = (payload: Payload) => Promise<void> | void;
@@ -16,6 +16,7 @@ export type DelayedScheduler<Payload> = {
 export type SchedulerOptions = {
   queueName: string;
   logger?: Logger;
+  defaultJobOptions?: Pick<JobsOptions, "attempts" | "backoff">;
 };
 
 export type WorkerOptions<Payload> = {
@@ -28,7 +29,12 @@ export function createScheduler<Payload>(
   connection: ConnectionOptions,
   options: SchedulerOptions,
 ): DelayedScheduler<Payload> {
-  const queue = new Queue(options.queueName, { connection });
+  const safeConnection = withWorkerConnectionDefaults(connection);
+  const queueOpts =
+    options.defaultJobOptions === undefined
+      ? { connection: safeConnection }
+      : { connection: safeConnection, defaultJobOptions: options.defaultJobOptions };
+  const queue = new Queue(options.queueName, queueOpts);
   const log = options.logger?.child({ queueName: options.queueName });
 
   return {
@@ -69,6 +75,18 @@ export function createWorker<Payload>(
         throw err;
       }
     },
-    { connection },
+    { connection: withWorkerConnectionDefaults(connection) },
   );
+}
+
+// BullMQ requires `maxRetriesPerRequest: null` on any blocking-redis connection
+// (workers + queues that issue blocking commands during shutdown). Without it,
+// ioredis queues retries that surface as unhandled rejections after close.
+function withWorkerConnectionDefaults(connection: ConnectionOptions): ConnectionOptions {
+  if (connection && typeof connection === "object" && !("connect" in connection)) {
+    return "maxRetriesPerRequest" in connection
+      ? connection
+      : { ...connection, maxRetriesPerRequest: null };
+  }
+  return connection;
 }

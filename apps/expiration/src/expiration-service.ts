@@ -3,10 +3,15 @@ import { type ConnectionOptions, type Worker } from "bullmq";
 import { type Logger } from "pino";
 
 import { orderCreatedV1 } from "@tix/contracts/orders";
-import { ORDER_CREATED_V1 } from "@tix/contracts/subjects";
+import { ORDER_CREATED_V1, ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { type DbClient } from "@tix/db-core/client";
 import { withInboxDedupe } from "@tix/db-core/inbox";
-import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import {
+  createConsumer,
+  createPublisher,
+  type Publisher,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
 import { createScheduler, createWorker, type DelayedScheduler } from "@tix/messaging/jobs";
 
 import { expirationInbox, type expirationTables } from "./expiration-schema.ts";
@@ -15,7 +20,14 @@ export const EXPIRATION_QUEUE = "expiration";
 export const EXPIRATION_JOB_NAME = "expire-order";
 export const EXPIRATION_CONSUMER_GROUP = "expiration";
 
-export type ExpireOrderPayload = { orderId: string };
+// At-least-once publish of order.expired.v1 without a service-local outbox (see #14):
+// BullMQ retries the job on failure, and JetStream dedupes via a deterministic msgId
+// (`expired:<orderId>`) so a lost ack on attempt N is dropped server-side on attempt N+1.
+// expiredAt is carried in the job payload so retries publish byte-identical events.
+const EXPIRATION_JOB_ATTEMPTS = 5;
+const EXPIRATION_JOB_BACKOFF_MS = 200;
+
+export type ExpireOrderPayload = { orderId: string; expiredAt: string };
 
 export type ExpirationServiceArgs = {
   db: DbClient<typeof expirationTables>;
@@ -24,6 +36,7 @@ export type ExpirationServiceArgs = {
   redis: ConnectionOptions;
   logger?: Logger;
   ackWaitMs?: number;
+  publisher?: Publisher;
 };
 
 export type RunningExpirationService = {
@@ -40,17 +53,23 @@ export async function startExpirationService(
   const loggerOpt = logger === undefined ? {} : { logger };
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
+  const publisher = args.publisher ?? createPublisher(nats, { ...loggerOpt });
+
   const scheduler = createScheduler<ExpireOrderPayload>(redis, {
     queueName: EXPIRATION_QUEUE,
     ...loggerOpt,
+    defaultJobOptions: {
+      attempts: EXPIRATION_JOB_ATTEMPTS,
+      backoff: { type: "exponential", delay: EXPIRATION_JOB_BACKOFF_MS },
+    },
   });
 
-  // The publisher for order.expired.v1 isn't wired yet; throw so jobs land on
-  // BullMQ's failed list instead of being silently acked and lost.
   const worker = createWorker<ExpireOrderPayload>(redis, {
     queueName: EXPIRATION_QUEUE,
-    handler: ({ orderId }) => {
-      throw new Error(`expiration worker not implemented: order ${orderId}`);
+    handler: async ({ orderId, expiredAt }) => {
+      const msgId = `expired:${orderId}`;
+      const { ack } = await publisher.publish(ORDER_EXPIRED_V1, { orderId, expiredAt }, { msgId });
+      logger?.info({ orderId, msgId, duplicate: ack.duplicate }, "order.expired.v1 published");
     },
     ...loggerOpt,
   });
@@ -72,7 +91,7 @@ export async function startExpirationService(
             const delayMs = Math.max(0, new Date(payload.expiresAt).getTime() - Date.now());
             await scheduler.scheduleDelayed(
               EXPIRATION_JOB_NAME,
-              { orderId: payload.orderId },
+              { orderId: payload.orderId, expiredAt: payload.expiresAt },
               delayMs,
               payload.orderId,
             );
