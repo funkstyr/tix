@@ -251,6 +251,7 @@ describe.skipIf(!dockerAvailable)("orders.create → order.created.v1 on NATS", 
         ticketId: ticket.id,
         buyerId: buyer.userId,
         quantity: 2,
+        priceCents: 10_000,
       });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);

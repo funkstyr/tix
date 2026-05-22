@@ -79,8 +79,12 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
         });
       }
 
+      let reserveResult;
       try {
-        await ticketsClient.reserve({ ticketId: input.ticketId, quantity: input.quantity });
+        reserveResult = await ticketsClient.reserve({
+          ticketId: input.ticketId,
+          quantity: input.quantity,
+        });
       } catch (err: unknown) {
         if (err instanceof ORPCError && err.code === "CONFLICT") {
           // Lost the race: between getById and reserve, another buyer claimed the seats.
@@ -97,6 +101,8 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
 
         throw err;
       }
+
+      const priceCents = reserveResult.unitPriceCents * input.quantity;
 
       // Reserve succeeded — from here, any failure must compensate via order.reservation_released.v1.
       const orderId = uuidv7();
@@ -132,6 +138,7 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
               ticketId: inserted.ticketId,
               buyerId: inserted.buyerId,
               quantity: inserted.quantity,
+              priceCents,
               expiresAt: inserted.expiresAt.toISOString(),
               createdAt: inserted.createdAt.toISOString(),
             },

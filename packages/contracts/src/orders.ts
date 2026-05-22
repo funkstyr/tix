@@ -6,6 +6,7 @@ export const orderCreatedV1 = type({
   ticketId: "string.uuid",
   buyerId: "string >= 1",
   quantity: "number.integer >= 1",
+  priceCents: "number.integer >= 0",
   expiresAt: "string.date.iso",
   createdAt: "string.date.iso",
 });

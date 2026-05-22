@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@hono/node-server": "catalog:",
+    "@nats-io/transport-node": "catalog:",
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
@@ -28,10 +29,13 @@
     "stripe": "catalog:"
   },
   "devDependencies": {
+    "@nats-io/jetstream": "catalog:",
     "@tix/config": "workspace:*",
+    "@tix/test-helpers": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "drizzle-kit": "catalog:",
+    "testcontainers": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"
