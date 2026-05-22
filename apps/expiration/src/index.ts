@@ -1,4 +1,6 @@
 import { connect } from "@nats-io/transport-node";
+import { ArkErrors, type } from "arktype";
+import type { Level } from "pino";
 
 import { ORDERS_STREAM } from "@tix/contracts/subjects";
 import { createDbClient } from "@tix/db-core/client";
@@ -7,12 +9,21 @@ import { createLogger } from "@tix/observability/logger";
 import { expirationTables } from "./expiration-schema.ts";
 import { startExpirationService } from "./expiration-service.ts";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`missing required env var: ${name}`);
+const envSchema = type({
+  DATABASE_URL: "string > 0",
+  NATS_URL: "string > 0",
+  REDIS_URL: "string > 0",
+  "EXPIRATION_STREAM?": "string > 0",
+  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
+});
 
-  return value;
-}
+type Env = {
+  databaseUrl: string;
+  natsUrl: string;
+  redis: { host: string; port: number };
+  stream: string;
+  logLevel: Level;
+};
 
 function parseRedisUrl(raw: string): { host: string; port: number } {
   const url = new URL(raw);
@@ -26,20 +37,38 @@ function parseRedisUrl(raw: string): { host: string; port: number } {
   return { host: url.hostname, port };
 }
 
+function parseEnv(): Env {
+  const parsed = envSchema(process.env);
+  if (parsed instanceof ArkErrors) {
+    throw new Error(`invalid environment: ${parsed.summary}`);
+  }
+
+  return {
+    databaseUrl: parsed.DATABASE_URL,
+    natsUrl: parsed.NATS_URL,
+    redis: parseRedisUrl(parsed.REDIS_URL),
+    stream: parsed.EXPIRATION_STREAM ?? ORDERS_STREAM,
+    logLevel: parsed.LOG_LEVEL ?? "info",
+  };
+}
+
+const fallbackLogger = createLogger({ name: "expiration" });
+
 async function main(): Promise<void> {
-  const logger = createLogger({ name: "expiration", level: process.env["LOG_LEVEL"] ?? "info" });
+  const env = parseEnv();
+  const logger = createLogger({ name: "expiration", level: env.logLevel });
 
-  const databaseUrl = requireEnv("DATABASE_URL");
-  const natsUrl = requireEnv("NATS_URL");
-  const redisUrl = requireEnv("REDIS_URL");
-  const stream = process.env["EXPIRATION_STREAM"] ?? ORDERS_STREAM;
+  const db = createDbClient("expiration", env.databaseUrl, { schema: expirationTables });
+  const nats = await connect({ servers: env.natsUrl });
 
-  const db = createDbClient("expiration", databaseUrl, { schema: expirationTables });
-  const nats = await connect({ servers: natsUrl });
-  const redis = parseRedisUrl(redisUrl);
-
-  const service = await startExpirationService({ db, nats, stream, redis, logger });
-  logger.info({ stream, queue: "expiration" }, "expiration service started");
+  const service = await startExpirationService({
+    db,
+    nats,
+    stream: env.stream,
+    redis: env.redis,
+    logger,
+  });
+  logger.info({ stream: env.stream, queue: "expiration" }, "expiration service started");
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
@@ -57,6 +86,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  createLogger({ name: "expiration" }).fatal({ err }, "expiration service failed to start");
+  fallbackLogger.fatal({ err }, "expiration service failed to start");
   process.exit(1);
 });

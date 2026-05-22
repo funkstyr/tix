@@ -372,6 +372,9 @@ importers:
 
   apps/payments:
     dependencies:
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.0.3(hono@4.12.21)
       '@orpc/server':
         specifier: 'catalog:'
         version: 1.14.3
@@ -384,6 +387,9 @@ importers:
       '@tix/messaging':
         specifier: workspace:*
         version: link:../../packages/messaging
+      '@tix/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       arktype:
         specifier: 'catalog:'
         version: 2.2.0

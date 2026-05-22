@@ -1,5 +1,7 @@
 import { serve } from "@hono/node-server";
 import { connect } from "@nats-io/transport-node";
+import { ArkErrors, type } from "arktype";
+import type { Level } from "pino";
 
 import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
 import { ORDERS_STREAM } from "@tix/contracts/subjects";
@@ -16,58 +18,87 @@ import { createHttpTicketsClient } from "./tickets-client.ts";
 const DEFAULT_PORT = 4003;
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`missing required env var: ${name}`);
+const envSchema = type({
+  "ORDERS_HTTP_PORT?": "string.numeric.parse",
+  DATABASE_URL: "string > 0",
+  AUTH_BASE_URL: "string > 0",
+  TICKETS_BASE_URL: "string > 0",
+  TICKETS_SERVICE_TOKEN: "string > 0",
+  NATS_URL: "string > 0",
+  "ORDERS_STREAM?": "string > 0",
+  "RESERVATION_TTL_MS?": "string.numeric.parse",
+  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
+});
 
-  return value;
-}
+type Env = {
+  port: number;
+  databaseUrl: string;
+  authBaseUrl: string;
+  ticketsBaseUrl: string;
+  ticketsServiceToken: string;
+  natsUrl: string;
+  stream: string;
+  reservationTtlMs: number;
+  logLevel: Level;
+};
 
-function parsePort(raw: string | undefined): number {
-  if (raw === undefined) return DEFAULT_PORT;
-
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0 || n > 65535) {
-    throw new Error(`invalid ORDERS_HTTP_PORT: ${raw}`);
+function parseEnv(): Env {
+  const parsed = envSchema(process.env);
+  if (parsed instanceof ArkErrors) {
+    throw new Error(`invalid environment: ${parsed.summary}`);
   }
 
-  return n;
-}
-
-function parseReservationTtl(raw: string | undefined): number {
-  if (raw === undefined) return DEFAULT_RESERVATION_TTL_MS;
-
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new Error(`invalid RESERVATION_TTL_MS: ${raw}`);
+  const port = parsed.ORDERS_HTTP_PORT ?? DEFAULT_PORT;
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`invalid ORDERS_HTTP_PORT: ${port}`);
   }
 
-  return n;
+  const reservationTtlMs = parsed.RESERVATION_TTL_MS ?? DEFAULT_RESERVATION_TTL_MS;
+  if (!Number.isInteger(reservationTtlMs) || reservationTtlMs <= 0) {
+    throw new Error(`invalid RESERVATION_TTL_MS: ${reservationTtlMs}`);
+  }
+
+  return {
+    port,
+    databaseUrl: parsed.DATABASE_URL,
+    authBaseUrl: parsed.AUTH_BASE_URL,
+    ticketsBaseUrl: parsed.TICKETS_BASE_URL,
+    ticketsServiceToken: parsed.TICKETS_SERVICE_TOKEN,
+    natsUrl: parsed.NATS_URL,
+    stream: parsed.ORDERS_STREAM ?? ORDERS_STREAM,
+    reservationTtlMs,
+    logLevel: parsed.LOG_LEVEL ?? "info",
+  };
 }
+
+const fallbackLogger = createLogger({ name: "orders" });
 
 async function main(): Promise<void> {
-  const logger = createLogger({ name: "orders", level: process.env["LOG_LEVEL"] ?? "info" });
+  const env = parseEnv();
+  const logger = createLogger({ name: "orders", level: env.logLevel });
 
-  const port = parsePort(process.env["ORDERS_HTTP_PORT"]);
-  const databaseUrl = requireEnv("DATABASE_URL");
-  const authBaseUrl = requireEnv("AUTH_BASE_URL");
-  const ticketsBaseUrl = requireEnv("TICKETS_BASE_URL");
-  const ticketsServiceToken = requireEnv("TICKETS_SERVICE_TOKEN");
-  const natsUrl = requireEnv("NATS_URL");
-  const stream = process.env["ORDERS_STREAM"] ?? ORDERS_STREAM;
-  const reservationTtlMs = parseReservationTtl(process.env["RESERVATION_TTL_MS"]);
+  const db = createDbClient("orders", env.databaseUrl, { schema: ordersTables });
+  const authClient = createHttpAuthSessionClient(env.authBaseUrl);
+  const ticketsClient = createHttpTicketsClient(env.ticketsBaseUrl, env.ticketsServiceToken);
+  const app = createOrdersApp({
+    db,
+    authClient,
+    ticketsClient,
+    reservationTtlMs: env.reservationTtlMs,
+    logger,
+  });
 
-  const db = createDbClient("orders", databaseUrl, { schema: ordersTables });
-  const authClient = createHttpAuthSessionClient(authBaseUrl);
-  const ticketsClient = createHttpTicketsClient(ticketsBaseUrl, ticketsServiceToken);
-  const app = createOrdersApp({ db, authClient, ticketsClient, reservationTtlMs, logger });
-
-  const nats = await connect({ servers: natsUrl });
+  const nats = await connect({ servers: env.natsUrl });
   const publisher = createPublisher(nats, { logger });
   const relay = startOutboxRelay(db.db, ordersOutbox, publisher.publish, { logger });
-  const expiredConsumer = await startOrdersExpiredConsumer({ db, nats, stream, logger });
+  const expiredConsumer = await startOrdersExpiredConsumer({
+    db,
+    nats,
+    stream: env.stream,
+    logger,
+  });
 
-  const server = serve({ fetch: app.fetch, port }, (info) => {
+  const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
     logger.info({ port: info.port }, "orders service listening");
   });
 
@@ -91,6 +122,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  createLogger({ name: "orders" }).fatal({ err }, "orders service failed to start");
+  fallbackLogger.fatal({ err }, "orders service failed to start");
   process.exit(1);
 });
