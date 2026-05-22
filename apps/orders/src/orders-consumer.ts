@@ -12,7 +12,7 @@ import { enqueueEvent } from "@tix/db-core/outbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 
 import { orders, ordersInbox, ordersOutbox, type ordersTables } from "./orders-schema.ts";
-import { transition, type Status } from "./state-machine.ts";
+import { transition } from "./state-machine.ts";
 
 export const ORDERS_EXPIRATION_CONSUMER_GROUP = "orders-expiration";
 
@@ -51,11 +51,10 @@ export async function startOrdersExpiredConsumer(
             return;
           }
 
-          const status = order.status as Status;
-          const next = transition(status, { kind: "deadline_passed" });
+          const next = transition(order.status, { kind: "deadline_passed" });
           if (!next.ok) {
             logger?.info(
-              { eventId, orderId: order.id, status, reason: next.reason },
+              { eventId, orderId: order.id, status: order.status, reason: next.reason },
               "order.expired.v1 ignored by FSM",
             );
             return;

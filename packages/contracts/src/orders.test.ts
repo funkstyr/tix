@@ -2,10 +2,12 @@ import { describe, expect, expectTypeOf, test } from "vitest";
 
 import {
   type OrderCancelledV1,
+  type OrderCompletedV1,
   type OrderCreatedV1,
   type OrderExpiredV1,
   type OrderReservationReleasedV1,
   orderCancelledV1,
+  orderCompletedV1,
   orderCreatedV1,
   orderExpiredV1,
   orderReservationReleasedV1,
@@ -25,6 +27,12 @@ const goodCancelled: OrderCancelledV1 = {
   orderId: "33333333-3333-4333-8333-333333333333",
   version: 2,
   cancelledAt: "2026-05-20T12:10:00.000Z",
+};
+
+const goodCompleted: OrderCompletedV1 = {
+  orderId: "33333333-3333-4333-8333-333333333333",
+  version: 2,
+  completedAt: "2026-05-20T12:10:00.000Z",
 };
 
 const goodExpired: OrderExpiredV1 = {
@@ -93,6 +101,35 @@ describe("orderCancelledV1", () => {
       orderId: string;
       version: number;
       cancelledAt: string;
+    }>();
+  });
+});
+
+describe("orderCompletedV1", () => {
+  test("accepts a known-good payload", () => {
+    expect(() => orderCompletedV1.assert(goodCompleted)).not.toThrow();
+  });
+
+  test("rejects a payload missing a required field", () => {
+    const { version: _omitted, ...missing } = goodCompleted;
+    expect(() => orderCompletedV1.assert(missing)).toThrow(/version/);
+  });
+
+  test("rejects a payload with an extra unknown field", () => {
+    expect(() => orderCompletedV1.assert({ ...goodCompleted, leakedField: "nope" })).toThrow(
+      /leakedField/,
+    );
+  });
+
+  test("rejects a non-positive version", () => {
+    expect(() => orderCompletedV1.assert({ ...goodCompleted, version: 0 })).toThrow(/version/);
+  });
+
+  test("inferred type matches the documented payload shape", () => {
+    expectTypeOf<OrderCompletedV1>().toEqualTypeOf<{
+      orderId: string;
+      version: number;
+      completedAt: string;
     }>();
   });
 });

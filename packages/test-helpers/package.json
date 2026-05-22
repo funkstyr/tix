@@ -16,6 +16,10 @@
       "types": "./dist/require-value.d.ts",
       "import": "./dist/require-value.js"
     },
+    "./sleep": {
+      "types": "./dist/sleep.d.ts",
+      "import": "./dist/sleep.js"
+    },
     "./wait-for": {
       "types": "./dist/wait-for.d.ts",
       "import": "./dist/wait-for.js"

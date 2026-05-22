@@ -7,18 +7,21 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { type OrderCompletedV1, orderCompletedV1 } from "@tix/contracts/orders";
 import { type PaymentCreatedV1 } from "@tix/contracts/payments";
-import { PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
+import { ORDER_COMPLETED_V1, PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
 import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
+import { sleep } from "@tix/test-helpers/sleep";
 import { waitFor } from "@tix/test-helpers/wait-for";
 
 import { startOrdersPaymentCreatedConsumer } from "./orders-payment-consumer.ts";
 import {
   orders as ordersTable,
   ordersInbox as ordersInboxTable,
+  ordersOutbox as ordersOutboxTable,
   ordersTables,
 } from "./orders-schema.ts";
 
@@ -147,8 +150,22 @@ async function readOrder(orderId: string) {
   return row;
 }
 
+async function readCompletedFromOutbox(orderId: string): Promise<OrderCompletedV1 | undefined> {
+  const rows = await requireValue(ordersDb, "ordersDb")
+    .db.select()
+    .from(ordersOutboxTable)
+    .where(eq(ordersOutboxTable.subject, ORDER_COMPLETED_V1));
+
+  for (const row of rows) {
+    const payload = row.payload as OrderCompletedV1;
+    if (payload.orderId === orderId) return payload;
+  }
+
+  return undefined;
+}
+
 describe.skipIf(!dockerAvailable)("orders consumer for payment.created.v1", () => {
-  it("transitions a created Order to complete and bumps version", async () => {
+  it("transitions a created Order to complete, bumps version, and enqueues order.completed.v1", async () => {
     const seeded = await seedOrder();
 
     await publishPaymentCreated({ orderId: seeded.id, eventId: randomUUID() });
@@ -161,6 +178,10 @@ describe.skipIf(!dockerAvailable)("orders consumer for payment.created.v1", () =
 
     expect(completed.status).toBe("complete");
     expect(completed.version).toBe(2);
+
+    const event = await waitFor(() => readCompletedFromOutbox(seeded.id), 3_000);
+    expect(event).toMatchObject({ orderId: seeded.id, version: 2 });
+    expect(() => orderCompletedV1.assert(event)).not.toThrow();
   }, 30_000);
 
   it("dedupes a redelivered payment.created.v1: order unchanged on second receipt", async () => {
@@ -176,7 +197,7 @@ describe.skipIf(!dockerAvailable)("orders consumer for payment.created.v1", () =
 
     await publishPaymentCreated({ orderId: seeded.id, eventId });
     // Give the consumer a chance to (mis)process the redelivery.
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
 
     const row = await readOrder(seeded.id);
     expect(row?.status).toBe("complete");
@@ -188,6 +209,12 @@ describe.skipIf(!dockerAvailable)("orders consumer for payment.created.v1", () =
       .from(ordersInboxTable)
       .where(eq(ordersInboxTable.eventId, eventId));
     expect(inboxRows).toHaveLength(1);
+
+    const completedRows = await dbRef.db
+      .select()
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, ORDER_COMPLETED_V1));
+    expect(completedRows).toHaveLength(1);
   }, 30_000);
 
   it("ignores payment.created.v1 for an Order already in a terminal state", async () => {
@@ -195,10 +222,13 @@ describe.skipIf(!dockerAvailable)("orders consumer for payment.created.v1", () =
 
     await publishPaymentCreated({ orderId: seeded.id, eventId: randomUUID() });
     // Let the consumer have a chance to (mis)process the event.
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
 
     const row = await readOrder(seeded.id);
     expect(row?.status).toBe("expired");
     expect(row?.version).toBe(1);
+
+    const event = await readCompletedFromOutbox(seeded.id);
+    expect(event).toBeUndefined();
   }, 30_000);
 });

@@ -1,16 +1,18 @@
 import { type NatsConnection } from "@nats-io/transport-node";
 import { eq } from "drizzle-orm";
 import { type Logger } from "pino";
+import { v7 as uuidv7 } from "uuid";
 
 import { paymentCreatedV1 } from "@tix/contracts/payments";
-import { PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
+import { ORDER_COMPLETED_V1, PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
 import { type DbClient } from "@tix/db-core/client";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
+import { enqueueEvent } from "@tix/db-core/outbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 
-import { orders, ordersInbox, type ordersTables } from "./orders-schema.ts";
-import { transition, type Status } from "./state-machine.ts";
+import { orders, ordersInbox, ordersOutbox, type ordersTables } from "./orders-schema.ts";
+import { transition } from "./state-machine.ts";
 
 export const ORDERS_PAYMENT_CREATED_CONSUMER_GROUP = "orders-payment-created";
 
@@ -49,16 +51,16 @@ export async function startOrdersPaymentCreatedConsumer(
             return;
           }
 
-          const status = order.status as Status;
-          const next = transition(status, { kind: "payment_confirmed" });
+          const next = transition(order.status, { kind: "payment_confirmed" });
           if (!next.ok) {
             logger?.info(
-              { eventId, orderId: order.id, status, reason: next.reason },
+              { eventId, orderId: order.id, status: order.status, reason: next.reason },
               "payment.created.v1 ignored by FSM",
             );
             return;
           }
 
+          const nextVersion = order.version + 1;
           const updated = await updateVersioned(
             tx,
             orders,
@@ -75,6 +77,16 @@ export async function startOrdersPaymentCreatedConsumer(
             );
             return;
           }
+
+          await enqueueEvent(tx, ordersOutbox, {
+            subject: ORDER_COMPLETED_V1,
+            eventId: uuidv7(),
+            payload: {
+              orderId: order.id,
+              version: nextVersion,
+              completedAt: new Date().toISOString(),
+            },
+          });
         });
 
         if (result.deduped) {
