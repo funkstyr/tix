@@ -7,7 +7,7 @@ import { paymentIntentStatus } from "@tix/contracts/payments";
 import type { DbClient } from "@tix/db-core/client";
 
 import { recordPayment } from "./payment-repository.ts";
-import { orderReadModel, payments, type paymentsTables } from "./payments-schema.ts";
+import { orderReadModel, type paymentsTables } from "./payments-schema.ts";
 import type { PaymentIntentClient } from "./stripe-payment-intent.ts";
 
 const tokenInput = type({
@@ -63,21 +63,13 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
         });
       }
 
-      // App-level idempotency: short-circuit before the Stripe call so a buyer
-      // retry never produces a second PaymentIntent, Payment row, or outbox
-      // entry. Stripe's idempotency-key cache would also dedupe the charge,
-      // but it can't dedupe our local writes — that's our job.
-      const [existing] = await db.db.select().from(payments).where(eq(payments.orderId, order.id));
-
-      if (existing) {
-        return { id: existing.id, status: paymentIntentStatus.assert(existing.status) };
-      }
-
       // Stripe charge sits outside the DB tx on purpose: PaymentIntent has
-      // network latency we don't want holding a row lock. If the DB write below
-      // fails after Stripe succeeds, a retry with the same orderId hits Stripe's
-      // 24h idempotency cache and returns the original intent — so we can recover
-      // without double-charging.
+      // network latency we don't want holding a row lock. Idempotency is a
+      // two-tier safety net: Stripe's idempotency-key cache (keyed on orderId)
+      // dedupes the charge, and the UNIQUE(order_id) constraint backing
+      // recordPayment's ON CONFLICT dedupes our writes. A retry that follows a
+      // successful Stripe call but failed DB write recovers cleanly: same
+      // PaymentIntent from Stripe, conflict-fallback SELECT returns the row.
       const intent = await paymentIntentClient.createPaymentIntent({
         orderId: order.id,
         amountCents: order.priceCents,

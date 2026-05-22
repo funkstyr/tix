@@ -1,4 +1,5 @@
 import { ORPCError } from "@orpc/server";
+import { eq } from "drizzle-orm";
 import { type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { v7 as uuidv7 } from "uuid";
 
@@ -28,6 +29,10 @@ export async function recordPayment(
   tx: PaymentsDb,
   args: RecordPaymentArgs,
 ): Promise<RecordedPayment> {
+  // ON CONFLICT (order_id) DO NOTHING + a SELECT fallback is the app-level
+  // idempotency seam. Sequential retries and concurrent double-clicks both
+  // converge to one row + one outbox entry. Stripe's idempotency-key cache
+  // (keyed on orderId) handles the charge side; this handles our writes.
   const [inserted] = await tx
     .insert(payments)
     .values({
@@ -38,10 +43,19 @@ export async function recordPayment(
       currency: args.currency,
       status: args.status,
     })
+    .onConflictDoNothing({ target: payments.orderId })
     .returning();
 
   if (!inserted) {
-    throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "payment insert returned no row" });
+    const [existing] = await tx.select().from(payments).where(eq(payments.orderId, args.orderId));
+
+    if (!existing) {
+      throw new ORPCError("INTERNAL_SERVER_ERROR", {
+        message: "payment conflict resolved but row missing",
+      });
+    }
+
+    return { id: existing.id, status: existing.status as PaymentIntentStatus };
   }
 
   const payload = paymentCreatedV1.assert({
