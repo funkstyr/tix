@@ -8,7 +8,6 @@ import {
   ticketsListInput,
   ticketsListOutput,
 } from "@tix/contracts/tickets";
-import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
 
 import type { DownstreamClients } from "./downstream-clients.ts";
 
@@ -30,14 +29,6 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
       .output(ticketRecordOutput)
       .handler(async ({ input, context }) => {
         return await clients.tickets.create(input, {
-          context: { cookieHeader: context.cookieHeader },
-        });
-      }),
-    reserve: base
-      .input(reserveTicketInput)
-      .output(reserveTicketOutput)
-      .handler(async ({ input, context }) => {
-        return await clients.tickets.reserve(input, {
           context: { cookieHeader: context.cookieHeader },
         });
       }),
