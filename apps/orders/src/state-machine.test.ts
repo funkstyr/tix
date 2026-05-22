@@ -11,17 +11,23 @@ const ALL_EVENTS: Event[] = [
 ];
 
 describe("transition", () => {
-  it("moves created → expired on deadline_passed (the only wired transition)", () => {
+  it("moves created → expired on deadline_passed", () => {
     expect(transition("created", { kind: "deadline_passed" })).toEqual({
       ok: true,
       next: "expired",
     });
   });
 
+  it("moves created → complete on payment_confirmed", () => {
+    expect(transition("created", { kind: "payment_confirmed" })).toEqual({
+      ok: true,
+      next: "complete",
+    });
+  });
+
   it.each([
     ["created", "buyer_cancels"],
     ["created", "buyer_initiates_payment"],
-    ["created", "payment_confirmed"],
     ["awaiting_payment", "buyer_cancels"],
     ["awaiting_payment", "buyer_initiates_payment"],
     ["awaiting_payment", "payment_confirmed"],

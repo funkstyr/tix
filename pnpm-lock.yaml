@@ -275,12 +275,24 @@ importers:
         specifier: 'catalog:'
         version: 10.3.1
     devDependencies:
+      '@nats-io/jetstream':
+        specifier: 'catalog:'
+        version: 3.4.0
+      '@nats-io/transport-node':
+        specifier: 'catalog:'
+        version: 3.4.0
       '@tix/auth-test-fixture':
         specifier: workspace:*
         version: link:../../packages/auth-test-fixture
       '@tix/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@tix/db-core':
+        specifier: workspace:*
+        version: link:../../packages/db-core
+      '@tix/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       '@tix/test-helpers':
         specifier: workspace:*
         version: link:../../packages/test-helpers
@@ -296,9 +308,18 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(kysely@0.28.17)(postgres@3.4.9)
+      orders:
+        specifier: workspace:*
+        version: link:../orders
+      payments:
+        specifier: workspace:*
+        version: link:../payments
       testcontainers:
         specifier: 'catalog:'
         version: 12.0.0
+      tickets:
+        specifier: workspace:*
+        version: link:../tickets
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)

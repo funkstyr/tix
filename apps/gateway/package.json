@@ -22,14 +22,21 @@
     "pino": "catalog:"
   },
   "devDependencies": {
+    "@nats-io/jetstream": "catalog:",
+    "@nats-io/transport-node": "catalog:",
     "@tix/auth-test-fixture": "workspace:*",
     "@tix/config": "workspace:*",
+    "@tix/db-core": "workspace:*",
+    "@tix/messaging": "workspace:*",
     "@tix/test-helpers": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "auth": "workspace:*",
     "drizzle-orm": "catalog:",
+    "orders": "workspace:*",
+    "payments": "workspace:*",
     "testcontainers": "catalog:",
+    "tickets": "workspace:*",
     "tsdown": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"
