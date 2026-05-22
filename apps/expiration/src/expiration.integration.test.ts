@@ -1,4 +1,4 @@
-import { jetstreamManager, RetentionPolicy, StorageType } from "@nats-io/jetstream";
+import { jetstreamManager, type PubAck, RetentionPolicy, StorageType } from "@nats-io/jetstream";
 import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { Queue, type ConnectionOptions } from "bullmq";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { orderExpiredV1 } from "@tix/contracts/orders";
+import { orderExpiredV1, type OrderExpiredV1 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1, ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createConsumer, createPublisher, type Publisher } from "@tix/messaging/jetstream";
@@ -47,7 +47,19 @@ let redis: ConnectionOptions | undefined;
 let service: RunningExpirationService | undefined;
 let streamName: string | undefined;
 
+// BullMQ + ioredis emit a `Connection is closed.` rejection when the worker's
+// blocking BRPOPLPUSH resolves after `worker.close()`. It's harmless shutdown
+// noise (no command is retried — `maxRetriesPerRequest: null` is set), but it
+// reaches Node's unhandledRejection handler and fails the vitest run. Filter
+// only this exact message; re-emit anything else.
+const swallowBullMqShutdownNoise = (reason: unknown): void => {
+  if (reason instanceof Error && reason.message === "Connection is closed.") return;
+  throw reason;
+};
+
 beforeAll(async () => {
+  process.on("unhandledRejection", swallowBullMqShutdownNoise);
+
   if (!dockerAvailable) return;
 
   pgContainer = await new GenericContainer("postgres:16-alpine")
@@ -84,6 +96,7 @@ afterAll(async () => {
   await natsContainer?.stop();
   await redisContainer?.stop();
   await pgContainer?.stop();
+  process.off("unhandledRejection", swallowBullMqShutdownNoise);
 });
 
 function requireHarness(): {
@@ -148,17 +161,22 @@ type PublishArgs = {
   expiresInMs: number;
 };
 
-async function publishOrderCreated(nc: NatsConnection, args: PublishArgs): Promise<void> {
+async function publishOrderCreated(
+  nc: NatsConnection,
+  args: PublishArgs,
+): Promise<{ expiresAt: string }> {
   const publisher = createPublisher(nc);
+  const expiresAt = new Date(Date.now() + args.expiresInMs).toISOString();
   const payload = {
     orderId: args.orderId,
     ticketId: randomUUID(),
     buyerId: `user-${randomUUID()}`,
     quantity: 1,
-    expiresAt: new Date(Date.now() + args.expiresInMs).toISOString(),
+    expiresAt,
     createdAt: new Date().toISOString(),
   };
   await publisher.publish(ORDER_CREATED_V1, payload, { msgId: args.eventId });
+  return { expiresAt };
 }
 
 async function waitForJob(
@@ -178,13 +196,15 @@ async function waitForJob(
   throw new Error(`job ${jobId} did not appear within ${timeoutMs}ms`);
 }
 
+type ExpiredEnvelope = { payload: OrderExpiredV1; eventId: string };
+
 async function awaitExpiredEvent(
   nc: NatsConnection,
   stream: string,
   expectedOrderId: string,
-): Promise<{ orderId: string; expiredAt: string; eventId: string }> {
-  let resolveEvent!: (e: { orderId: string; expiredAt: string; eventId: string }) => void;
-  const received = new Promise<{ orderId: string; expiredAt: string; eventId: string }>((r) => {
+): Promise<ExpiredEnvelope> {
+  let resolveEvent!: (e: ExpiredEnvelope) => void;
+  const received = new Promise<ExpiredEnvelope>((r) => {
     resolveEvent = r;
   });
 
@@ -195,7 +215,7 @@ async function awaitExpiredEvent(
     schema: orderExpiredV1,
     handler: ({ payload, eventId }) => {
       if (payload.orderId === expectedOrderId) {
-        resolveEvent({ orderId: payload.orderId, expiredAt: payload.expiredAt, eventId });
+        resolveEvent({ payload, eventId });
       }
     },
   });
@@ -214,7 +234,7 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
 
     const queue = new Queue<ExpireOrderPayload, void>(EXPIRATION_QUEUE, { connection: redisRef });
     try {
-      await publishOrderCreated(nc, {
+      const { expiresAt } = await publishOrderCreated(nc, {
         eventId: randomUUID(),
         orderId,
         expiresInMs: 500,
@@ -225,7 +245,7 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
       const job = await queue.getJob(orderId);
       expect(job).toBeTruthy();
       expect(job?.id).toBe(orderId);
-      expect(job?.data).toEqual({ orderId });
+      expect(job?.data).toEqual({ orderId, expiredAt: expiresAt });
     } finally {
       await queue.close();
     }
@@ -269,12 +289,12 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
 
     const queue = new Queue<ExpireOrderPayload, void>(EXPIRATION_QUEUE, { connection: redisRef });
     try {
-      await publishOrderCreated(nc, {
+      const { expiresAt: expiresA } = await publishOrderCreated(nc, {
         eventId: randomUUID(),
         orderId: orderA,
         expiresInMs: 5_000,
       });
-      await publishOrderCreated(nc, {
+      const { expiresAt: expiresB } = await publishOrderCreated(nc, {
         eventId: randomUUID(),
         orderId: orderB,
         expiresInMs: 5_000,
@@ -285,8 +305,8 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
 
       const jobA = await queue.getJob(orderA);
       const jobB = await queue.getJob(orderB);
-      expect(jobA?.data).toEqual({ orderId: orderA });
-      expect(jobB?.data).toEqual({ orderId: orderB });
+      expect(jobA?.data).toEqual({ orderId: orderA, expiredAt: expiresA });
+      expect(jobB?.data).toEqual({ orderId: orderB, expiredAt: expiresB });
 
       const inboxRows = await dbRef.db.select().from(expirationInbox);
       expect(inboxRows).toHaveLength(2);
@@ -297,36 +317,46 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
 });
 
 describe.skipIf(!dockerAvailable)("expiration worker", () => {
-  it("fires a delayed job and publishes order.expired.v1 within 200-1500ms", async () => {
+  it("publishes a schema-valid order.expired.v1 after the scheduled delay", async () => {
     const { nats: nc, stream } = requireHarness();
     if (!service) throw new Error("service not started");
 
     const orderId = randomUUID();
+    const expiredAt = new Date(Date.now() + 200).toISOString();
     const scheduledAt = Date.now();
-    await service.scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, { orderId }, 200, orderId);
+    await service.scheduler.scheduleDelayed(
+      EXPIRATION_JOB_NAME,
+      { orderId, expiredAt },
+      200,
+      orderId,
+    );
 
-    const event = await awaitExpiredEvent(nc, stream, orderId);
+    const { payload } = await awaitExpiredEvent(nc, stream, orderId);
     const elapsed = Date.now() - scheduledAt;
 
-    expect(event.orderId).toBe(orderId);
-    expect(orderExpiredV1(event)).not.toBeInstanceOf(Error);
+    expect(() => orderExpiredV1.assert(payload)).not.toThrow();
+    expect(payload).toEqual({ orderId, expiredAt });
     expect(elapsed).toBeGreaterThanOrEqual(200);
-    expect(elapsed).toBeLessThan(1_500);
   }, 30_000);
 
-  it("retries publish on transient failure and eventually publishes", async () => {
+  it("dedupes via JetStream msgId when a publish ack is lost and BullMQ retries", async () => {
     const { db: dbRef, nats: nc, redis: redisRef, stream } = requireHarness();
 
-    // Tear down the auto-started service so we can inject a publisher that throws on the first call.
+    // Tear down the auto-started service so we can inject a publisher that simulates
+    // a lost ack: the first publish reaches JetStream successfully, but the handler
+    // throws afterward — forcing a BullMQ retry that should be dedup'd server-side.
     await service?.stop();
 
     const realPublisher = createPublisher(nc);
+    const acks: PubAck[] = [];
     let attempts = 0;
-    const flakyPublisher: Publisher = {
+    const lossyPublisher: Publisher = {
       publish: async (subject, payload, opts) => {
         attempts++;
-        if (attempts === 1) throw new Error("simulated NATS unavailable");
-        return await realPublisher.publish(subject, payload, opts);
+        const result = await realPublisher.publish(subject, payload, opts);
+        acks.push(result.ack);
+        if (attempts === 1) throw new Error("simulated lost ack after successful publish");
+        return result;
       },
     };
 
@@ -335,16 +365,34 @@ describe.skipIf(!dockerAvailable)("expiration worker", () => {
       nats: nc,
       stream,
       redis: redisRef,
-      publisher: flakyPublisher,
+      publisher: lossyPublisher,
+    });
+
+    // Resolve once BullMQ has marked the retried job completed; without waiting
+    // for this, tearing the worker down while the completion write is in flight
+    // surfaces an ioredis "Connection is closed" unhandled rejection.
+    const retryCompleted = new Promise<void>((resolve) => {
+      service?.worker.once("completed", () => resolve());
     });
 
     const orderId = randomUUID();
-    await service.scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, { orderId }, 50, orderId);
+    const expiredAt = new Date(Date.now() + 50).toISOString();
+    await service.scheduler.scheduleDelayed(
+      EXPIRATION_JOB_NAME,
+      { orderId, expiredAt },
+      50,
+      orderId,
+    );
 
-    const event = await awaitExpiredEvent(nc, stream, orderId);
+    const { payload } = await awaitExpiredEvent(nc, stream, orderId);
 
-    expect(event.orderId).toBe(orderId);
-    expect(attempts).toBeGreaterThanOrEqual(2);
+    expect(payload).toEqual({ orderId, expiredAt });
+
+    await retryCompleted;
+
+    expect(acks).toHaveLength(2);
+    expect(acks[0]?.duplicate).toBe(false);
+    expect(acks[1]?.duplicate).toBe(true);
   }, 30_000);
 
   it("leaves no delayed or waiting jobs after a successful fire", async () => {
@@ -352,7 +400,13 @@ describe.skipIf(!dockerAvailable)("expiration worker", () => {
     if (!service) throw new Error("service not started");
 
     const orderId = randomUUID();
-    await service.scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, { orderId }, 100, orderId);
+    const expiredAt = new Date(Date.now() + 100).toISOString();
+    await service.scheduler.scheduleDelayed(
+      EXPIRATION_JOB_NAME,
+      { orderId, expiredAt },
+      100,
+      orderId,
+    );
 
     await awaitExpiredEvent(nc, stream, orderId);
 

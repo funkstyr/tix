@@ -1,7 +1,6 @@
 import { type NatsConnection } from "@nats-io/transport-node";
 import { type ConnectionOptions, type Worker } from "bullmq";
 import { type Logger } from "pino";
-import { v7 as uuidv7 } from "uuid";
 
 import { orderCreatedV1 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1, ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
@@ -21,12 +20,14 @@ export const EXPIRATION_QUEUE = "expiration";
 export const EXPIRATION_JOB_NAME = "expire-order";
 export const EXPIRATION_CONSUMER_GROUP = "expiration";
 
-// Retry tuning for the worker: BullMQ + JetStream publish ack is our at-least-once
-// guarantee for order.expired.v1 (no service-local outbox — see #14).
+// At-least-once publish of order.expired.v1 without a service-local outbox (see #14):
+// BullMQ retries the job on failure, and JetStream dedupes via a deterministic msgId
+// (`expired:<orderId>`) so a lost ack on attempt N is dropped server-side on attempt N+1.
+// expiredAt is carried in the job payload so retries publish byte-identical events.
 const EXPIRATION_JOB_ATTEMPTS = 5;
 const EXPIRATION_JOB_BACKOFF_MS = 200;
 
-export type ExpireOrderPayload = { orderId: string };
+export type ExpireOrderPayload = { orderId: string; expiredAt: string };
 
 export type ExpirationServiceArgs = {
   db: DbClient<typeof expirationTables>;
@@ -65,11 +66,10 @@ export async function startExpirationService(
 
   const worker = createWorker<ExpireOrderPayload>(redis, {
     queueName: EXPIRATION_QUEUE,
-    handler: async ({ orderId }) => {
-      const eventId = uuidv7();
-      const expiredAt = new Date().toISOString();
-      await publisher.publish(ORDER_EXPIRED_V1, { orderId, expiredAt }, { msgId: eventId });
-      logger?.info({ orderId, eventId }, "order.expired.v1 published");
+    handler: async ({ orderId, expiredAt }) => {
+      const msgId = `expired:${orderId}`;
+      const { ack } = await publisher.publish(ORDER_EXPIRED_V1, { orderId, expiredAt }, { msgId });
+      logger?.info({ orderId, msgId, duplicate: ack.duplicate }, "order.expired.v1 published");
     },
     ...loggerOpt,
   });
@@ -91,7 +91,7 @@ export async function startExpirationService(
             const delayMs = Math.max(0, new Date(payload.expiresAt).getTime() - Date.now());
             await scheduler.scheduleDelayed(
               EXPIRATION_JOB_NAME,
-              { orderId: payload.orderId },
+              { orderId: payload.orderId, expiredAt: payload.expiresAt },
               delayMs,
               payload.orderId,
             );

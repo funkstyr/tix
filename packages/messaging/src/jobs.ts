@@ -29,10 +29,11 @@ export function createScheduler<Payload>(
   connection: ConnectionOptions,
   options: SchedulerOptions,
 ): DelayedScheduler<Payload> {
+  const safeConnection = withWorkerConnectionDefaults(connection);
   const queueOpts =
     options.defaultJobOptions === undefined
-      ? { connection }
-      : { connection, defaultJobOptions: options.defaultJobOptions };
+      ? { connection: safeConnection }
+      : { connection: safeConnection, defaultJobOptions: options.defaultJobOptions };
   const queue = new Queue(options.queueName, queueOpts);
   const log = options.logger?.child({ queueName: options.queueName });
 
@@ -74,15 +75,18 @@ export function createWorker<Payload>(
         throw err;
       }
     },
-    // BullMQ requires `maxRetriesPerRequest: null` on worker connections; without it,
-    // ioredis queues retries that surface as unhandled rejections during shutdown.
     { connection: withWorkerConnectionDefaults(connection) },
   );
 }
 
+// BullMQ requires `maxRetriesPerRequest: null` on any blocking-redis connection
+// (workers + queues that issue blocking commands during shutdown). Without it,
+// ioredis queues retries that surface as unhandled rejections after close.
 function withWorkerConnectionDefaults(connection: ConnectionOptions): ConnectionOptions {
   if (connection && typeof connection === "object" && !("connect" in connection)) {
-    return { ...connection, maxRetriesPerRequest: null };
+    return "maxRetriesPerRequest" in connection
+      ? connection
+      : { ...connection, maxRetriesPerRequest: null };
   }
   return connection;
 }

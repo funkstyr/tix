@@ -23,8 +23,7 @@
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
     "pino": "catalog:",
-    "postgres": "catalog:",
-    "uuid": "catalog:"
+    "postgres": "catalog:"
   },
   "devDependencies": {
     "@nats-io/jetstream": "catalog:",
