@@ -208,6 +208,53 @@ describe.skipIf(!dockerAvailable)("payments.create — happy path", () => {
   });
 });
 
+describe.skipIf(!dockerAvailable)("payments.create — idempotency", () => {
+  it("retrying with the same orderId charges once and writes one Payment row + one outbox entry", async () => {
+    const buyer = await signUpBuyer();
+    const orderId = await seedOrder(buyer.userId, 4_500);
+
+    const createPaymentIntent = vi
+      .fn<PaymentIntentClient["createPaymentIntent"]>()
+      .mockResolvedValue({
+        stripeId: "pi_3OqVuk2eZvKYlo2C1Tt5KvP3",
+        status: "succeeded",
+      });
+
+    const client = buildClient({ createPaymentIntent });
+
+    const first = await client.create({
+      token: buyer.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    const second = await client.create({
+      token: buyer.token,
+      orderId,
+      paymentMethodId: "pm_card_visa",
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second.status).toBe(first.status);
+
+    expect(createPaymentIntent).toHaveBeenCalledTimes(1);
+
+    const db = requireValue(paymentsDb, "paymentsDb");
+
+    const paymentRows = await db.db
+      .select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.orderId, orderId));
+    expect(paymentRows).toHaveLength(1);
+
+    const outboxRows = await db.db
+      .select()
+      .from(paymentsOutboxTable)
+      .where(eq(paymentsOutboxTable.subject, "payment.created.v1"));
+    expect(outboxRows).toHaveLength(1);
+  });
+});
+
 describe.skipIf(!dockerAvailable)("payments.create — error paths", () => {
   async function assertNoSideEffects(orderId: string) {
     const db = requireValue(paymentsDb, "paymentsDb");

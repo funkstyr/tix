@@ -7,7 +7,7 @@ import { paymentIntentStatus } from "@tix/contracts/payments";
 import type { DbClient } from "@tix/db-core/client";
 
 import { recordPayment } from "./payment-repository.ts";
-import { orderReadModel, type paymentsTables } from "./payments-schema.ts";
+import { orderReadModel, payments, type paymentsTables } from "./payments-schema.ts";
 import type { PaymentIntentClient } from "./stripe-payment-intent.ts";
 
 const tokenInput = type({
@@ -61,6 +61,16 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
           message: "order is not payable",
           data: { reason: "not_payable" as const, status: order.status },
         });
+      }
+
+      // App-level idempotency: short-circuit before the Stripe call so a buyer
+      // retry never produces a second PaymentIntent, Payment row, or outbox
+      // entry. Stripe's idempotency-key cache would also dedupe the charge,
+      // but it can't dedupe our local writes — that's our job.
+      const [existing] = await db.db.select().from(payments).where(eq(payments.orderId, order.id));
+
+      if (existing) {
+        return { id: existing.id, status: paymentIntentStatus.assert(existing.status) };
       }
 
       // Stripe charge sits outside the DB tx on purpose: PaymentIntent has
