@@ -250,6 +250,9 @@ importers:
 
   apps/gateway:
     dependencies:
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.0.3(hono@4.12.21)
       '@orpc/client':
         specifier: 'catalog:'
         version: 1.14.3
@@ -259,6 +262,9 @@ importers:
       '@tix/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@tix/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
