@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./app": "./src/auth-app.ts",
     "./instance": "./src/auth-instance.ts",
     "./migrations": "./src/migrations.ts",
     "./router": "./src/router.ts",

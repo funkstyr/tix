@@ -27,6 +27,8 @@
     "@tix/test-helpers": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "auth": "workspace:*",
+    "drizzle-orm": "catalog:",
     "testcontainers": "catalog:",
     "tsdown": "catalog:",
     "tsx": "catalog:",

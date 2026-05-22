@@ -1,5 +1,5 @@
 import { createRouterClient } from "@orpc/server";
-import { createAuth } from "auth/instance";
+import { type AuthInstance, createAuth } from "auth/instance";
 import { migrationsFolder } from "auth/migrations";
 import { createAuthRouter } from "auth/router";
 import { authTables } from "auth/schema";
@@ -24,6 +24,7 @@ export type AuthFixtureOptions = {
 
 export type AuthFixture = {
   db: AuthFixtureDbClient;
+  auth: AuthInstance;
   authClient: AuthRouterClient;
   authSessionClient: AuthSessionClient;
   truncate: () => Promise<void>;
@@ -45,6 +46,7 @@ export async function createAuthFixture(options: AuthFixtureOptions): Promise<Au
 
   return {
     db,
+    auth,
     authClient,
     authSessionClient,
     truncate: async () => {

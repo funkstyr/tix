@@ -13,6 +13,15 @@ const HOP_BY_HOP = new Set([
   "trailer",
 ]);
 
+const CLIENT_FORWARDED = new Set([
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "forwarded",
+  "cf-connecting-ip",
+]);
+
 export type AuthProxyDeps = {
   authBaseUrl: string;
   fetch: typeof globalThis.fetch;
@@ -29,17 +38,19 @@ export function createAuthProxy(deps: AuthProxyDeps): AuthProxy {
 
     const upstreamHeaders = new Headers();
     for (const [key, value] of req.headers) {
-      if (HOP_BY_HOP.has(key.toLowerCase())) continue;
+      const lower = key.toLowerCase();
+      if (HOP_BY_HOP.has(lower)) continue;
+      if (CLIENT_FORWARDED.has(lower)) continue;
       upstreamHeaders.append(key, value);
     }
 
-    const hasBody = req.method !== "GET" && req.method !== "HEAD";
+    // `duplex` is required by Node's fetch when streaming a body; libdom omits it.
     const init: RequestInit & { duplex?: "half" } = {
       method: req.method,
       headers: upstreamHeaders,
       redirect: "manual",
     };
-    if (hasBody) {
+    if (req.body !== null) {
       init.body = req.body;
       init.duplex = "half";
     }
@@ -57,7 +68,9 @@ export function createAuthProxy(deps: AuthProxyDeps): AuthProxy {
 function copyResponseHeaders(upstream: Headers): Headers {
   const out = new Headers();
   for (const [key, value] of upstream) {
-    if (key.toLowerCase() === "set-cookie") continue;
+    const lower = key.toLowerCase();
+    if (lower === "set-cookie") continue;
+    if (HOP_BY_HOP.has(lower)) continue;
     out.append(key, value);
   }
   for (const cookie of upstream.getSetCookie()) {

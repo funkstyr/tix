@@ -9,7 +9,7 @@ import { createGatewayRouter } from "./gateway-router.ts";
 
 const WEB_ORIGIN = "https://app.tix.test";
 
-function buildApp() {
+function buildApp(authFetch?: typeof globalThis.fetch) {
   const logger = createLogger({ name: "gateway-test", level: "silent" });
   const clients = createDownstreamClients(
     {
@@ -21,11 +21,13 @@ function buildApp() {
     { fetch: async () => new Response(null, { status: 500 }) },
   );
   const router = createGatewayRouter({ clients });
+
   return createGatewayApp({
     logger,
     webOrigin: WEB_ORIGIN,
     router,
     authBaseUrl: "http://auth.test",
+    ...(authFetch ? { fetch: authFetch } : {}),
   });
 }
 
@@ -79,28 +81,6 @@ describe("createGatewayApp", () => {
   });
 
   describe("/api/auth/* passthrough", () => {
-    function buildAppWithAuthFetch(fetch: typeof globalThis.fetch) {
-      const logger = createLogger({ name: "gateway-test", level: "silent" });
-      const clients = createDownstreamClients(
-        {
-          ticketsBaseUrl: "http://tickets.test",
-          ordersBaseUrl: "http://orders.test",
-          paymentsBaseUrl: "http://payments.test",
-          authBaseUrl: "http://auth.test",
-        },
-        { fetch: async () => new Response(null, { status: 500 }) },
-      );
-      const router = createGatewayRouter({ clients });
-
-      return createGatewayApp({
-        logger,
-        webOrigin: WEB_ORIGIN,
-        router,
-        authBaseUrl: "http://auth.test",
-        fetch,
-      });
-    }
-
     it("forwards POST /api/auth/sign-in to the auth service and returns its Set-Cookie", async () => {
       const captured: { url: string; method: string; cookie: string | null; body: string }[] = [];
       const stub: typeof globalThis.fetch = async (input, init) => {
@@ -120,7 +100,7 @@ describe("createGatewayApp", () => {
           },
         });
       };
-      const app = buildAppWithAuthFetch(stub);
+      const app = buildApp(stub);
 
       const res = await app.fetch(
         new Request("http://gateway.test/api/auth/sign-in", {
@@ -157,7 +137,7 @@ describe("createGatewayApp", () => {
           },
         });
       };
-      const app = buildAppWithAuthFetch(stub);
+      const app = buildApp(stub);
 
       const res = await app.fetch(
         new Request("http://gateway.test/api/auth/sign-out", {
@@ -182,7 +162,7 @@ describe("createGatewayApp", () => {
         },
       });
       const stub: typeof globalThis.fetch = async () => upstreamRes;
-      const app = buildAppWithAuthFetch(stub);
+      const app = buildApp(stub);
 
       const res = await app.fetch(
         new Request("http://gateway.test/api/auth/sign-up", {

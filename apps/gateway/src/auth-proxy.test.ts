@@ -124,4 +124,69 @@ describe("createAuthProxy", () => {
 
     expect(captured[0]?.url).toBe("http://auth.test/api/auth/callback?code=42&state=s");
   });
+
+  it("strips client-controlled forwarded-IP headers from the upstream request", async () => {
+    const { fetch, captured } = buildFetchStub(new Response(null, { status: 200 }));
+    const proxy = createAuthProxy({ authBaseUrl: "http://auth.test", fetch });
+
+    await proxy(
+      new Request("http://gateway.test/api/auth/sign-in", {
+        method: "POST",
+        headers: {
+          "x-forwarded-for": "1.2.3.4",
+          "x-forwarded-host": "evil.example",
+          "x-forwarded-proto": "http",
+          "x-real-ip": "1.2.3.4",
+          forwarded: "for=1.2.3.4",
+          "cf-connecting-ip": "1.2.3.4",
+          cookie: "tix.session=abc",
+        },
+      }),
+    );
+
+    expect(captured[0]?.headers).not.toHaveProperty("x-forwarded-for");
+    expect(captured[0]?.headers).not.toHaveProperty("x-forwarded-host");
+    expect(captured[0]?.headers).not.toHaveProperty("x-forwarded-proto");
+    expect(captured[0]?.headers).not.toHaveProperty("x-real-ip");
+    expect(captured[0]?.headers).not.toHaveProperty("forwarded");
+    expect(captured[0]?.headers).not.toHaveProperty("cf-connecting-ip");
+    expect(captured[0]?.headers["cookie"]).toBe("tix.session=abc");
+  });
+
+  it("strips hop-by-hop response headers from upstream", async () => {
+    const upstream = new Response(null, {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        connection: "keep-alive",
+        "keep-alive": "timeout=5",
+      },
+    });
+    const { fetch } = buildFetchStub(upstream);
+    const proxy = createAuthProxy({ authBaseUrl: "http://auth.test", fetch });
+
+    const res = await proxy(
+      new Request("http://gateway.test/api/auth/sign-in", { method: "POST" }),
+    );
+
+    expect(res.headers.get("connection")).toBeNull();
+    expect(res.headers.get("keep-alive")).toBeNull();
+    expect(res.headers.get("content-type")).toBe("application/json");
+  });
+
+  it("does not set a body or duplex on body-less requests", async () => {
+    const captured: { body: string; hasBody: boolean }[] = [];
+    const stub: typeof globalThis.fetch = async (input, init) => {
+      const forwarded = new Request(input as Request | URL | string, init);
+      captured.push({ body: await forwarded.text(), hasBody: forwarded.body !== null });
+
+      return new Response(null, { status: 200 });
+    };
+    const proxy = createAuthProxy({ authBaseUrl: "http://auth.test", fetch: stub });
+
+    await proxy(new Request("http://gateway.test/api/auth/sign-out", { method: "POST" }));
+
+    expect(captured[0]?.body).toBe("");
+    expect(captured[0]?.hasBody).toBe(false);
+  });
 });
