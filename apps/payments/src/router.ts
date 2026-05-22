@@ -77,6 +77,18 @@ export function createPaymentsRouter(deps: PaymentsRouterDeps) {
         paymentMethodId: input.paymentMethodId,
       });
 
+      // Only `succeeded` is money-in-the-bank — 3DS, processing, and
+      // requires-* are out of PRD scope. Skipping the row keeps
+      // UNIQUE(order_id) open for a retry with a different card and prevents
+      // `payment.created.v1` firing for a charge that didn't actually clear.
+      if (intent.status !== "succeeded") {
+        throw new ORPCError("UNPROCESSABLE_CONTENT", {
+          status: 422,
+          message: "payment intent did not succeed",
+          data: { reason: "intent_not_succeeded" as const, status: intent.status },
+        });
+      }
+
       const recorded = await db.db.transaction((tx) =>
         recordPayment(tx, {
           orderId: order.id,

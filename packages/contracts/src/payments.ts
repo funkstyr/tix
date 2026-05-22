@@ -1,10 +1,18 @@
 import { type } from "arktype";
 
-export const paymentIntentStatus = type(
-  "'canceled' | 'processing' | 'requires_action' | 'requires_capture' | 'requires_confirmation' | 'requires_payment_method' | 'succeeded'",
-);
+export const PAYMENT_INTENT_STATUSES = [
+  "canceled",
+  "processing",
+  "requires_action",
+  "requires_capture",
+  "requires_confirmation",
+  "requires_payment_method",
+  "succeeded",
+] as const;
 
-export type PaymentIntentStatus = typeof paymentIntentStatus.infer;
+export type PaymentIntentStatus = (typeof PAYMENT_INTENT_STATUSES)[number];
+
+export const paymentIntentStatus = type.enumerated(...PAYMENT_INTENT_STATUSES);
 
 export const paymentCreatedV1 = type({
   "+": "reject",
