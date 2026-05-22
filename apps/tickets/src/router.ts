@@ -1,10 +1,11 @@
 import { ORPCError, os } from "@orpc/server";
 import { type } from "arktype";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
+import { ticketsListInput, ticketsListOutput } from "@tix/contracts/tickets";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
 import { enqueueEvent } from "@tix/db-core/outbox";
@@ -25,6 +26,8 @@ const createInput = tokenInput.and({
 const getByIdInput = type({
   ticketId: "string.uuid",
 });
+
+const DEFAULT_LIST_LIMIT = 50;
 
 const ticketOutput = type({
   id: "string.uuid",
@@ -138,7 +141,36 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
       };
     });
 
-  return { create, reserve, getById };
+  const list = base
+    .input(ticketsListInput)
+    .output(ticketsListOutput)
+    .handler(async ({ input }) => {
+      const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+
+      // Secondary `desc(id)` is the tie-break when two rows share a millisecond
+      // on createdAt — uuidv7 is monotonic per source, so id-desc preserves
+      // insert order without depending on clock resolution.
+      const rows = await db.db
+        .select()
+        .from(tickets)
+        .orderBy(desc(tickets.createdAt), desc(tickets.id))
+        .limit(limit);
+
+      return {
+        items: rows.map((row) => ({
+          id: row.id,
+          sellerId: row.sellerId,
+          title: row.title,
+          quantityTotal: row.quantityTotal,
+          quantityAvailable: row.quantityAvailable,
+          unitPriceCents: row.unitPriceCents,
+          version: row.version,
+          createdAt: row.createdAt.toISOString(),
+        })),
+      };
+    });
+
+  return { create, reserve, getById, list };
 }
 
 export type TicketsRouter = ReturnType<typeof createTicketsRouter>;
