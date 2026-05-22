@@ -112,4 +112,161 @@ describe("createGatewayRouter", () => {
     await expect(client.tickets.list({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(list).not.toHaveBeenCalled();
   });
+
+  it("delegates tickets.create to the downstream tickets client, forwarding input and cookie header", async () => {
+    const create = vi.fn<DownstreamClients["tickets"]["create"]>().mockResolvedValue(TICKET_RECORD);
+    const clients = emptyClients();
+    clients.tickets = { create } as unknown as DownstreamClients["tickets"];
+
+    const router = createGatewayRouter({ clients });
+    const client = createRouterClient(router, {
+      context: { cookieHeader: "tix.session=abc" } satisfies GatewayInitialContext,
+    });
+
+    const input = {
+      token: "session-token",
+      title: "Aphex Twin @ Warehouse",
+      quantityTotal: 50,
+      unitPriceCents: 4500,
+    };
+    const result = await client.tickets.create(input);
+
+    expect(result).toEqual(TICKET_RECORD);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
+  });
+
+  it("propagates ORPCError thrown by tickets.create", async () => {
+    const create = vi.fn<DownstreamClients["tickets"]["create"]>().mockRejectedValue(
+      new ORPCError("UNAUTHORIZED", {
+        status: 401,
+        message: "invalid or expired session",
+      }),
+    );
+    const clients = emptyClients();
+    clients.tickets = { create } as unknown as DownstreamClients["tickets"];
+
+    const client = buildClient(clients);
+
+    await expect(
+      client.tickets.create({
+        token: "stale",
+        title: "Aphex Twin @ Warehouse",
+        quantityTotal: 50,
+        unitPriceCents: 4500,
+      }),
+    ).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+      message: "invalid or expired session",
+    });
+  });
+
+  it("rejects invalid tickets.create input at the arktype boundary", async () => {
+    const create = vi.fn<DownstreamClients["tickets"]["create"]>();
+    const clients = emptyClients();
+    clients.tickets = { create } as unknown as DownstreamClients["tickets"];
+
+    const client = buildClient(clients);
+
+    await expect(
+      client.tickets.create({
+        token: "session-token",
+        title: "Aphex Twin @ Warehouse",
+        quantityTotal: 0,
+        unitPriceCents: 4500,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("delegates tickets.getById to the downstream tickets client, forwarding cookie header", async () => {
+    const getById = vi
+      .fn<DownstreamClients["tickets"]["getById"]>()
+      .mockResolvedValue(TICKET_RECORD);
+    const clients = emptyClients();
+    clients.tickets = { getById } as unknown as DownstreamClients["tickets"];
+
+    const router = createGatewayRouter({ clients });
+    const client = createRouterClient(router, {
+      context: { cookieHeader: "tix.session=abc" } satisfies GatewayInitialContext,
+    });
+
+    const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
+
+    expect(result).toEqual(TICKET_RECORD);
+    expect(getById).toHaveBeenCalledTimes(1);
+    expect(getById).toHaveBeenCalledWith(
+      { ticketId: TICKET_RECORD.id },
+      { context: { cookieHeader: "tix.session=abc" } },
+    );
+  });
+
+  it("returns null when tickets.getById finds no ticket", async () => {
+    const getById = vi.fn<DownstreamClients["tickets"]["getById"]>().mockResolvedValue(null);
+    const clients = emptyClients();
+    clients.tickets = { getById } as unknown as DownstreamClients["tickets"];
+
+    const client = buildClient(clients);
+
+    const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
+
+    expect(result).toBeNull();
+    expect(getById).toHaveBeenCalledWith(
+      { ticketId: TICKET_RECORD.id },
+      { context: { cookieHeader: null } },
+    );
+  });
+
+  it("rejects invalid tickets.getById input at the arktype boundary", async () => {
+    const getById = vi.fn<DownstreamClients["tickets"]["getById"]>();
+    const clients = emptyClients();
+    clients.tickets = { getById } as unknown as DownstreamClients["tickets"];
+
+    const client = buildClient(clients);
+
+    await expect(client.tickets.getById({ ticketId: "not-a-uuid" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it("delegates tickets.reserve to the downstream tickets client, forwarding cookie header", async () => {
+    const reserveResult = {
+      ticketId: TICKET_RECORD.id,
+      quantityAvailable: 48,
+      unitPriceCents: 4500,
+      version: 2,
+    };
+    const reserve = vi
+      .fn<DownstreamClients["tickets"]["reserve"]>()
+      .mockResolvedValue(reserveResult);
+    const clients = emptyClients();
+    clients.tickets = { reserve } as unknown as DownstreamClients["tickets"];
+
+    const router = createGatewayRouter({ clients });
+    const client = createRouterClient(router, {
+      context: { cookieHeader: "tix.session=abc" } satisfies GatewayInitialContext,
+    });
+
+    const input = { ticketId: TICKET_RECORD.id, quantity: 2 };
+    const result = await client.tickets.reserve(input);
+
+    expect(result).toEqual(reserveResult);
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(reserve).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
+  });
+
+  it("rejects invalid tickets.reserve input at the arktype boundary", async () => {
+    const reserve = vi.fn<DownstreamClients["tickets"]["reserve"]>();
+    const clients = emptyClients();
+    clients.tickets = { reserve } as unknown as DownstreamClients["tickets"];
+
+    const client = buildClient(clients);
+
+    await expect(
+      client.tickets.reserve({ ticketId: TICKET_RECORD.id, quantity: 0 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(reserve).not.toHaveBeenCalled();
+  });
 });
