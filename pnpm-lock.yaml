@@ -21,6 +21,9 @@ catalogs:
     '@orpc/server':
       specifier: ^1.14.3
       version: 1.14.3
+    '@playwright/test':
+      specifier: ^1.55.0
+      version: 1.60.0
     '@stripe/react-stripe-js':
       specifier: ^6.4.0
       version: 6.4.0
@@ -648,6 +651,75 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.7(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  apps/web-e2e:
+    devDependencies:
+      '@nats-io/jetstream':
+        specifier: 'catalog:'
+        version: 3.4.0
+      '@nats-io/transport-node':
+        specifier: 'catalog:'
+        version: 3.4.0
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 1.14.3
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.60.0
+      '@tix/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@tix/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@tix/db-core':
+        specifier: workspace:*
+        version: link:../../packages/db-core
+      '@tix/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
+      '@tix/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@tix/test-helpers':
+        specifier: workspace:*
+        version: link:../../packages/test-helpers
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.1
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260515.1
+      auth:
+        specifier: workspace:*
+        version: link:../auth
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(kysely@0.28.17)(postgres@3.4.9)
+      gateway:
+        specifier: workspace:*
+        version: link:../gateway
+      orders:
+        specifier: workspace:*
+        version: link:../orders
+      payments:
+        specifier: workspace:*
+        version: link:../payments
+      stripe:
+        specifier: 'catalog:'
+        version: 22.1.1(@types/node@25.9.1)
+      testcontainers:
+        specifier: 'catalog:'
+        version: 12.0.0
+      tickets:
+        specifier: workspace:*
+        version: link:../tickets
+      tsx:
+        specifier: 'catalog:'
+        version: 4.22.3
+      web:
+        specifier: workspace:*
+        version: link:../web
 
   packages/auth-test-fixture:
     dependencies:
@@ -2328,6 +2400,11 @@ packages:
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
 
+  '@playwright/test@1.60.0':
+    resolution: {integrity: sha512-O71yZIbAh/PxDMNGns37GHBIfrVkEVyn+AXyIa5dOTfb4/xNvRWV+Vv/NMbNCtODB/pO7vLlF2OTmMVLhmr7Ag==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
 
@@ -3403,6 +3480,11 @@ packages:
   fs-constants@1.0.0:
     resolution: {integrity: sha512-y6OAwoSIf7FyjMIv94u+b5rdheZEjzR63GTyZJm5qh4Bi+2YgwLCcI/fPFZkL5PSixOt6ZNKm+w+Hfp/Bciwow==}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -3831,6 +3913,16 @@ packages:
 
   pino@10.3.1:
     resolution: {integrity: sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==}
+    hasBin: true
+
+  playwright-core@1.60.0:
+    resolution: {integrity: sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.60.0:
+    resolution: {integrity: sha512-hheHdokM8cdqCb0lcE3s+zT4t4W+vvjpGxsZlDnikarzx8tSzMebh3UiFtgqwFwnTnjYQcsyMF8ei2mCO/tpeA==}
+    engines: {node: '>=18'}
     hasBin: true
 
   postcss@8.5.15:
@@ -5523,6 +5615,10 @@ snapshots:
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
+  '@playwright/test@1.60.0':
+    dependencies:
+      playwright: 1.60.0
+
   '@protobufjs/aspromise@1.1.2': {}
 
   '@protobufjs/base64@1.1.2': {}
@@ -6499,6 +6595,9 @@ snapshots:
 
   fs-constants@1.0.0: {}
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -6899,6 +6998,14 @@ snapshots:
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
       thread-stream: 4.2.0
+
+  playwright-core@1.60.0: {}
+
+  playwright@1.60.0:
+    dependencies:
+      playwright-core: 1.60.0
+    optionalDependencies:
+      fsevents: 2.3.2
 
   postcss@8.5.15:
     dependencies:
