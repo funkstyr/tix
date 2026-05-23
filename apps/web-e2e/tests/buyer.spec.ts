@@ -2,7 +2,13 @@ import { expect, test } from "@playwright/test";
 
 import { randomSuffix, seedTicket } from "../src/seed.ts";
 
+// Stripe test fixtures — these are the public, documented values for test
+// mode (https://stripe.com/docs/testing). Lifted to constants so any future
+// "what card did we use?" search lands here.
 const STRIPE_TEST_CARD = "4242 4242 4242 4242";
+const STRIPE_TEST_EXPIRY = "12 / 34";
+const STRIPE_TEST_CVC = "123";
+const STRIPE_TEST_ZIP = "12345";
 
 // Skip when STRIPE_TEST_KEY is missing: without a real sandbox key, the
 // payments service runs against a stub and the PaymentElement iframe can't
@@ -57,13 +63,13 @@ test("buyer signs up, buys a ticket, pays with a Stripe test card, sees Order co
   const cardNumber = paymentFrame.getByRole("textbox", { name: /card number/i });
   await cardNumber.waitFor({ state: "visible", timeout: 30_000 });
   await cardNumber.fill(STRIPE_TEST_CARD);
-  await paymentFrame.getByRole("textbox", { name: /expiration/i }).fill("12 / 34");
-  await paymentFrame.getByRole("textbox", { name: /cvc|security code/i }).fill("123");
+  await paymentFrame.getByRole("textbox", { name: /expiration/i }).fill(STRIPE_TEST_EXPIRY);
+  await paymentFrame.getByRole("textbox", { name: /cvc|security code/i }).fill(STRIPE_TEST_CVC);
 
   // Postal code is requested only for some locales; fill if present.
   const zip = paymentFrame.getByRole("textbox", { name: /zip|postal/i });
   if ((await zip.count()) > 0) {
-    await zip.fill("12345");
+    await zip.fill(STRIPE_TEST_ZIP);
   }
 
   await page.getByRole("button", { name: "Pay" }).click();

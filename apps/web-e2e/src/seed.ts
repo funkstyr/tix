@@ -1,6 +1,8 @@
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
+import { randomUUID } from "node:crypto";
 
+import type { GatewayRouterClient } from "@tix/contracts/gateway";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import type { TicketRecord } from "@tix/contracts/tickets";
 
@@ -34,16 +36,7 @@ export async function seedTicket(
   const seller = await signUp(gatewayBaseUrl, `seller-${randomSuffix()}@e2e.test`);
 
   const link = new RPCLink({ url: joinRpc(gatewayBaseUrl) });
-  const client = createORPCClient<{
-    tickets: {
-      create: (input: {
-        token: string;
-        title: string;
-        quantityTotal: number;
-        unitPriceCents: number;
-      }) => Promise<TicketRecord>;
-    };
-  }>(link);
+  const client: GatewayRouterClient = createORPCClient(link);
 
   const ticket = await client.tickets.create({
     token: seller.token,
@@ -76,7 +69,7 @@ export async function signUp(gatewayBaseUrl: string, email: string): Promise<See
 }
 
 export function randomSuffix(): string {
-  return Math.random().toString(36).slice(2, 10);
+  return randomUUID().slice(0, 8);
 }
 
 function trim(url: string): string {

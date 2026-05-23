@@ -4,7 +4,10 @@ import { type Harness, startHarness } from "./harness.ts";
 
 // Module-scoped so `global-teardown.ts` can call `shutdown()` on the same
 // harness instance. Playwright runs both files in the same Node process, so
-// importing this module from teardown gets the same singleton.
+// importing this module from teardown gets the same singleton — if a future
+// Playwright version ever forks teardown into a worker, this stops resolving
+// and the harness leaks its Postgres + NATS testcontainers. The Stop-hook
+// signal would be: testcontainers staying alive after the suite exits.
 let active: Harness | undefined;
 
 export default async function globalSetup(_config: FullConfig): Promise<void> {

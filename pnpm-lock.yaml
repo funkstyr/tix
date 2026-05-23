@@ -146,9 +146,6 @@ importers:
 
   apps/api-e2e:
     devDependencies:
-      '@nats-io/jetstream':
-        specifier: 'catalog:'
-        version: 3.4.0
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -690,12 +687,6 @@ importers:
 
   apps/web-e2e:
     devDependencies:
-      '@nats-io/jetstream':
-        specifier: 'catalog:'
-        version: 3.4.0
-      '@nats-io/transport-node':
-        specifier: 'catalog:'
-        version: 3.4.0
       '@orpc/client':
         specifier: 'catalog:'
         version: 1.14.3
@@ -708,36 +699,15 @@ importers:
       '@tix/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@tix/db-core':
-        specifier: workspace:*
-        version: link:../../packages/db-core
-      '@tix/messaging':
-        specifier: workspace:*
-        version: link:../../packages/messaging
-      '@tix/observability':
-        specifier: workspace:*
-        version: link:../../packages/observability
-      '@tix/test-helpers':
-        specifier: workspace:*
-        version: link:../../packages/test-helpers
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.1
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
-      auth:
-        specifier: workspace:*
-        version: link:../auth
-      drizzle-orm:
-        specifier: 'catalog:'
-        version: 0.45.2(kysely@0.28.17)(postgres@3.4.9)
       gateway:
         specifier: workspace:*
         version: link:../gateway
-      orders:
-        specifier: workspace:*
-        version: link:../orders
       payments:
         specifier: workspace:*
         version: link:../payments
@@ -747,15 +717,6 @@ importers:
       testcontainers:
         specifier: 'catalog:'
         version: 12.0.0
-      tickets:
-        specifier: workspace:*
-        version: link:../tickets
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
-      web:
-        specifier: workspace:*
-        version: link:../web
 
   packages/auth-test-fixture:
     dependencies:
