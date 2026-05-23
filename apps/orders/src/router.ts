@@ -168,8 +168,9 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
       const limit = input.limit ?? DEFAULT_LIST_LIMIT;
 
       // desc(id) is the tie-break when two rows share a millisecond on
-      // createdAt — uuidv7 is monotonic per source, so id-desc preserves
-      // insert order without depending on clock resolution.
+      // createdAt. Holds because every insert goes through `create` above with
+      // an explicit uuidv7 (monotonic per source) — see the note on
+      // `orders.id` in orders-schema.ts.
       const rows = await db.db
         .select()
         .from(orders)

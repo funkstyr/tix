@@ -1,20 +1,14 @@
 import { type JSX, useMemo } from "react";
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 
 import type { OrderRecord } from "@tix/contracts/orders";
 
 import { requireAuth } from "../../auth/require-auth";
-import { formatPrice } from "../../tickets/format-price";
+import { formatPrice } from "../../money/format-price";
 
 export const Route = createFileRoute("/orders/")({
-  beforeLoad: ({ context }) => {
-    requireAuth(context.auth, "/orders");
-  },
   loader: async ({ context }) => {
-    // requireAuth in beforeLoad redirects unauthenticated callers, so a token
-    // should be set by now — guard anyway because the type is `string | null`.
-    const token = context.auth.sessionToken;
-    if (token === null) throw redirect({ to: "/auth/signin", search: { redirect: "/orders" } });
+    const token = requireAuth(context.auth, "/orders");
 
     return await context.gateway.orders.list({ token });
   },
@@ -48,6 +42,7 @@ function OrdersListPage(): JSX.Element {
 }
 
 function OrderRow({ order }: { order: OrderRecord }): JSX.Element {
+  // Memoized to satisfy react-perf/jsx-no-new-object-as-prop on Link params.
   const params = useMemo(() => ({ orderId: order.id }), [order.id]);
 
   return (
