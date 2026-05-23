@@ -5,16 +5,9 @@
   "type": "module",
   "scripts": {
     "check-types": "tsgo --noEmit",
-    "smoke:infra": "tsx smoke-infra.ts",
-    "e2e": "tsx e2e.ts"
+    "smoke:infra": "tsx smoke-infra.ts"
   },
   "dependencies": {
-    "@nats-io/jetstream": "catalog:",
-    "@nats-io/transport-node": "catalog:",
-    "@orpc/client": "catalog:",
-    "@tix/contracts": "workspace:*",
-    "@tix/messaging": "workspace:*",
-    "drizzle-orm": "catalog:",
     "nats": "catalog:",
     "postgres": "catalog:"
   },

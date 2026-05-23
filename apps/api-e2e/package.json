@@ -1,0 +1,22 @@
+{
+  "name": "@tix/api-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-types": "tsgo --noEmit",
+    "test:e2e": "vitest run"
+  },
+  "devDependencies": {
+    "@nats-io/transport-node": "catalog:",
+    "@orpc/client": "catalog:",
+    "@tix/config": "workspace:*",
+    "@tix/contracts": "workspace:*",
+    "@tix/messaging": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:",
+    "vitest": "catalog:"
+  }
+}

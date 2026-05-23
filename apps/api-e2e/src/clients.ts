@@ -7,7 +7,7 @@ import type { OrdersRouterClient } from "@tix/contracts/orders";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import type { TicketsRouterClient } from "@tix/contracts/tickets";
 
-import { env } from "./e2e-env.ts";
+import { env } from "./env.ts";
 
 export function authClient(): AuthRouterClient {
   const link = new RPCLink({ url: `${env.AUTH_BASE_URL}${RPC_PREFIX}` });

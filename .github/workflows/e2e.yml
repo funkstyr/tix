@@ -50,3 +50,55 @@ jobs:
       - name: Tear down infra
         if: always()
         run: docker compose down -v
+
+  web-e2e:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      # Both keys must come from the same Stripe test mode account: the
+      # browser tokenizes a card against the publishable key, and the
+      # payments service confirms the resulting PaymentIntent against the
+      # secret key. Mixing accounts surfaces as a generic "No such
+      # PaymentMethod" from Stripe at confirm time.
+      STRIPE_TEST_KEY: ${{ secrets.STRIPE_TEST_KEY }}
+      STRIPE_TEST_PUBLISHABLE_KEY: ${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
+
+      - name: Build workspace packages
+        run: pnpm build:packages
+
+      # The harness boots Postgres + NATS via testcontainers itself, so the
+      # job doesn't need `docker compose up` — but Playwright needs its
+      # bundled browsers installed once.
+      - name: Install Playwright browsers
+        run: pnpm --filter @tix/web-e2e exec playwright install --with-deps chromium
+
+      - name: Run Playwright Buyer + Seller smoke tests
+        run: pnpm --filter @tix/web-e2e test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web-e2e/playwright-report
+          retention-days: 14

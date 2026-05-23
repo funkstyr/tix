@@ -1,0 +1,22 @@
+{
+  "name": "@tix/web-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-types": "tsgo --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@orpc/client": "catalog:",
+    "@playwright/test": "catalog:",
+    "@tix/config": "workspace:*",
+    "@tix/contracts": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "gateway": "workspace:*",
+    "payments": "workspace:*",
+    "stripe": "catalog:",
+    "testcontainers": "catalog:"
+  }
+}

@@ -62,12 +62,32 @@ export type CanaryStack = {
 };
 
 export type CanaryStackResources = CanaryStack & {
+  // The Playwright harness needs the gateway URL to bake into VITE_GATEWAY_URL
+  // before spawning the web dev server. Tests that go through the in-process
+  // gatewayClient can ignore it.
+  gatewayBaseUrl: string;
   shutdown: () => Promise<void>;
+};
+
+export type CanaryStackOptions = {
+  // The default stub PaymentIntent client returns `succeeded` synchronously,
+  // which is perfect for the in-process gateway canary. Swap in a real
+  // Stripe-backed client when running the browser flow against
+  // `<PaymentElement>`, since the iframe tokenizes a card and the gateway
+  // must confirm a real PaymentIntent for `payment.created.v1` to fire.
+  paymentIntentClient?: PaymentIntentClient;
+  // CORS allow-list on the gateway. Override when running against a real
+  // browser whose origin is the Vite dev server, not the canary placeholder.
+  webOrigin?: string;
+  // Shorten the reservation TTL when tests need to assert expiry; leave at
+  // 15min for happy-path flows so the Order doesn't expire mid-checkout.
+  reservationTtlMs?: number;
 };
 
 export async function startCanaryStack(
   pgUrl: string,
   natsUrl: string,
+  options: CanaryStackOptions = {},
 ): Promise<CanaryStackResources> {
   const logger = createLogger({ name: "canary", level: "silent" });
 
@@ -113,6 +133,9 @@ export async function startCanaryStack(
     db: authDb.db,
     secret: TEST_SECRET,
     baseURL: AUTH_BASE_URL_PLACEHOLDER,
+    // When the caller passes `webOrigin`, trust it as a better-auth origin
+    // too — otherwise the browser hits "Invalid origin" on every signup.
+    ...(options.webOrigin === undefined ? {} : { trustedOrigins: [options.webOrigin] }),
   });
   const { server: authServer, baseUrl: authBaseUrl } = await listen(
     createAuthApp({ auth, logger }),
@@ -142,7 +165,7 @@ export async function startCanaryStack(
     db: ordersDb,
     authClient: authSessionClient,
     ticketsClient: ticketsHttpClient,
-    reservationTtlMs: 15 * 60 * 1000,
+    reservationTtlMs: options.reservationTtlMs ?? 15 * 60 * 1000,
     logger,
   });
   const { server: ordersServer, baseUrl: ordersBaseUrl } = await listen(ordersAppHono);
@@ -172,7 +195,7 @@ export async function startCanaryStack(
   const paymentsAppHono = createPaymentsApp({
     db: paymentsDb,
     authClient: authSessionClient,
-    paymentIntentClient: stubPaymentIntentClient,
+    paymentIntentClient: options.paymentIntentClient ?? stubPaymentIntentClient,
     logger,
   });
   const { server: paymentsServer, baseUrl: paymentsBaseUrl } = await listen(paymentsAppHono);
@@ -202,7 +225,7 @@ export async function startCanaryStack(
   const gatewayRouter = createGatewayRouter({ clients: downstreamClients });
   const gatewayAppHono = createGatewayApp({
     logger,
-    webOrigin: WEB_ORIGIN,
+    webOrigin: options.webOrigin ?? WEB_ORIGIN,
     router: gatewayRouter,
     authBaseUrl,
   });
@@ -234,6 +257,7 @@ export async function startCanaryStack(
   return {
     authClient,
     gatewayClient,
+    gatewayBaseUrl,
     shutdown: async () => {
       await Promise.all(consumers.map((c) => c.stop()));
       await Promise.all(relays.map((r) => r.stop()));

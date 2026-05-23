@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./canary-stack": "./src/start-canary-stack.ts"
+  },
   "scripts": {
     "build": "tsdown",
     "check-types": "tsgo --noEmit",
