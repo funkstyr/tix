@@ -8,7 +8,7 @@ import {
   RESERVATION_TTL_MS,
   TEST_BETTER_AUTH_SECRET,
   TEST_SERVICE_TOKEN,
-} from "./e2e-env.ts";
+} from "./env.ts";
 
 type ServiceName = "auth" | "tickets" | "orders" | "expiration";
 

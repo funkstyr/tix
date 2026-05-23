@@ -1,7 +1,8 @@
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-export const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+// `apps/api-e2e/src/env.ts` → repo root is three levels up.
+export const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 // Test fixtures committed in plain text on purpose — they only have meaning
 // inside this script and the ephemeral infra it spins up. Prefix avoids any

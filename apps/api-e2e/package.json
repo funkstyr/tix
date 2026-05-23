@@ -1,0 +1,24 @@
+{
+  "name": "@tix/api-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-types": "tsgo --noEmit",
+    "test": "echo 'api-e2e vitest runs only via `pnpm --filter @tix/api-e2e test:e2e` (needs docker compose)' && exit 0",
+    "test:e2e": "vitest run"
+  },
+  "devDependencies": {
+    "@nats-io/jetstream": "catalog:",
+    "@nats-io/transport-node": "catalog:",
+    "@orpc/client": "catalog:",
+    "@tix/config": "workspace:*",
+    "@tix/contracts": "workspace:*",
+    "@tix/messaging": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:",
+    "vitest": "catalog:"
+  }
+}

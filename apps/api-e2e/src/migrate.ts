@@ -3,7 +3,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import path from "node:path";
 import postgres from "postgres";
 
-import { env, repoRoot } from "./e2e-env.ts";
+import { env, repoRoot } from "./env.ts";
 
 type Target = {
   schema: string;
