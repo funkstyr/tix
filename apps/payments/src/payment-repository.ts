@@ -29,10 +29,17 @@ export async function recordPayment(
   tx: PaymentsDb,
   args: RecordPaymentArgs,
 ): Promise<RecordedPayment> {
-  // ON CONFLICT (order_id) DO NOTHING + a SELECT fallback is the app-level
-  // idempotency seam. Sequential retries and concurrent double-clicks both
-  // converge to one row + one outbox entry. Stripe's idempotency-key cache
-  // (keyed on orderId) handles the charge side; this handles our writes.
+  // ON CONFLICT DO NOTHING + a SELECT fallback is the app-level idempotency
+  // seam. Sequential retries and concurrent double-clicks both converge to
+  // one row + one outbox entry. Stripe's idempotency-key cache (keyed on
+  // orderId) handles the charge side; this handles our writes.
+  //
+  // No conflict target on purpose: the table has UNIQUE(order_id) AND
+  // UNIQUE(stripe_id). Same orderId → same stripeId (Stripe's idempotency
+  // key derives one from the other), so under concurrent inserts the
+  // unique violation can land on either index depending on the speculative-
+  // insertion walk order. Naming order_id as the arbiter raises 23505 on
+  // stripe_id; a bare DO NOTHING absorbs both.
   const [inserted] = await tx
     .insert(payments)
     .values({
@@ -43,7 +50,7 @@ export async function recordPayment(
       currency: args.currency,
       status: args.status,
     })
-    .onConflictDoNothing({ target: payments.orderId })
+    .onConflictDoNothing()
     .returning();
 
   if (!inserted) {
