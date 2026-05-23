@@ -3,8 +3,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 
 import type { TicketRecord } from "@tix/contracts/tickets";
 
+import { formatPrice } from "../../tickets/format-price";
+
 export const Route = createFileRoute("/tickets/")({
-  loader: async ({ context }) => await context.gateway.tickets.list({}),
+  loader: ({ context }) => context.gateway.tickets.list({}),
   component: TicketsListPage,
 });
 
@@ -15,6 +17,7 @@ function TicketsListPage(): JSX.Element {
     return (
       <section>
         <h1>Tickets</h1>
+
         <p>No tickets available yet.</p>
       </section>
     );
@@ -23,6 +26,7 @@ function TicketsListPage(): JSX.Element {
   return (
     <section>
       <h1>Tickets</h1>
+
       <ul>
         {items.map((ticket) => (
           <TicketRow key={ticket.id} ticket={ticket} />
@@ -44,8 +48,4 @@ function TicketRow({ ticket }: { ticket: TicketRecord }): JSX.Element {
       </Link>
     </li>
   );
-}
-
-function formatPrice(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
