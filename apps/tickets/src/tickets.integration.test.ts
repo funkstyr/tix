@@ -286,6 +286,53 @@ describe.skipIf(!dockerAvailable)("tickets router", () => {
     const result = await getTicketsClient().list({});
     expect(result.items).toEqual([]);
   });
+
+  it("rejects tickets.listMine with an invalid session token", async () => {
+    const call = getTicketsClient().listMine({ token: INVALID_TOKEN });
+
+    await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("tickets.listMine returns only the caller's rows newest-first and honors the limit", async () => {
+    const seller = await signUpSeller("mine-seller@example.com");
+    const other = await signUpSeller("other-seller@example.com");
+
+    // Two of the caller's, with another seller's row sandwiched between to
+    // prove the filter — not just the ordering — is what isolates rows.
+    const first = await getTicketsClient().create({
+      token: seller.token,
+      title: "Mine 1",
+      quantityTotal: 5,
+      unitPriceCents: 1000,
+    });
+    await getTicketsClient().create({
+      token: other.token,
+      title: "Other seller",
+      quantityTotal: 5,
+      unitPriceCents: 1500,
+    });
+    const second = await getTicketsClient().create({
+      token: seller.token,
+      title: "Mine 2",
+      quantityTotal: 5,
+      unitPriceCents: 2000,
+    });
+
+    const mine = await getTicketsClient().listMine({ token: seller.token });
+    expect(mine.items.map((t) => t.id)).toEqual([second.id, first.id]);
+    expect(mine.items.every((t) => t.sellerId === seller.userId)).toBe(true);
+
+    const limited = await getTicketsClient().listMine({ token: seller.token, limit: 1 });
+    expect(limited.items).toHaveLength(1);
+    expect(limited.items[0]?.id).toBe(second.id);
+  });
+
+  it("tickets.listMine returns an empty list when the caller has none", async () => {
+    const seller = await signUpSeller("empty-seller@example.com");
+
+    const result = await getTicketsClient().listMine({ token: seller.token });
+    expect(result.items).toEqual([]);
+  });
 });
 
 describe.skipIf(!dockerAvailable)("tickets.reserve", () => {

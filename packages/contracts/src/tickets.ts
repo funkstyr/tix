@@ -59,6 +59,16 @@ export const ticketsListInput = type({
 
 export type TicketsListInput = typeof ticketsListInput.infer;
 
+// Separate from `ticketsListInput` so the public list can't be coerced into
+// leaking a different seller's inventory: `listMine` requires a session token
+// and filters server-side by the resolved user id.
+export const ticketsListMineInput = type({
+  token: "string >= 1",
+  "limit?": "1 <= number.integer <= 200",
+});
+
+export type TicketsListMineInput = typeof ticketsListMineInput.infer;
+
 export const ticketsListOutput = type({
   items: ticketRecordOutput.array(),
 });
@@ -70,4 +80,5 @@ export type TicketsRouterClient = {
   reserve: (input: ReserveTicketInput) => Promise<ReserveTicketOutput>;
   getById: (input: TicketGetByIdInput) => Promise<TicketRecord | null>;
   list: (input: TicketsListInput) => Promise<TicketsListOutput>;
+  listMine: (input: TicketsListMineInput) => Promise<TicketsListOutput>;
 };

@@ -10,6 +10,7 @@ import {
   ticketRecordOrNullOutput,
   ticketRecordOutput,
   ticketsListInput,
+  ticketsListMineInput,
   ticketsListOutput,
 } from "@tix/contracts/tickets";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
@@ -149,7 +150,36 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
       };
     });
 
-  return { create, reserve, getById, list };
+  const listMine = base
+    .input(ticketsListMineInput)
+    .output(ticketsListOutput)
+    .handler(async ({ input }) => {
+      const session = await requireSession(authClient, input.token);
+
+      const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+
+      const rows = await db.db
+        .select()
+        .from(tickets)
+        .where(eq(tickets.sellerId, session.user.id))
+        .orderBy(desc(tickets.createdAt), desc(tickets.id))
+        .limit(limit);
+
+      return {
+        items: rows.map((row) => ({
+          id: row.id,
+          sellerId: row.sellerId,
+          title: row.title,
+          quantityTotal: row.quantityTotal,
+          quantityAvailable: row.quantityAvailable,
+          unitPriceCents: row.unitPriceCents,
+          version: row.version,
+          createdAt: row.createdAt.toISOString(),
+        })),
+      };
+    });
+
+  return { create, reserve, getById, list, listMine };
 }
 
 export type TicketsRouter = ReturnType<typeof createTicketsRouter>;
