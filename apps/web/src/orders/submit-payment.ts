@@ -1,6 +1,7 @@
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 
 import type { GatewayRouterClient } from "@tix/contracts/gateway";
+import type { PaymentIntentStatus } from "@tix/contracts/payments";
 
 import { extractErrorMessage } from "../errors/extract-error-message";
 
@@ -34,8 +35,9 @@ export async function submitPayment(args: SubmitPaymentArgs): Promise<SubmitPaym
     return { kind: "error", message: methodResult.error.message ?? "Could not tokenize card" };
   }
 
+  let payment;
   try {
-    await client.payments.create({
+    payment = await client.payments.create({
       token,
       orderId,
       paymentMethodId: methodResult.paymentMethod.id,
@@ -44,5 +46,22 @@ export async function submitPayment(args: SubmitPaymentArgs): Promise<SubmitPaym
     return { kind: "error", message: extractErrorMessage(err, "Payment failed") };
   }
 
+  // The gateway confirms server-side, so non-throwing responses still need a
+  // status check — `requires_action` (3DS) and `requires_payment_method`
+  // (post-confirm decline) would otherwise navigate as if the charge worked.
+  if (payment.status !== "succeeded") {
+    return { kind: "error", message: paymentStatusMessage(payment.status) };
+  }
+
   return { kind: "ok" };
+}
+
+function paymentStatusMessage(status: PaymentIntentStatus): string {
+  if (status === "requires_action") {
+    return "Card requires additional verification — please try a different card";
+  }
+  if (status === "processing")
+    return "Payment is still processing — refresh to see the final status";
+
+  return "Payment failed — please try a different card";
 }

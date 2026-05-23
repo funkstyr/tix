@@ -134,4 +134,70 @@ describe("submitPayment", () => {
 
     expect(result).toEqual({ kind: "error", message: "Payment failed" });
   });
+
+  it("returns a 3DS-specific error when the PaymentIntent comes back as requires_action", async () => {
+    const submit = vi.fn<SubmitFn>().mockResolvedValue({});
+    const createPaymentMethod = vi
+      .fn<CreatePaymentMethodFn>()
+      .mockResolvedValue({ paymentMethod: { id: "pm_test_123" } });
+    const { client } = makeClient(async () => ({ id: "p_1", status: "requires_action" }));
+
+    const result = await submitPayment({
+      stripe: makeStripe(createPaymentMethod),
+      elements: makeElements(submit),
+      client,
+      token: "tok_abc",
+      orderId: "order_xyz",
+    });
+
+    expect(result).toEqual({
+      kind: "error",
+      message: "Card requires additional verification — please try a different card",
+    });
+  });
+
+  it("returns a processing-specific error when the PaymentIntent is still processing", async () => {
+    const submit = vi.fn<SubmitFn>().mockResolvedValue({});
+    const createPaymentMethod = vi
+      .fn<CreatePaymentMethodFn>()
+      .mockResolvedValue({ paymentMethod: { id: "pm_test_123" } });
+    const { client } = makeClient(async () => ({ id: "p_1", status: "processing" }));
+
+    const result = await submitPayment({
+      stripe: makeStripe(createPaymentMethod),
+      elements: makeElements(submit),
+      client,
+      token: "tok_abc",
+      orderId: "order_xyz",
+    });
+
+    expect(result).toEqual({
+      kind: "error",
+      message: "Payment is still processing — refresh to see the final status",
+    });
+  });
+
+  it("returns a generic decline error for other non-succeeded statuses", async () => {
+    const submit = vi.fn<SubmitFn>().mockResolvedValue({});
+    const createPaymentMethod = vi
+      .fn<CreatePaymentMethodFn>()
+      .mockResolvedValue({ paymentMethod: { id: "pm_test_123" } });
+    const { client } = makeClient(async () => ({
+      id: "p_1",
+      status: "requires_payment_method",
+    }));
+
+    const result = await submitPayment({
+      stripe: makeStripe(createPaymentMethod),
+      elements: makeElements(submit),
+      client,
+      token: "tok_abc",
+      orderId: "order_xyz",
+    });
+
+    expect(result).toEqual({
+      kind: "error",
+      message: "Payment failed — please try a different card",
+    });
+  });
 });

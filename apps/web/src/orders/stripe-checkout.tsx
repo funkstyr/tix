@@ -11,10 +11,9 @@ import { submitPayment } from "./submit-payment";
 export type StripeCheckoutProps = {
   orderId: string;
   priceCents: number;
-  expired: boolean;
 };
 
-export function StripeCheckout({ orderId, priceCents, expired }: StripeCheckoutProps): JSX.Element {
+export function StripeCheckout({ orderId, priceCents }: StripeCheckoutProps): JSX.Element {
   // Memoized so the <Elements> instance isn't re-created on every render —
   // Stripe warns and remounts the iframe if the options object identity changes.
   const options = useMemo<StripeElementsOptions>(
@@ -30,10 +29,6 @@ export function StripeCheckout({ orderId, priceCents, expired }: StripeCheckoutP
     [priceCents],
   );
 
-  if (expired) {
-    return <p data-testid="order-expired">Order expired</p>;
-  }
-
   return (
     <Elements stripe={stripePromise} options={options}>
       <CheckoutForm orderId={orderId} />
@@ -43,12 +38,17 @@ export function StripeCheckout({ orderId, priceCents, expired }: StripeCheckoutP
 
 function CheckoutForm({ orderId }: { orderId: string }): JSX.Element {
   const stripe = useStripe();
+
   const elements = useElements();
+
   const auth = useAuth();
+
   const client = useClient();
+
   const navigate = useNavigate();
 
   const [error, setError] = useState<string | null>(null);
+
   const [pending, setPending] = useState(false);
 
   const onSubmit = useCallback(
