@@ -89,4 +89,27 @@ describe("Countdown", () => {
     expect(container.textContent).toBe("00:00");
     expect(onExpire).toHaveBeenCalledTimes(1);
   });
+
+  it("re-fires onExpire after expiresAt is extended and the new deadline elapses", async () => {
+    const onExpire = vi.fn<() => void>();
+    const firstExpiresAt = new Date(Date.now() + 2 * 1000);
+
+    await act(async () => {
+      root.render(<Countdown expiresAt={firstExpiresAt} onExpire={onExpire} />);
+    });
+
+    await advanceSeconds(2);
+    expect(onExpire).toHaveBeenCalledTimes(1);
+
+    const extendedExpiresAt = new Date(Date.now() + 3 * 1000);
+
+    await act(async () => {
+      root.render(<Countdown expiresAt={extendedExpiresAt} onExpire={onExpire} />);
+    });
+    expect(container.textContent).toBe("00:03");
+
+    await advanceSeconds(3);
+    expect(container.textContent).toBe("00:00");
+    expect(onExpire).toHaveBeenCalledTimes(2);
+  });
 });

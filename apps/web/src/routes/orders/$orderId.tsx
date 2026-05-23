@@ -24,6 +24,14 @@ function OrderDetailPage(): JSX.Element {
 
   const expiresAt = useMemo(() => new Date(order.expiresAt), [order.expiresAt]);
 
+  const expiresAtLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+        expiresAt,
+      ),
+    [expiresAt],
+  );
+
   // Re-run the loader when the deadline passes so the displayed status
   // catches up with the backend transition (`created` → `expired`).
   const onExpire = useCallback(() => {
@@ -42,7 +50,7 @@ function OrderDetailPage(): JSX.Element {
         <dd>{formatPrice(order.priceCents)}</dd>
 
         <dt>Expires at</dt>
-        <dd>{expiresAt.toLocaleString()}</dd>
+        <dd>{expiresAtLabel}</dd>
 
         <dt>Time remaining</dt>
         <dd>

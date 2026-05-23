@@ -22,6 +22,12 @@ export function Countdown({ expiresAt, onExpire }: CountdownProps): JSX.Element 
 
   const firedRef = useRef(false);
 
+  // Reset on `expiresAt` change so a parent extending the deadline can still
+  // get a fresh expiry callback when the new deadline elapses.
+  useEffect(() => {
+    firedRef.current = false;
+  }, [expiresAt]);
+
   useEffect(() => {
     if (remainingMs === 0 && !firedRef.current) {
       firedRef.current = true;
