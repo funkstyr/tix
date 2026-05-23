@@ -5,6 +5,7 @@ import { requireAuth } from "./require-auth";
 
 const stubAuth = (currentUser: AuthContextValue["currentUser"]): AuthContextValue => ({
   currentUser,
+  sessionToken: currentUser === null ? null : "stub-token",
   ensureLoaded: async () => {},
   signIn: async () => ({ error: null }),
   signUp: async () => ({ error: null }),
