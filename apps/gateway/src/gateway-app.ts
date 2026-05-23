@@ -3,10 +3,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Logger } from "pino";
 
+import { AUTH_PROXY_PREFIX } from "@tix/contracts/auth";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import { requestLogger } from "@tix/observability/request-logger";
 
-import { AUTH_PROXY_PREFIX, createAuthProxy } from "./auth-proxy.ts";
+import { createAuthProxy } from "./auth-proxy.ts";
 import type { GatewayRouter } from "./gateway-router.ts";
 
 export type GatewayAppDeps = {
