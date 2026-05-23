@@ -4,6 +4,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { requireAuth } from "../../auth/require-auth";
 import { useAuth } from "../../auth/use-auth";
 import { useClient } from "../../client/use-client";
+import { extractErrorMessage } from "../../errors/extract-error-message";
 import { dollarsToCents } from "../../tickets/dollars-to-cents";
 
 export const Route = createFileRoute("/tickets/new")({
@@ -57,17 +58,31 @@ function NewTicketPage(): JSX.Element {
         return;
       }
 
+      const parsedQuantity = Number.parseInt(quantity, 10);
+      if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
+        setError("Enter a quantity of 1 or more");
+        setPending(false);
+        return;
+      }
+
+      const parsedPriceCents = dollarsToCents(priceDollars);
+      if (!Number.isFinite(parsedPriceCents) || parsedPriceCents < 0) {
+        setError("Enter a valid price");
+        setPending(false);
+        return;
+      }
+
       try {
         const ticket = await client.tickets.create({
           token: auth.sessionToken,
           title,
-          quantityTotal: Number.parseInt(quantity, 10),
-          unitPriceCents: dollarsToCents(priceDollars),
+          quantityTotal: parsedQuantity,
+          unitPriceCents: parsedPriceCents,
         });
 
         await navigate({ to: "/tickets/$ticketId", params: { ticketId: ticket.id } });
       } catch (err) {
-        setError(extractErrorMessage(err));
+        setError(extractErrorMessage(err, "Failed to create ticket"));
         setPending(false);
       }
     },
@@ -79,41 +94,38 @@ function NewTicketPage(): JSX.Element {
       <h1>List a ticket</h1>
 
       <form onSubmit={onSubmit}>
-        <label htmlFor="new-ticket-title">Title</label>
-        <input
-          id="new-ticket-title"
-          type="text"
-          aria-label="Title"
-          required
-          value={title}
-          onChange={onTitle}
-        />
+        <label>
+          Title
+          <input type="text" aria-label="Title" required value={title} onChange={onTitle} />
+        </label>
 
-        <label htmlFor="new-ticket-price">Price (USD)</label>
-        <input
-          id="new-ticket-price"
-          type="number"
-          aria-label="Price"
-          inputMode="decimal"
-          min="0"
-          step="0.01"
-          required
-          value={priceDollars}
-          onChange={onPrice}
-        />
+        <label>
+          Price (USD)
+          <input
+            type="number"
+            aria-label="Price"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            required
+            value={priceDollars}
+            onChange={onPrice}
+          />
+        </label>
 
-        <label htmlFor="new-ticket-quantity">Quantity</label>
-        <input
-          id="new-ticket-quantity"
-          type="number"
-          aria-label="Quantity"
-          inputMode="numeric"
-          min="1"
-          step="1"
-          required
-          value={quantity}
-          onChange={onQuantity}
-        />
+        <label>
+          Quantity
+          <input
+            type="number"
+            aria-label="Quantity"
+            inputMode="numeric"
+            min="1"
+            step="1"
+            required
+            value={quantity}
+            onChange={onQuantity}
+          />
+        </label>
 
         {error === null ? null : <p role="alert">{error}</p>}
 
@@ -123,10 +135,4 @@ function NewTicketPage(): JSX.Element {
       </form>
     </section>
   );
-}
-
-function extractErrorMessage(err: unknown): string {
-  if (err instanceof Error && err.message.length > 0) return err.message;
-
-  return "Failed to create ticket";
 }

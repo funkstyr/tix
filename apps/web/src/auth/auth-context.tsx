@@ -103,16 +103,11 @@ function toCurrentUser(
   return { id: user.id, email: user.email, name: user.name };
 }
 
-// better-auth returns the session token on getSession (`data.session.token`) and
-// also on sign-in / sign-up (`data.token`). Read both shapes so the same helper
-// covers all three entry points.
-function toSessionToken(
-  source: { token?: string | null; session?: { token?: string | null } | null } | undefined | null,
-): string | null {
-  if (!source) return null;
-  if (typeof source.token === "string" && source.token.length > 0) return source.token;
-  const sessionToken = source.session?.token;
-  if (typeof sessionToken === "string" && sessionToken.length > 0) return sessionToken;
+// Callers pass whichever level of the better-auth response carries the token:
+// `result.data?.session` from getSession, or `result.data` from signIn / signUp.
+function toSessionToken(source: { token?: string | null } | undefined | null): string | null {
+  const token = source?.token;
+  if (typeof token !== "string" || token.length === 0) return null;
 
-  return null;
+  return token;
 }
