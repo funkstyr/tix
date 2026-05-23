@@ -1,5 +1,9 @@
 import { type } from "arktype";
 
+// URL prefix at which the gateway exposes the auth service. Shared so the web
+// client and the gateway proxy agree on the same path without drifting.
+export const AUTH_PROXY_PREFIX = "/api/auth";
+
 export const signUpInput = type({
   email: "string.email",
   password: "string >= 8",

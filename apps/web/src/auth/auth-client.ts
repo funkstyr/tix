@@ -1,6 +1,6 @@
 import { createAuthClient } from "better-auth/react";
 
-import { AUTH_PROXY_PATH } from "./auth-proxy-path";
+import { AUTH_PROXY_PREFIX } from "@tix/contracts/auth";
 
 export type WebAuthClient = ReturnType<typeof createAuthClient>;
 
@@ -8,7 +8,7 @@ export type WebAuthClient = ReturnType<typeof createAuthClient>;
 // forwards to the auth service. `credentials: "include"` is required so the
 // session cookie flows on every call regardless of same-/cross-origin.
 export function createWebAuthClient(gatewayUrl: string): WebAuthClient {
-  const baseURL = `${gatewayUrl.replace(/\/$/, "")}${AUTH_PROXY_PATH}`;
+  const baseURL = `${gatewayUrl.replace(/\/$/, "")}${AUTH_PROXY_PREFIX}`;
 
   return createAuthClient({
     baseURL,

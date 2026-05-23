@@ -15,6 +15,10 @@ const env = parseEnv(import.meta.env);
 const gatewayClient = createGatewayClient(env.VITE_GATEWAY_URL);
 const authClient = createWebAuthClient(env.VITE_GATEWAY_URL);
 
+// The router needs a context type at construction time, but the real auth
+// value is provided per-render by <RouterProvider context={...}> in
+// <AppRouter/> below. The cast satisfies the type checker without paying for
+// a default value that would never be read.
 const router = createRouter({
   routeTree,
   context: { auth: undefined } as unknown as RouterContext,

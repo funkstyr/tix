@@ -1,5 +1,3 @@
-export const AUTH_PROXY_PREFIX = "/api/auth";
-
 const HOP_BY_HOP = new Set([
   "host",
   "content-length",

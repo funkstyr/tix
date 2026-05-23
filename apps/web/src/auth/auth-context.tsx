@@ -8,12 +8,9 @@ import {
   useState,
 } from "react";
 
-import type { CurrentUser } from "@tix/contracts/auth";
+import type { CurrentUser, SignInInput, SignUpInput } from "@tix/contracts/auth";
 
 import type { WebAuthClient } from "./auth-client";
-
-export type SignInInput = { email: string; password: string };
-export type SignUpInput = { email: string; password: string; name: string };
 
 export type AuthResult = { error: string | null };
 
@@ -34,6 +31,7 @@ export type AuthProviderProps = {
 
 export function AuthProvider({ client, children }: AuthProviderProps): JSX.Element {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+
   const loadPromiseRef = useRef<Promise<void> | null>(null);
 
   if (loadPromiseRef.current === null) {

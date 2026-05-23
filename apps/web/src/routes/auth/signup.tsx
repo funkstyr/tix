@@ -13,9 +13,13 @@ function SignUpPage(): JSX.Element {
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
+
   const [email, setEmail] = useState("");
+
   const [password, setPassword] = useState("");
+
   const [error, setError] = useState<string | null>(null);
+
   const [pending, setPending] = useState(false);
 
   const onName = useCallback((event: ChangeEvent<HTMLInputElement>) => {
