@@ -131,6 +131,7 @@ async function seedOrder(args: SeedOrderArgs = {}): Promise<{
     buyerId: `buyer-${randomUUID()}`,
     ticketId,
     quantity,
+    priceCents: 5_000,
     status: args.status ?? "created",
     expiresAt: new Date(Date.now() - 1_000),
   });

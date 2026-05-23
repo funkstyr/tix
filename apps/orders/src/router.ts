@@ -1,5 +1,5 @@
 import { ORPCError, os } from "@orpc/server";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { Logger } from "pino";
 import { pino } from "pino";
 import { v7 as uuidv7 } from "uuid";
@@ -10,6 +10,8 @@ import {
   orderGetByIdInput,
   orderRecordOrNullOutput,
   orderRecordOutput,
+  ordersListInput,
+  ordersListOutput,
 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import type { ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
@@ -20,6 +22,8 @@ import { orders, ordersOutbox, type ordersTables } from "./orders-schema.ts";
 import type { TicketsClient } from "./tickets-client.ts";
 
 const fallbackLogger: Logger = pino({ level: "warn" });
+
+const DEFAULT_LIST_LIMIT = 50;
 
 export type OrdersRouterDeps = {
   db: DbClient<typeof ordersTables>;
@@ -98,6 +102,7 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
               buyerId: session.user.id,
               ticketId: input.ticketId,
               quantity: input.quantity,
+              priceCents,
               status: "created",
               expiresAt,
               createdAt,
@@ -127,16 +132,7 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
           return inserted;
         });
 
-        return {
-          id: row.id,
-          buyerId: row.buyerId,
-          ticketId: row.ticketId,
-          quantity: row.quantity,
-          status: row.status,
-          expiresAt: row.expiresAt.toISOString(),
-          version: row.version,
-          createdAt: row.createdAt.toISOString(),
-        };
+        return toOrderRecord(row);
       } catch (err: unknown) {
         await compensateReserve(db, logger, {
           orderId,
@@ -160,19 +156,47 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
       // Treat non-ownership identically to "not found" so existence isn't a side channel.
       if (row.buyerId !== session.user.id) return null;
 
-      return {
-        id: row.id,
-        buyerId: row.buyerId,
-        ticketId: row.ticketId,
-        quantity: row.quantity,
-        status: row.status,
-        expiresAt: row.expiresAt.toISOString(),
-        version: row.version,
-        createdAt: row.createdAt.toISOString(),
-      };
+      return toOrderRecord(row);
     });
 
-  return { create, getById };
+  const list = base
+    .input(ordersListInput)
+    .output(ordersListOutput)
+    .handler(async ({ input }) => {
+      const session = await requireSession(authClient, input.token);
+
+      const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+
+      // desc(id) is the tie-break when two rows share a millisecond on
+      // createdAt — uuidv7 is monotonic per source, so id-desc preserves
+      // insert order without depending on clock resolution.
+      const rows = await db.db
+        .select()
+        .from(orders)
+        .where(eq(orders.buyerId, session.user.id))
+        .orderBy(desc(orders.createdAt), desc(orders.id))
+        .limit(limit);
+
+      return { items: rows.map(toOrderRecord) };
+    });
+
+  return { create, getById, list };
+}
+
+type OrderRow = typeof orders.$inferSelect;
+
+function toOrderRecord(row: OrderRow) {
+  return {
+    id: row.id,
+    buyerId: row.buyerId,
+    ticketId: row.ticketId,
+    quantity: row.quantity,
+    priceCents: row.priceCents,
+    status: row.status,
+    expiresAt: row.expiresAt.toISOString(),
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 export type OrdersRouter = ReturnType<typeof createOrdersRouter>;

@@ -121,6 +121,7 @@ async function seedOrder(status: "created" | "expired" = "created"): Promise<{ i
     buyerId: `buyer-${randomUUID()}`,
     ticketId: randomUUID(),
     quantity: 1,
+    priceCents: 5_000,
     status,
     expiresAt: new Date(Date.now() + 60_000),
   });

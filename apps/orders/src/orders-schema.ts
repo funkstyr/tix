@@ -7,6 +7,7 @@ export const orders = ordersSchema.table("orders", {
   buyerId: text("buyer_id").notNull(),
   ticketId: uuid("ticket_id").notNull(),
   quantity: integer("quantity").notNull(),
+  priceCents: integer("price_cents").notNull(),
   status: text("status", {
     enum: ["created", "awaiting_payment", "complete", "cancelled", "expired"],
   }).notNull(),

@@ -232,6 +232,7 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
     expect(order.buyerId).toBe(buyer.userId);
     expect(order.ticketId).toBe(ticket.id);
     expect(order.quantity).toBe(2);
+    expect(order.priceCents).toBe(10_000);
     expect(order.status).toBe("created");
     expect(order.version).toBe(1);
 
@@ -241,6 +242,7 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
       .where(eq(ordersTable.id, order.id));
     expect(row?.status).toBe("created");
     expect(row?.quantity).toBe(2);
+    expect(row?.priceCents).toBe(10_000);
   });
 
   it("decrements the Ticket's quantityAvailable by the Order quantity", async () => {
@@ -480,5 +482,53 @@ describe.skipIf(!dockerAvailable)("orders.create", () => {
     });
 
     expect(fetched).toBeNull();
+  });
+});
+
+describe.skipIf(!dockerAvailable)("orders.list", () => {
+  it("returns only the caller's Orders, newest first", async () => {
+    const seller = await signUpUser("seller-list@example.com");
+    const buyer = await signUpUser("buyer-list@example.com");
+    const otherBuyer = await signUpUser("buyer-list-other@example.com");
+    const ticketA = await createTicket(seller.token, 5);
+    const ticketB = await createTicket(seller.token, 5);
+
+    const first = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticketA.id,
+      quantity: 1,
+    });
+    const second = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticketB.id,
+      quantity: 2,
+    });
+    // Other buyer's order must not leak into the caller's list.
+    await getOrdersClient().create({
+      token: otherBuyer.token,
+      ticketId: ticketA.id,
+      quantity: 1,
+    });
+
+    const { items } = await getOrdersClient().list({ token: buyer.token });
+
+    expect(items.map((o) => o.id)).toEqual([second.id, first.id]);
+    expect(items[0]?.priceCents).toBe(10_000);
+    expect(items[1]?.priceCents).toBe(5_000);
+    expect(items.every((o) => o.buyerId === buyer.userId)).toBe(true);
+  });
+
+  it("returns an empty list when the caller has no Orders", async () => {
+    const buyer = await signUpUser("buyer-list-empty@example.com");
+
+    const { items } = await getOrdersClient().list({ token: buyer.token });
+    expect(items).toEqual([]);
+  });
+
+  it("rejects an unauthenticated caller with 401", async () => {
+    await expect(getOrdersClient().list({ token: INVALID_TOKEN })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+    });
   });
 });

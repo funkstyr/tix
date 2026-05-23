@@ -5,6 +5,8 @@ import {
   orderGetByIdInput,
   orderRecordOrNullOutput,
   orderRecordOutput,
+  ordersListInput,
+  ordersListOutput,
 } from "@tix/contracts/orders";
 import { paymentCreateInput, paymentCreateOutput } from "@tix/contracts/payments";
 import {
@@ -71,6 +73,14 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
       .output(orderRecordOrNullOutput)
       .handler(async ({ input, context }) => {
         return await clients.orders.getById(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+    list: base
+      .input(ordersListInput)
+      .output(ordersListOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.orders.list(input, {
           context: { cookieHeader: context.cookieHeader },
         });
       }),
