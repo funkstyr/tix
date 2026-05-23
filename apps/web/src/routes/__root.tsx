@@ -1,11 +1,14 @@
 import { type JSX } from "react";
 import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
 
+import type { GatewayRouterClient } from "@tix/contracts/gateway";
+
 import type { AuthContextValue } from "../auth/auth-context";
 import { useAuth } from "../auth/use-auth";
 
 export type RouterContext = {
   auth: AuthContextValue;
+  gateway: GatewayRouterClient;
 };
 
 export const Route = createRootRouteWithContext<RouterContext>()({
