@@ -15,6 +15,7 @@
     "@tanstack/react-router": "catalog:",
     "@tix/contracts": "workspace:*",
     "arktype": "catalog:",
+    "better-auth": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
