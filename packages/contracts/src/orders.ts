@@ -59,6 +59,7 @@ export const orderRecordOutput = type({
   buyerId: "string >= 1",
   ticketId: "string.uuid",
   quantity: "number.integer",
+  priceCents: "number.integer >= 0",
   status: "'created' | 'awaiting_payment' | 'complete' | 'cancelled' | 'expired'",
   expiresAt: "string.date.iso",
   version: "number.integer",
@@ -86,7 +87,23 @@ export const orderGetByIdInput = type({
 
 export type OrderGetByIdInput = typeof orderGetByIdInput.infer;
 
+export const ordersListInput = type({
+  "+": "reject",
+  token: "string >= 1",
+  "limit?": "1 <= number.integer <= 200",
+});
+
+export type OrdersListInput = typeof ordersListInput.infer;
+
+export const ordersListOutput = type({
+  "+": "reject",
+  items: orderRecordOutput.array(),
+});
+
+export type OrdersListOutput = typeof ordersListOutput.infer;
+
 export type OrdersRouterClient = {
   create: (input: OrderCreateInput) => Promise<OrderRecord>;
   getById: (input: OrderGetByIdInput) => Promise<OrderRecord | null>;
+  list: (input: OrdersListInput) => Promise<OrdersListOutput>;
 };

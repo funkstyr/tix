@@ -3,10 +3,15 @@ import { integer, jsonb, pgSchema, text, timestamp, unique, uuid } from "drizzle
 export const ordersSchema = pgSchema("orders");
 
 export const orders = ordersSchema.table("orders", {
+  // `defaultRandom()` is a fallback safety net; the router always assigns an
+  // explicit uuidv7 so `orders.list` can use `desc(id)` as a millisecond
+  // tie-break that preserves insert order. Don't add a writer that relies on
+  // the SQL default without revisiting that ordering.
   id: uuid("id").primaryKey().defaultRandom(),
   buyerId: text("buyer_id").notNull(),
   ticketId: uuid("ticket_id").notNull(),
   quantity: integer("quantity").notNull(),
+  priceCents: integer("price_cents").notNull(),
   status: text("status", {
     enum: ["created", "awaiting_payment", "complete", "cancelled", "expired"],
   }).notNull(),

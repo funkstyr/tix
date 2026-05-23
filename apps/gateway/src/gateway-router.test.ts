@@ -20,6 +20,7 @@ const ORDER_RECORD = {
   buyerId: "buyer-1",
   ticketId: "00000000-0000-4000-8000-000000000001",
   quantity: 2,
+  priceCents: 10_000,
   status: "created" as const,
   expiresAt: "2026-05-22T00:15:00.000Z",
   version: 1,
@@ -307,6 +308,31 @@ describe("createGatewayRouter", () => {
       client.orders.getById({ orderId: ORDER_RECORD.id }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(getById).not.toHaveBeenCalled();
+  });
+
+  it("delegates orders.list to the downstream orders client, forwarding input and cookie header", async () => {
+    const list = vi
+      .fn<DownstreamClients["orders"]["list"]>()
+      .mockResolvedValue({ items: [ORDER_RECORD] });
+    const client = withDownstreamStub("orders", { list }, { cookieHeader: "tix.session=abc" });
+
+    const input = { token: "session-token", limit: 10 };
+    const result = await client.orders.list(input);
+
+    expect(result).toEqual({ items: [ORDER_RECORD] });
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
+  });
+
+  it("rejects orders.list with a missing token at the arktype boundary", async () => {
+    const list = vi.fn<DownstreamClients["orders"]["list"]>();
+    const client = withDownstreamStub("orders", { list });
+
+    await expect(
+      // @ts-expect-error missing token verifies arktype boundary
+      client.orders.list({}),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(list).not.toHaveBeenCalled();
   });
 
   it("delegates payments.create to the downstream payments client, forwarding input and cookie header", async () => {

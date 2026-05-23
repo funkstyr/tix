@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 
 import type { TicketRecord } from "@tix/contracts/tickets";
 
-import { formatPrice } from "../../tickets/format-price";
+import { formatPrice } from "../../money/format-price";
 
 export const Route = createFileRoute("/tickets/")({
   loader: ({ context }) => context.gateway.tickets.list({}),

@@ -1,7 +1,7 @@
 import { type JSX } from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
-import { formatPrice } from "../../tickets/format-price";
+import { formatPrice } from "../../money/format-price";
 
 export const Route = createFileRoute("/tickets/$ticketId")({
   loader: async ({ context, params }) => {

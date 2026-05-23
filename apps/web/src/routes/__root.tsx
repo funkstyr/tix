@@ -46,6 +46,7 @@ function Header(): JSX.Element {
           <>
             <span data-testid="current-user">{auth.currentUser.email}</span>
             <Link to="/tickets/new">List a ticket</Link>
+            <Link to="/orders">My orders</Link>
             <Link to="/auth/signout">Sign out</Link>
           </>
         )}
