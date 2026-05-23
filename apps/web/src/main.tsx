@@ -45,7 +45,7 @@ createRoot(rootElement).render(
 
 function AppRouter(): JSX.Element {
   const auth = useAuth();
-  const context = useMemo<RouterContext>(() => ({ auth }), [auth]);
+  const context = useMemo<RouterContext>(() => ({ auth, gateway: gatewayClient }), [auth]);
 
   return <RouterProvider router={router} context={context} />;
 }
