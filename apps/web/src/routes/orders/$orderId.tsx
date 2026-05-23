@@ -1,9 +1,12 @@
-import { type JSX, useCallback, useMemo } from "react";
+import { type JSX, useCallback, useMemo, useState } from "react";
 import { createFileRoute, notFound, useRouter } from "@tanstack/react-router";
 
 import { requireAuth } from "../../auth/require-auth";
 import { formatPrice } from "../../money/format-price";
 import { Countdown } from "../../orders/countdown";
+import { StripeCheckout } from "../../orders/stripe-checkout";
+
+const PAYABLE_STATUSES = new Set(["created", "awaiting_payment"]);
 
 export const Route = createFileRoute("/orders/$orderId")({
   loader: async ({ context, params }) => {
@@ -32,11 +35,18 @@ function OrderDetailPage(): JSX.Element {
     [expiresAt],
   );
 
+  const [expired, setExpired] = useState(false);
+
   // Re-run the loader when the deadline passes so the displayed status
-  // catches up with the backend transition (`created` → `expired`).
+  // catches up with the backend transition (`created` → `expired`), and flip
+  // the local `expired` flag so the checkout form disables before the loader
+  // round-trip completes.
   const onExpire = useCallback(() => {
+    setExpired(true);
     void router.invalidate();
   }, [router]);
+
+  const payable = PAYABLE_STATUSES.has(order.status);
 
   return (
     <section>
@@ -57,6 +67,10 @@ function OrderDetailPage(): JSX.Element {
           <Countdown expiresAt={expiresAt} onExpire={onExpire} />
         </dd>
       </dl>
+
+      {payable ? (
+        <StripeCheckout orderId={order.id} priceCents={order.priceCents} expired={expired} />
+      ) : null}
     </section>
   );
 }

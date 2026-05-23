@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@orpc/client": "catalog:",
+    "@stripe/react-stripe-js": "catalog:",
+    "@stripe/stripe-js": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tix/contracts": "workspace:*",
     "arktype": "catalog:",
