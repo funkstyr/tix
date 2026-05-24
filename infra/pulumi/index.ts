@@ -38,12 +38,20 @@ const infra = new StatefulInfra(
   { dependsOn: namespace },
 );
 
+// URL-encode the password so role passwords containing reserved characters
+// (`@ : / ? # %`) don't corrupt the connection string and surface as opaque
+// driver errors at migration time.
+const authDatabaseUrl = authPassword.apply(
+  (pw) =>
+    `postgres://auth_user:${encodeURIComponent(pw)}@postgres:${POSTGRES_PORT}/${POSTGRES_DATABASE}`,
+);
+
 const authSecret = new k8s.core.v1.Secret("auth-credentials", {
   metadata: { name: "auth-credentials", namespace: namespace.metadata.name },
   stringData: {
     AUTH_PASSWORD: authPassword,
     BETTER_AUTH_SECRET: betterAuthSecret,
-    DATABASE_URL: pulumi.interpolate`postgres://auth_user:${authPassword}@postgres:${POSTGRES_PORT}/${POSTGRES_DATABASE}`,
+    DATABASE_URL: authDatabaseUrl,
   },
 });
 

@@ -1,7 +1,7 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
-import type { SecretRef } from "./service-deployment.ts";
+import type { SecretRef } from "./secret-ref.ts";
 
 const PSQL_IMAGE = "postgres:16-alpine";
 

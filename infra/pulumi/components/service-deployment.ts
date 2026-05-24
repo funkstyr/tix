@@ -1,15 +1,16 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import type { SecretRef } from "./secret-ref.ts";
+
 // Number of literal env vars above which we project them through a ConfigMap
 // rather than inlining onto the pod spec. Pure ergonomics: keeps the Deployment
 // readable when a service has a long env table.
 const ENV_INLINE_LIMIT = 8;
 
-export type SecretRef = {
-  name: pulumi.Input<string>;
-  key: string;
-};
+// TODO(prod): wire `resources.requests` / `resources.limits` before the `prod`
+// stack stops being a stub. Dev kind cluster runs without them today, matching
+// `StatefulInfra`.
 
 export type ServiceDeploymentArgs = {
   namespace: pulumi.Input<string>;
@@ -23,6 +24,10 @@ export type ServiceDeploymentArgs = {
   healthPath?: string;
 };
 
+// Emits a Deployment + ClusterIP Service for a long-running tix service.
+// When `env` has more than `ENV_INLINE_LIMIT` keys, the literal env table is
+// projected through a ConfigMap; secrets are always injected inline via
+// `secretKeyRef` so rotation flows through the Secret object.
 export class ServiceDeployment extends pulumi.ComponentResource {
   readonly deployment: k8s.apps.v1.Deployment;
   readonly service: k8s.core.v1.Service;

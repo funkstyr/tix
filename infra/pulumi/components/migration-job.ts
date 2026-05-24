@@ -1,7 +1,7 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
-import type { SecretRef } from "./service-deployment.ts";
+import type { SecretRef } from "./secret-ref.ts";
 
 export type MigrationJobArgs = {
   namespace: pulumi.Input<string>;

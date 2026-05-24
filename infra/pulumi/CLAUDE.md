@@ -21,7 +21,10 @@ identifiers live in their files. Wire each service in `index.ts`.
 Prereqs: `docker`, `kind`, `kubectl`, `pulumi`, a kind cluster called `tix`.
 
 ```sh
-# 1. Encrypt secrets into the dev stack (only needed on first run / rotation).
+# 1. Encrypt secrets into the dev stack. Required on a fresh checkout —
+#    Pulumi.dev.yaml intentionally ships without secret values; these commands
+#    write them back as `secure:` blobs encrypted with the stack passphrase.
+#    Re-run any individual line to rotate.
 pulumi -C infra/pulumi stack select dev
 pulumi -C infra/pulumi config set --secret postgresPassword postgres
 pulumi -C infra/pulumi config set --secret authPassword auth_dev
