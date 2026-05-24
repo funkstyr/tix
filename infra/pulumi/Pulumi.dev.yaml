@@ -1,3 +1,8 @@
 config:
   tix:namespace: tix
-  tix:postgresPassword: postgres
+  tix:authImage: tix-auth:dev
+  tix:imagePullPolicy: Never
+  # Secret-shaped values (postgresPassword, authPassword, betterAuthSecret) are
+  # not committed. Populate them on a fresh checkout with `pulumi config set
+  # --secret …` — see `infra/pulumi/CLAUDE.md` for the exact commands. Pulumi
+  # writes them back here as `secure:` blobs encrypted with the stack passphrase.
