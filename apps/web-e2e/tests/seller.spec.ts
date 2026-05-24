@@ -31,8 +31,8 @@ test("seller signs up, lists a ticket, and sees it on the listings page", async 
   await expect(page.getByRole("link", { name: new RegExp(title) })).toBeVisible();
 
   // Inventory view: the seller's own listings should show remaining of total.
-  // No other seller signed up in this test, so a direct match on the global
-  // remaining-of-total label is unambiguous.
+  // Only one row in this fixture, so the my-ticket-quantity test id picks it
+  // out unambiguously.
   await page.getByRole("link", { name: "My tickets" }).click();
   await expect(page).toHaveURL(/\/tickets\/mine$/);
   await expect(page.getByRole("link", { name: new RegExp(title) })).toBeVisible();

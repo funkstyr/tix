@@ -1,9 +1,7 @@
-import { type JSX, useMemo } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import type { JSX } from "react";
+import { createFileRoute } from "@tanstack/react-router";
 
-import type { TicketRecord } from "@tix/contracts/tickets";
-
-import { formatPrice } from "../../money/format-price";
+import { TicketRow } from "../../tickets/ticket-row";
 
 export const Route = createFileRoute("/tickets/")({
   loader: ({ context }) => context.gateway.tickets.list({}),
@@ -29,23 +27,13 @@ function TicketsListPage(): JSX.Element {
 
       <ul>
         {items.map((ticket) => (
-          <TicketRow key={ticket.id} ticket={ticket} />
+          <TicketRow
+            key={ticket.id}
+            ticket={ticket}
+            quantityText={`${ticket.quantityAvailable} available`}
+          />
         ))}
       </ul>
     </section>
-  );
-}
-
-function TicketRow({ ticket }: { ticket: TicketRecord }): JSX.Element {
-  const params = useMemo(() => ({ ticketId: ticket.id }), [ticket.id]);
-
-  return (
-    <li>
-      <Link to="/tickets/$ticketId" params={params}>
-        <span>{ticket.title}</span>
-        <span>{formatPrice(ticket.unitPriceCents)}</span>
-        <span>{ticket.quantityAvailable} available</span>
-      </Link>
-    </li>
   );
 }

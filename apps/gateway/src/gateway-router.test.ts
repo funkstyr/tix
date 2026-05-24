@@ -225,13 +225,12 @@ describe("createGatewayRouter", () => {
     );
   });
 
-  it("rejects tickets.listMine with a missing token at the arktype boundary", async () => {
+  it("rejects invalid tickets.listMine input at the arktype boundary", async () => {
     const listMine = vi.fn<DownstreamClients["tickets"]["listMine"]>();
     const client = withDownstreamStub("tickets", { listMine });
 
     await expect(
-      // @ts-expect-error — exercising the arktype boundary, not the static type
-      client.tickets.listMine({}),
+      client.tickets.listMine({ token: "session-token", limit: 0 }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(listMine).not.toHaveBeenCalled();
   });
