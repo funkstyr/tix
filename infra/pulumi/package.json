@@ -5,11 +5,17 @@
   "type": "module",
   "main": "index.ts",
   "scripts": {
-    "preview": "pulumi preview",
-    "up": "pulumi up"
+    "check-types": "tsgo --noEmit",
+    "pulumi:destroy": "pulumi destroy",
+    "pulumi:preview": "pulumi preview",
+    "pulumi:up": "pulumi up"
   },
   "dependencies": {
-    "@pulumi/kubernetes": "^4.31.1",
     "@pulumi/pulumi": "^3.242.0"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:"
   }
 }
