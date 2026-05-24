@@ -71,7 +71,7 @@ Shared dep versions live in `pnpm-workspace.yaml` → `catalog:`. Individual pac
 - **Database**: one Postgres cluster, one schema per service (ADR-0003). Drizzle client lives in `@tix/db-core`.
 - **Reservation saga**: synchronous oRPC for reserve, async event for release (ADR-0007).
 
-Local infra is brought up via `docker-compose up` (postgres, nats, redis). Pulumi manifests in `infra/pulumi/` describe deployable resources (ADR-0006).
+Local infra is brought up via `docker-compose up` (postgres, nats, redis). Pulumi manifests in `infra/pulumi/` describe deployable resources (ADR-0006) — see [`infra/pulumi/CLAUDE.md`](./infra/pulumi/CLAUDE.md) for the kind-cluster runbook.
 
 ## Conventions
 

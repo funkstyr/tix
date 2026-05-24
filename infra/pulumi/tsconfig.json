@@ -7,5 +7,5 @@
     "allowImportingTsExtensions": true,
     "types": []
   },
-  "include": ["index.ts", "stateful-infra.ts"]
+  "include": ["index.ts", "components/**/*.ts"]
 }
