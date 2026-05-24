@@ -11,6 +11,7 @@
     "pulumi:up": "pulumi up"
   },
   "dependencies": {
+    "@pulumi/kubernetes": "^4.27.0",
     "@pulumi/pulumi": "^3.242.0"
   },
   "devDependencies": {
