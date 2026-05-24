@@ -5,6 +5,7 @@ packages:
   - "scripts"
 
 allowBuilds:
+  "@pulumi/kubernetes": false
   cpu-features: false
   esbuild: true
   lefthook: true

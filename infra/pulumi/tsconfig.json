@@ -4,7 +4,8 @@
     "noEmit": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
     "types": []
   },
-  "include": ["index.ts"]
+  "include": ["index.ts", "stateful-infra.ts"]
 }
