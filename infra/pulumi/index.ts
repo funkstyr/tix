@@ -1,1 +1,3 @@
-export const stack: string = "tix";
+import * as pulumi from "@pulumi/pulumi";
+
+export const stack = pulumi.getStack();
