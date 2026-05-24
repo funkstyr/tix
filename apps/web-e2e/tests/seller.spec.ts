@@ -29,4 +29,12 @@ test("seller signs up, lists a ticket, and sees it on the listings page", async 
 
   await page.goto("/tickets");
   await expect(page.getByRole("link", { name: new RegExp(title) })).toBeVisible();
+
+  // Inventory view: the seller's own listings should show remaining of total.
+  // Only one row in this fixture, so the my-ticket-quantity test id picks it
+  // out unambiguously.
+  await page.getByRole("link", { name: "My tickets" }).click();
+  await expect(page).toHaveURL(/\/tickets\/mine$/);
+  await expect(page.getByRole("link", { name: new RegExp(title) })).toBeVisible();
+  await expect(page.getByTestId("my-ticket-quantity")).toHaveText("3 of 3 remaining");
 });

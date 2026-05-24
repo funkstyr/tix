@@ -15,6 +15,7 @@ import {
   ticketRecordOrNullOutput,
   ticketRecordOutput,
   ticketsListInput,
+  ticketsListMineInput,
   ticketsListOutput,
 } from "@tix/contracts/tickets";
 
@@ -54,6 +55,14 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
       .output(ticketsListOutput)
       .handler(async ({ input, context }) => {
         return await clients.tickets.list(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+    listMine: base
+      .input(ticketsListMineInput)
+      .output(ticketsListOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.tickets.listMine(input, {
           context: { cookieHeader: context.cookieHeader },
         });
       }),

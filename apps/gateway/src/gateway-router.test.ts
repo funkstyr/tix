@@ -210,6 +210,31 @@ describe("createGatewayRouter", () => {
     expect(getById).not.toHaveBeenCalled();
   });
 
+  it("delegates tickets.listMine to the downstream tickets client, forwarding the cookie header", async () => {
+    const listMine = vi
+      .fn<DownstreamClients["tickets"]["listMine"]>()
+      .mockResolvedValue({ items: [TICKET_RECORD] });
+    const client = withDownstreamStub("tickets", { listMine }, { cookieHeader: "tix.session=abc" });
+
+    const result = await client.tickets.listMine({ token: "session-token", limit: 10 });
+
+    expect(result).toEqual({ items: [TICKET_RECORD] });
+    expect(listMine).toHaveBeenCalledWith(
+      { token: "session-token", limit: 10 },
+      { context: { cookieHeader: "tix.session=abc" } },
+    );
+  });
+
+  it("rejects invalid tickets.listMine input at the arktype boundary", async () => {
+    const listMine = vi.fn<DownstreamClients["tickets"]["listMine"]>();
+    const client = withDownstreamStub("tickets", { listMine });
+
+    await expect(
+      client.tickets.listMine({ token: "session-token", limit: 0 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(listMine).not.toHaveBeenCalled();
+  });
+
   it("delegates orders.create to the downstream orders client, forwarding input and cookie header", async () => {
     const create = vi.fn<DownstreamClients["orders"]["create"]>().mockResolvedValue(ORDER_RECORD);
     const client = withDownstreamStub("orders", { create }, { cookieHeader: "tix.session=abc" });

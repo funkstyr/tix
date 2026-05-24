@@ -6,7 +6,7 @@ import type { TicketsRouterClient } from "./tickets";
 // procedures; `tickets.reserve` is internal to the orders reservation saga and
 // must not be reachable from the browser.
 export type GatewayRouterClient = {
-  tickets: Pick<TicketsRouterClient, "create" | "getById" | "list">;
+  tickets: Pick<TicketsRouterClient, "create" | "getById" | "list" | "listMine">;
   orders: OrdersRouterClient;
   payments: PaymentsRouterClient;
 };

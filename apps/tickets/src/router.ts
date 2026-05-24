@@ -5,11 +5,13 @@ import { v7 as uuidv7 } from "uuid";
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
 import {
+  type TicketRecord,
   ticketCreateInput,
   ticketGetByIdInput,
   ticketRecordOrNullOutput,
   ticketRecordOutput,
   ticketsListInput,
+  ticketsListMineInput,
   ticketsListOutput,
 } from "@tix/contracts/tickets";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
@@ -20,6 +22,19 @@ import { reserveTicket } from "./reserve-ticket.ts";
 import { tickets, ticketsOutbox, type ticketsTables } from "./tickets-schema.ts";
 
 const DEFAULT_LIST_LIMIT = 50;
+
+function toTicketRecord(row: typeof tickets.$inferSelect): TicketRecord {
+  return {
+    id: row.id,
+    sellerId: row.sellerId,
+    title: row.title,
+    quantityTotal: row.quantityTotal,
+    quantityAvailable: row.quantityAvailable,
+    unitPriceCents: row.unitPriceCents,
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
 export type TicketsRouterContext = {
   serviceToken?: string;
@@ -78,16 +93,7 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
         return inserted;
       });
 
-      return {
-        id: row.id,
-        sellerId: row.sellerId,
-        title: row.title,
-        quantityTotal: row.quantityTotal,
-        quantityAvailable: row.quantityAvailable,
-        unitPriceCents: row.unitPriceCents,
-        version: row.version,
-        createdAt: row.createdAt.toISOString(),
-      };
+      return toTicketRecord(row);
     });
 
   const reserve = base
@@ -108,16 +114,7 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
       const [row] = await db.db.select().from(tickets).where(eq(tickets.id, input.ticketId));
       if (!row) return null;
 
-      return {
-        id: row.id,
-        sellerId: row.sellerId,
-        title: row.title,
-        quantityTotal: row.quantityTotal,
-        quantityAvailable: row.quantityAvailable,
-        unitPriceCents: row.unitPriceCents,
-        version: row.version,
-        createdAt: row.createdAt.toISOString(),
-      };
+      return toTicketRecord(row);
     });
 
   const list = base
@@ -135,21 +132,28 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
         .orderBy(desc(tickets.createdAt), desc(tickets.id))
         .limit(limit);
 
-      return {
-        items: rows.map((row) => ({
-          id: row.id,
-          sellerId: row.sellerId,
-          title: row.title,
-          quantityTotal: row.quantityTotal,
-          quantityAvailable: row.quantityAvailable,
-          unitPriceCents: row.unitPriceCents,
-          version: row.version,
-          createdAt: row.createdAt.toISOString(),
-        })),
-      };
+      return { items: rows.map(toTicketRecord) };
     });
 
-  return { create, reserve, getById, list };
+  const listMine = base
+    .input(ticketsListMineInput)
+    .output(ticketsListOutput)
+    .handler(async ({ input }) => {
+      const session = await requireSession(authClient, input.token);
+
+      const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+
+      const rows = await db.db
+        .select()
+        .from(tickets)
+        .where(eq(tickets.sellerId, session.user.id))
+        .orderBy(desc(tickets.createdAt), desc(tickets.id))
+        .limit(limit);
+
+      return { items: rows.map(toTicketRecord) };
+    });
+
+  return { create, reserve, getById, list, listMine };
 }
 
 export type TicketsRouter = ReturnType<typeof createTicketsRouter>;
