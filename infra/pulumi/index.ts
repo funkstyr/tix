@@ -349,10 +349,9 @@ const gatewayDeployment = new ServiceDeployment("gateway", {
 });
 
 // Web is the Vite SPA served by nginx out of `apps/web/dist`. No env, no
-// secrets, no migration — the image is a static-asset bundle. Probe `/`
-// rather than `/health` because the SPA fallback serves index.html for any
-// non-asset path and we want the probe to assert nginx itself is alive,
-// not just that try_files masks 404s.
+// secrets, no migration — the image is a static-asset bundle. Probe `/` so
+// the probe at least fails when `index.html` is missing from the image;
+// there is no real `/health` route behind the SPA fallback.
 const webDeployment = new ServiceDeployment("web", {
   namespace: namespace.metadata.name,
   name: "web",

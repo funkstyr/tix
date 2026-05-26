@@ -69,7 +69,11 @@ for svc in auth tickets orders payments expiration gateway web; do
   kubectl -n tix rollout status deployment/$svc --timeout=180s
 done
 kubectl -n tix port-forward svc/gateway 4000:4000 &
+kubectl -n tix port-forward svc/web 8080:80 &
 curl http://localhost:4000/health   # {"service":"gateway","ok":true}
+# Open the SPA at http://localhost:8080 — note this is a different origin
+# from `webOrigin` (http://localhost:4000), so browser calls to the gateway
+# will be cross-origin until the SPA + gateway sit behind one ingress.
 ```
 
 ## Stack config keys
