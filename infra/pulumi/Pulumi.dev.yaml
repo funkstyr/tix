@@ -6,6 +6,7 @@ config:
   tix:paymentsImage: tix-payments:dev
   tix:expirationImage: tix-expiration:dev
   tix:gatewayImage: tix-gateway:dev
+  tix:webImage: tix-web:dev
   tix:imagePullPolicy: Never
   tix:webOrigin: http://localhost:4000
   # Secret-shaped values (postgresPassword, per-service role passwords,

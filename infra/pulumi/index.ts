@@ -14,6 +14,7 @@ const TICKETS_PORT = 4002;
 const ORDERS_PORT = 4003;
 const PAYMENTS_PORT = 4004;
 const GATEWAY_PORT = 4000;
+const WEB_PORT = 80;
 
 const NATS_URL = "nats://nats:4222";
 const REDIS_URL = "redis://redis:6379";
@@ -43,6 +44,7 @@ const ordersImage = config.get("ordersImage") ?? "tix-orders:dev";
 const paymentsImage = config.get("paymentsImage") ?? "tix-payments:dev";
 const expirationImage = config.get("expirationImage") ?? "tix-expiration:dev";
 const gatewayImage = config.get("gatewayImage") ?? "tix-gateway:dev";
+const webImage = config.get("webImage") ?? "tix-web:dev";
 const imagePullPolicy = config.get("imagePullPolicy") ?? "Never";
 
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
@@ -346,6 +348,21 @@ const gatewayDeployment = new ServiceDeployment("gateway", {
   },
 });
 
+// Web is the Vite SPA served by nginx out of `apps/web/dist`. No env, no
+// secrets, no migration — the image is a static-asset bundle. Probe `/`
+// rather than `/health` because the SPA fallback serves index.html for any
+// non-asset path and we want the probe to assert nginx itself is alive,
+// not just that try_files masks 404s.
+const webDeployment = new ServiceDeployment("web", {
+  namespace: namespace.metadata.name,
+  name: "web",
+  image: webImage,
+  imagePullPolicy,
+  port: WEB_PORT,
+  replicas: 1,
+  healthPath: "/",
+});
+
 export const namespaceName = namespace.metadata.name;
 export const postgresService = infra.postgres.metadata.name;
 export const natsService = infra.nats.metadata.name;
@@ -359,4 +376,5 @@ export const ticketsService = ticketsDeployment.service!.metadata.name;
 export const ordersService = ordersDeployment.service!.metadata.name;
 export const paymentsService = paymentsDeployment.service!.metadata.name;
 export const gatewayService = gatewayDeployment.service!.metadata.name;
+export const webService = webDeployment.service!.metadata.name;
 export const expirationDeployment = expiration.deployment.metadata.name;

@@ -26,6 +26,7 @@ identifiers live in their files. Wire each service in `index.ts`.
 | `payments`   | 4004 | `payments`   | yes        | Consumes `STRIPE_KEY`.                                               |
 | `expiration` | —    | `expiration` | yes        | BullMQ worker; no HTTP, so `ServiceDeployment` skips Service+probes. |
 | `gateway`    | 4000 | —            | no         | Receives downstream URLs as env vars; no schema.                     |
+| `web`        | 80   | —            | no         | nginx serving the Vite `dist/`; `healthPath: "/"` (no `/health`).    |
 
 Service-to-service URLs are owned by `index.ts` (`http://<name>:<port>`) and
 injected as env vars — apps never hardcode hostnames.
@@ -51,7 +52,7 @@ pulumi -C infra/pulumi config set --secret ticketsServiceToken "$(openssl rand -
 pulumi -C infra/pulumi config set --secret stripeKey sk_test_placeholder
 
 # 2. Build each service's image and load it into kind so `imagePullPolicy: Never` works.
-for svc in auth tickets orders payments expiration gateway; do
+for svc in auth tickets orders payments expiration gateway web; do
   docker build -f apps/$svc/Dockerfile -t tix-$svc:dev .
   kind load docker-image tix-$svc:dev --name tix
 done
@@ -64,7 +65,7 @@ kubectl -n tix wait --for=condition=complete job/postgres-roles --timeout=60s
 for svc in auth tickets orders payments expiration; do
   kubectl -n tix wait --for=condition=complete job/$svc-migrate --timeout=180s
 done
-for svc in auth tickets orders payments expiration gateway; do
+for svc in auth tickets orders payments expiration gateway web; do
   kubectl -n tix rollout status deployment/$svc --timeout=180s
 done
 kubectl -n tix port-forward svc/gateway 4000:4000 &
@@ -91,6 +92,7 @@ curl http://localhost:4000/health   # {"service":"gateway","ok":true}
 | `paymentsImage`       | string | `tix-payments:dev`      | Image tag for the payments Deployment + migration Job.         |
 | `expirationImage`     | string | `tix-expiration:dev`    | Image tag for the expiration Deployment + migration Job.       |
 | `gatewayImage`        | string | `tix-gateway:dev`       | Image tag for the gateway Deployment.                          |
+| `webImage`            | string | `tix-web:dev`           | Image tag for the web (nginx) Deployment.                      |
 | `webOrigin`           | string | `http://localhost:4000` | CORS origin the gateway accepts; matches the SPA's public URL. |
 | `imagePullPolicy`     | string | `Never`                 | `Never` for dev (local-built); `IfNotPresent` for prod.        |
 
@@ -108,3 +110,7 @@ migrate` lands in the right schema without query-string fiddling.
 - `ServiceDeployment` accepts an optional `port`. Omit it for headless workers
   (e.g. `expiration`) — no Service is emitted and the pod is Ready as soon as
   the container starts (no `/health` endpoint required).
+- The `web` Deployment is the lone non-Node container: nginx serving the Vite
+  `dist/` from `apps/web/Dockerfile`. It owns no schema and gets no migration
+  Job. `healthPath` is `/` because the SPA fallback would happily return
+  index.html on `/health` and mask a broken bundle.
