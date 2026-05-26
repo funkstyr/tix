@@ -1,8 +1,15 @@
 config:
   tix:namespace: tix
   tix:authImage: tix-auth:dev
+  tix:ticketsImage: tix-tickets:dev
+  tix:ordersImage: tix-orders:dev
+  tix:paymentsImage: tix-payments:dev
+  tix:expirationImage: tix-expiration:dev
+  tix:gatewayImage: tix-gateway:dev
   tix:imagePullPolicy: Never
-  # Secret-shaped values (postgresPassword, authPassword, betterAuthSecret) are
-  # not committed. Populate them on a fresh checkout with `pulumi config set
-  # --secret …` — see `infra/pulumi/CLAUDE.md` for the exact commands. Pulumi
-  # writes them back here as `secure:` blobs encrypted with the stack passphrase.
+  tix:webOrigin: http://localhost:4000
+  # Secret-shaped values (postgresPassword, per-service role passwords,
+  # betterAuthSecret, ticketsServiceToken, stripeKey) are not committed.
+  # Populate them on a fresh checkout with `pulumi config set --secret …` —
+  # see `infra/pulumi/CLAUDE.md` for the exact commands. Pulumi writes them
+  # back here as `secure:` blobs encrypted with the stack passphrase.

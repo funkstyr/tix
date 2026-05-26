@@ -16,7 +16,10 @@ export type ServiceDeploymentArgs = {
   namespace: pulumi.Input<string>;
   name: string;
   image: pulumi.Input<string>;
-  port: number;
+  // Headless workers (e.g. `expiration`) omit `port`: no Service and no HTTP
+  // probes are emitted, and the pod is considered Ready as soon as the
+  // container is running.
+  port?: number;
   replicas: number;
   env?: Record<string, pulumi.Input<string>>;
   secrets?: Record<string, SecretRef>;
@@ -27,10 +30,11 @@ export type ServiceDeploymentArgs = {
 // Emits a Deployment + ClusterIP Service for a long-running tix service.
 // When `env` has more than `ENV_INLINE_LIMIT` keys, the literal env table is
 // projected through a ConfigMap; secrets are always injected inline via
-// `secretKeyRef` so rotation flows through the Secret object.
+// `secretKeyRef` so rotation flows through the Secret object. If `port` is
+// omitted (worker shape), the Service and HTTP probes are skipped.
 export class ServiceDeployment extends pulumi.ComponentResource {
   readonly deployment: k8s.apps.v1.Deployment;
-  readonly service: k8s.core.v1.Service;
+  readonly service: k8s.core.v1.Service | undefined;
   readonly configMap: k8s.core.v1.ConfigMap | undefined;
 
   constructor(name: string, args: ServiceDeploymentArgs, opts?: pulumi.ComponentResourceOptions) {
@@ -73,6 +77,24 @@ export class ServiceDeployment extends pulumi.ComponentResource {
       });
     }
 
+    const port = args.port;
+    const containerPorts = port === undefined ? undefined : [{ name: "http", containerPort: port }];
+    const probes =
+      port === undefined
+        ? {}
+        : {
+            readinessProbe: {
+              httpGet: { path: healthPath, port },
+              initialDelaySeconds: 3,
+              periodSeconds: 5,
+            },
+            livenessProbe: {
+              httpGet: { path: healthPath, port },
+              initialDelaySeconds: 15,
+              periodSeconds: 10,
+            },
+          };
+
     this.deployment = new k8s.apps.v1.Deployment(
       `${name}-deployment`,
       {
@@ -89,19 +111,10 @@ export class ServiceDeployment extends pulumi.ComponentResource {
                   name: args.name,
                   image: args.image,
                   imagePullPolicy: args.imagePullPolicy,
-                  ports: [{ name: "http", containerPort: args.port }],
+                  ...(containerPorts ? { ports: containerPorts } : {}),
                   ...(envFrom ? { envFrom } : {}),
                   ...(inlineEnv.length > 0 ? { env: inlineEnv } : {}),
-                  readinessProbe: {
-                    httpGet: { path: healthPath, port: args.port },
-                    initialDelaySeconds: 3,
-                    periodSeconds: 5,
-                  },
-                  livenessProbe: {
-                    httpGet: { path: healthPath, port: args.port },
-                    initialDelaySeconds: 15,
-                    periodSeconds: 10,
-                  },
+                  ...probes,
                 },
               ],
             },
@@ -111,21 +124,23 @@ export class ServiceDeployment extends pulumi.ComponentResource {
       childOpts,
     );
 
-    this.service = new k8s.core.v1.Service(
-      `${name}-service`,
-      {
-        metadata: { name: args.name, namespace },
-        spec: {
-          selector: labels,
-          ports: [{ name: "http", port: args.port, targetPort: args.port }],
+    if (port !== undefined) {
+      this.service = new k8s.core.v1.Service(
+        `${name}-service`,
+        {
+          metadata: { name: args.name, namespace },
+          spec: {
+            selector: labels,
+            ports: [{ name: "http", port, targetPort: port }],
+          },
         },
-      },
-      childOpts,
-    );
+        childOpts,
+      );
+    }
 
     this.registerOutputs({
       deployment: this.deployment,
-      service: this.service,
+      ...(this.service ? { service: this.service } : {}),
       ...(this.configMap ? { configMap: this.configMap } : {}),
     });
   }
