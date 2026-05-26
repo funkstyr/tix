@@ -12,6 +12,7 @@ stub.
 | `PostgresRoles`     | `components/postgres-roles.ts`     | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                           |
 | `ServiceDeployment` | `components/service-deployment.ts` | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes) |
 | `MigrationJob`      | `components/migration-job.ts`      | k8s Job that runs the image's `pnpm db:migrate`                                                             |
+| `IngressRoutes`     | `components/ingress-routes.ts`     | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`) and web SPA (`/*`)            |
 
 `MigrationJob` and `ServiceDeployment` are reusable: no service-specific
 identifiers live in their files. Wire each service in `index.ts`.
@@ -68,12 +69,13 @@ done
 for svc in auth tickets orders payments expiration gateway web; do
   kubectl -n tix rollout status deployment/$svc --timeout=180s
 done
-kubectl -n tix port-forward svc/gateway 4000:4000 &
-kubectl -n tix port-forward svc/web 8080:80 &
-curl http://localhost:4000/health   # {"service":"gateway","ok":true}
-# Open the SPA at http://localhost:8080 — note this is a different origin
-# from `webOrigin` (http://localhost:4000), so browser calls to the gateway
-# will be cross-origin until the SPA + gateway sit behind one ingress.
+curl -H 'Host: localhost' http://<ingress-ip>/health        # {"service":"gateway","ok":true}
+curl -H 'Host: localhost' http://<ingress-ip>/              # the SPA's index.html
+curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-auth via the gateway
+# On kind, install ingress-nginx with the provider/kind overlay and either run
+# `kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80`
+# or set up an extraPortMappings on the cluster so port 80 is reachable on
+# localhost — then `host: localhost` does the right thing for `curl http://localhost`.
 ```
 
 ## Stack config keys
@@ -98,6 +100,7 @@ curl http://localhost:4000/health   # {"service":"gateway","ok":true}
 | `gatewayImage`        | string | `tix-gateway:dev`       | Image tag for the gateway Deployment.                          |
 | `webImage`            | string | `tix-web:dev`           | Image tag for the web (nginx) Deployment.                      |
 | `webOrigin`           | string | `http://localhost:4000` | CORS origin the gateway accepts; matches the SPA's public URL. |
+| `host`                | string | `localhost`             | `Host` header the ingress matches; serves the whole stack.     |
 | `imagePullPolicy`     | string | `Never`                 | `Never` for dev (local-built); `IfNotPresent` for prod.        |
 
 ## Notes
@@ -118,3 +121,9 @@ migrate` lands in the right schema without query-string fiddling.
   `dist/` from `apps/web/Dockerfile`. It owns no schema and gets no migration
   Job. `healthPath` is `/` because the SPA fallback would happily return
   index.html on `/health` and mask a broken bundle.
+- `IngressRoutes` emits four path rules even though the PRD sketch says "two":
+  `/health` (Exact) and `/api/*` plus `/rpc/*` (Prefix) all target the gateway
+  — the gateway exposes `/health` at root and oRPC under `/rpc/*` rather than
+  nesting them under `/api/*`. `/` (Prefix) catches the SPA. Requires the
+  ingress-nginx controller in the cluster (`kubectl apply -k
+github.com/kubernetes/ingress-nginx/deploy/static/provider/kind`).

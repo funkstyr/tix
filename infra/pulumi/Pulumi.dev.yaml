@@ -9,6 +9,7 @@ config:
   tix:webImage: tix-web:dev
   tix:imagePullPolicy: Never
   tix:webOrigin: http://localhost:4000
+  tix:host: localhost
   # Secret-shaped values (postgresPassword, per-service role passwords,
   # betterAuthSecret, ticketsServiceToken, stripeKey) are not committed.
   # Populate them on a fresh checkout with `pulumi config set --secret …` —

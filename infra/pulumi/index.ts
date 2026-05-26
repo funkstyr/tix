@@ -1,6 +1,7 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import { IngressRoutes } from "./components/ingress-routes.ts";
 import { MigrationJob } from "./components/migration-job.ts";
 import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts";
 import { ServiceDeployment } from "./components/service-deployment.ts";
@@ -37,6 +38,7 @@ const betterAuthSecret = config.requireSecret("betterAuthSecret");
 const ticketsServiceToken = config.requireSecret("ticketsServiceToken");
 const stripeKey = config.requireSecret("stripeKey");
 const webOrigin = config.get("webOrigin") ?? "http://localhost:4000";
+const ingressHost = config.get("host") ?? "localhost";
 
 const authImage = config.get("authImage") ?? "tix-auth:dev";
 const ticketsImage = config.get("ticketsImage") ?? "tix-tickets:dev";
@@ -370,6 +372,16 @@ const webDeployment = new ServiceDeployment("web", {
   healthPath: "/",
 });
 
+// Single Ingress fronting the cluster: gateway owns `/health`, `/api/*`, and
+// `/rpc/*`; web (the SPA) catches everything else. Host comes from stack config
+// so the same component targets `localhost` in dev and a real DNS name later.
+const ingress = new IngressRoutes("tix", {
+  namespace: namespace.metadata.name,
+  host: ingressHost,
+  gateway: { name: gatewayDeployment.service!.metadata.name, port: GATEWAY_PORT },
+  web: { name: webDeployment.service!.metadata.name, port: WEB_PORT },
+});
+
 export const namespaceName = namespace.metadata.name;
 export const postgresService = infra.postgres.metadata.name;
 export const natsService = infra.nats.metadata.name;
@@ -385,3 +397,5 @@ export const paymentsService = paymentsDeployment.service!.metadata.name;
 export const gatewayService = gatewayDeployment.service!.metadata.name;
 export const webService = webDeployment.service!.metadata.name;
 export const expirationDeployment = expiration.deployment.metadata.name;
+export const ingressName = ingress.ingress.metadata.name;
+export const ingressHostName = ingressHost;
