@@ -25,7 +25,7 @@ identifiers live in their files. Wire each service in `index.ts`.
 | `orders`     | 4003 | `orders`     | yes        | Calls tickets via `TICKETS_BASE_URL`; reads service token.           |
 | `payments`   | 4004 | `payments`   | yes        | Consumes `STRIPE_KEY`.                                               |
 | `expiration` | —    | `expiration` | yes        | BullMQ worker; no HTTP, so `ServiceDeployment` skips Service+probes. |
-| `gateway`    | 4000 | —            | no         | Receives downstream URLs as env vars; no schema.                     |
+| `gateway`    | 4000 | —            | no         | Receives downstream URLs as env vars; reads `BETTER_AUTH_SECRET`.    |
 | `web`        | 80   | —            | no         | nginx serving the Vite `dist/`; `healthPath: "/"` (no `/health`).    |
 
 Service-to-service URLs are owned by `index.ts` (`http://<name>:<port>`) and

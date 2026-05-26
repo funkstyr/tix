@@ -330,6 +330,11 @@ const expiration = new ServiceDeployment(
   { dependsOn: expirationMigration },
 );
 
+// Gateway reads `BETTER_AUTH_SECRET` from `auth-credentials` (single source of
+// truth shared with the auth Deployment). The gateway HTTP handler doesn't
+// consume it today — sessions are resolved by HTTP-calling auth — but it is
+// declared so a future local-verification path doesn't require a fresh secret
+// roll-out.
 const gatewayDeployment = new ServiceDeployment("gateway", {
   namespace: namespace.metadata.name,
   name: "gateway",
@@ -345,6 +350,9 @@ const gatewayDeployment = new ServiceDeployment("gateway", {
     ORDERS_BASE_URL,
     PAYMENTS_BASE_URL,
     LOG_LEVEL: "info",
+  },
+  secrets: {
+    BETTER_AUTH_SECRET: { name: authSecret.metadata.name, key: "BETTER_AUTH_SECRET" },
   },
 });
 
