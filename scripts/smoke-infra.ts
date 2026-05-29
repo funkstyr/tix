@@ -27,6 +27,11 @@ const POSTGRES_ROLES = [
     "postgres://orders_user:orders_dev@localhost:5432/tix?search_path=orders",
   ],
   [
+    "payments",
+    "PAYMENTS_DATABASE_URL",
+    "postgres://payments_user:payments_dev@localhost:5432/tix?search_path=payments",
+  ],
+  [
     "expiration",
     "EXPIRATION_DATABASE_URL",
     "postgres://expiration_user:expiration_dev@localhost:5432/tix?search_path=expiration",

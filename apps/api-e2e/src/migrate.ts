@@ -32,6 +32,12 @@ const targets: readonly Target[] = [
     url: env.EXPIRATION_DATABASE_URL,
     folder: "apps/expiration/drizzle",
   },
+  {
+    schema: "payments",
+    role: "payments_user",
+    url: env.PAYMENTS_DATABASE_URL,
+    folder: "apps/payments/drizzle",
+  },
 ];
 
 // Drop + recreate each per-service schema as admin before migrating, so a

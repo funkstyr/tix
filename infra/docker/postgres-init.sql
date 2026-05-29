@@ -5,6 +5,7 @@
 \getenv auth_password AUTH_PASSWORD
 \getenv tickets_password TICKETS_PASSWORD
 \getenv orders_password ORDERS_PASSWORD
+\getenv payments_password PAYMENTS_PASSWORD
 \getenv expiration_password EXPIRATION_PASSWORD
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
@@ -18,6 +19,9 @@ CREATE SCHEMA tickets AUTHORIZATION tickets_user;
 CREATE ROLE orders_user WITH LOGIN PASSWORD :'orders_password';
 CREATE SCHEMA orders AUTHORIZATION orders_user;
 
+CREATE ROLE payments_user WITH LOGIN PASSWORD :'payments_password';
+CREATE SCHEMA payments AUTHORIZATION payments_user;
+
 CREATE ROLE expiration_user WITH LOGIN PASSWORD :'expiration_password';
 CREATE SCHEMA expiration AUTHORIZATION expiration_user;
 
@@ -25,4 +29,4 @@ CREATE SCHEMA expiration AUTHORIZATION expiration_user;
 -- of each service's initial migration) requires CREATE on the database even
 -- when the schema already exists; per-service roles run their own migrations,
 -- so each needs that privilege. They still only own their own schema.
-GRANT CREATE ON DATABASE tix TO auth_user, tickets_user, orders_user, expiration_user;
+GRANT CREATE ON DATABASE tix TO auth_user, tickets_user, orders_user, payments_user, expiration_user;

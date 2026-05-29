@@ -12,6 +12,7 @@ services:
       AUTH_PASSWORD: ${AUTH_PASSWORD:-auth_dev}
       TICKETS_PASSWORD: ${TICKETS_PASSWORD:-tickets_dev}
       ORDERS_PASSWORD: ${ORDERS_PASSWORD:-orders_dev}
+      PAYMENTS_PASSWORD: ${PAYMENTS_PASSWORD:-payments_dev}
       EXPIRATION_PASSWORD: ${EXPIRATION_PASSWORD:-expiration_dev}
     volumes:
       - postgres_data:/var/lib/postgresql/data
