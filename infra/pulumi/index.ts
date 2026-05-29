@@ -6,6 +6,7 @@ import { MigrationJob } from "./components/migration-job.ts";
 import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts";
 import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
+import { StreamBootstrap } from "./components/stream-bootstrap.ts";
 
 const POSTGRES_PORT = 5432;
 const POSTGRES_DATABASE = "tix";
@@ -152,6 +153,24 @@ const postgresRoles = new PostgresRoles(
   { dependsOn: infra },
 );
 
+// Create the JetStream streams before any messaging service boots. Consumers
+// call `consumer.info()` at startup and crash with StreamNotFoundError if the
+// stream is missing, so tickets/orders/payments/expiration all depend on this.
+// Subjects mirror infra/docker/nats-init.sh.
+const streams = new StreamBootstrap(
+  "stream-bootstrap",
+  {
+    namespace: namespace.metadata.name,
+    natsUrl: NATS_URL,
+    streams: [
+      { name: "TICKETS", subjects: "tickets.>" },
+      { name: "ORDERS", subjects: "order.>" },
+      { name: "PAYMENTS", subjects: "payment.>" },
+    ],
+  },
+  { dependsOn: infra },
+);
+
 const authMigration = new MigrationJob(
   "auth",
   {
@@ -221,7 +240,7 @@ const ticketsDeployment = new ServiceDeployment(
       },
     },
   },
-  { dependsOn: ticketsMigration },
+  { dependsOn: [ticketsMigration, streams] },
 );
 
 const ordersMigration = new MigrationJob(
@@ -260,7 +279,7 @@ const ordersDeployment = new ServiceDeployment(
       },
     },
   },
-  { dependsOn: ordersMigration },
+  { dependsOn: [ordersMigration, streams] },
 );
 
 const paymentsMigration = new MigrationJob(
@@ -295,7 +314,7 @@ const paymentsDeployment = new ServiceDeployment(
       STRIPE_KEY: { name: paymentsSecret.metadata.name, key: "STRIPE_KEY" },
     },
   },
-  { dependsOn: paymentsMigration },
+  { dependsOn: [paymentsMigration, streams] },
 );
 
 const expirationMigration = new MigrationJob(
@@ -329,7 +348,7 @@ const expiration = new ServiceDeployment(
       DATABASE_URL: { name: expirationSecret.metadata.name, key: "DATABASE_URL" },
     },
   },
-  { dependsOn: expirationMigration },
+  { dependsOn: [expirationMigration, streams] },
 );
 
 // Gateway reads `BETTER_AUTH_SECRET` from `auth-credentials` (single source of

@@ -1,0 +1,107 @@
+name: Pulumi Smoke
+
+# The real `pulumi up` canary (issue #69): on a CI-spun-up kind cluster, deploy
+# the dev topology, wait for every Deployment to roll out, and probe the gateway
+# /health + SPA through the ingress, then tear down. This is the layer the
+# cluster-free `pulumi preview` (pulumi-preview.yml) and the component unit tests
+# cannot give us — admission-level mistakes and image/boot failures only surface
+# against a live API server.
+#
+# The `prod-preview` job validates the prod stack stub renders cleanly against a
+# stub provider (no cloud target is wired yet — see issue #34 "Out of Scope").
+on:
+  pull_request:
+    paths:
+      - "infra/pulumi/**"
+      - "apps/*/Dockerfile"
+      - ".github/workflows/pulumi-smoke.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PULUMI_VERSION: 3.243.0
+  # Throwaway local-backend stack: no real secrets, so a literal passphrase is
+  # fine and no Pulumi Cloud token is required.
+  PULUMI_CONFIG_PASSPHRASE: ci-smoke
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The Pulumi program runs through Node's native type stripping (see
+      # Pulumi.yaml), so its node_modules must be present at `pulumi up` time.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Pulumi CLI
+        run: |
+          curl -fsSL https://get.pulumi.com | sh -s -- --version "$PULUMI_VERSION"
+          echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      # kubectl and docker are preinstalled on ubuntu-latest. The script creates
+      # the kind cluster itself (with the ingress port-map), builds + loads the
+      # seven images, deploys, waits on the migration/rollout chain, probes the
+      # ingress, then tears everything down.
+      - name: Kind smoke deploy
+        run: ./infra/pulumi/scripts/kind-smoke.sh --teardown
+
+  prod-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Pulumi CLI
+        run: |
+          curl -fsSL https://get.pulumi.com | sh -s -- --version "$PULUMI_VERSION"
+          echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
+
+      - name: Preview prod stack against a stub provider
+        working-directory: infra/pulumi
+        run: |
+          pulumi login --local
+          pulumi stack select prod
+          # index.ts calls config.requireSecret() for each of these; stub them so
+          # the program can build its resource graph without real prod secrets.
+          for kv in \
+            postgresPassword=ci_postgres \
+            authPassword=ci_auth \
+            ticketsPassword=ci_tickets \
+            ordersPassword=ci_orders \
+            paymentsPassword=ci_payments \
+            expirationPassword=ci_expiration \
+            betterAuthSecret=ci_better_auth_secret \
+            ticketsServiceToken=ci_tickets_service_token \
+            stripeKey=sk_test_ci_placeholder; do
+            pulumi config set --secret "${kv%%=*}" "${kv#*=}"
+          done
+          # Render manifests to disk instead of contacting a cluster.
+          pulumi config set kubernetes:renderYamlToDirectory ./rendered
+          pulumi preview --non-interactive --diff

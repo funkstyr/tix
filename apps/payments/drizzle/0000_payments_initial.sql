@@ -1,4 +1,4 @@
-CREATE SCHEMA "payments";
+CREATE SCHEMA IF NOT EXISTS "payments";
 --> statement-breakpoint
 CREATE TABLE "payments"."order_read_model" (
 	"id" uuid PRIMARY KEY NOT NULL,

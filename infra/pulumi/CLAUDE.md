@@ -12,13 +12,14 @@ command therefore needs `pnpm install` to have run and a recent Node.
 
 ## Components
 
-| Component           | File                               | Emits                                                                                                       |
-| ------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `StatefulInfra`     | `components/stateful-infra.ts`     | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                         |
-| `PostgresRoles`     | `components/postgres-roles.ts`     | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                           |
-| `ServiceDeployment` | `components/service-deployment.ts` | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes) |
-| `MigrationJob`      | `components/migration-job.ts`      | k8s Job that runs the image's `pnpm db:migrate`                                                             |
-| `IngressRoutes`     | `components/ingress-routes.ts`     | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`) and web SPA (`/*`)            |
+| Component           | File                               | Emits                                                                                                                 |
+| ------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `StatefulInfra`     | `components/stateful-infra.ts`     | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                                   |
+| `PostgresRoles`     | `components/postgres-roles.ts`     | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                                     |
+| `StreamBootstrap`   | `components/stream-bootstrap.ts`   | ConfigMap + one-shot Job (`natsio/nats-box`) that creates the JetStream streams idempotently (mirrors `nats-init.sh`) |
+| `ServiceDeployment` | `components/service-deployment.ts` | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes)           |
+| `MigrationJob`      | `components/migration-job.ts`      | k8s Job that runs the image's `pnpm db:migrate`                                                                       |
+| `IngressRoutes`     | `components/ingress-routes.ts`     | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`) and web SPA (`/*`)                      |
 
 `MigrationJob` and `ServiceDeployment` are reusable: no service-specific
 identifiers live in their files. Wire each service in `index.ts`.
@@ -38,7 +39,22 @@ identifiers live in their files. Wire each service in `index.ts`.
 Service-to-service URLs are owned by `index.ts` (`http://<name>:<port>`) and
 injected as env vars — apps never hardcode hostnames.
 
+## Smoke deploy (one command)
+
+`./scripts/kind-smoke.sh` (also `pnpm -F @tix/infra-pulumi pulumi:smoke`) runs the
+whole flow end to end against a throwaway `kind-smoke` stack: create the kind
+cluster (with an ingress port-map), build + load the seven images, install
+ingress-nginx, configure stub secrets, `pulumi up`, wait on the
+bootstrap → migration → rollout chain, then probe the gateway `/health` and the
+SPA through the ingress. It keeps the cluster afterwards for poking; pass
+`--teardown` (what CI uses) to `pulumi destroy` + delete the cluster on exit,
+`--skip-build` to reuse loaded images. This is the real `pulumi up` canary
+(issue #69); CI runs the same script in `.github/workflows/pulumi-smoke.yml`.
+
 ## Local deploy (kind, `dev` stack)
+
+The steps below are what the smoke script automates, kept for reference and
+targeted debugging against the real `dev` stack.
 
 Prereqs: `docker`, `kind`, `kubectl`, `pulumi`, a kind cluster called `tix`.
 
@@ -111,8 +127,7 @@ curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-aut
 
 ## Validation
 
-Two cluster-free layers guard the program; a real `pulumi up` against kind
-(issue #69) is the third.
+Three layers guard the program, cheapest first:
 
 - **Component unit tests** (`components/*.test.ts`, vitest). Use
   `pulumi.runtime.setMocks` to instantiate a component in-process and assert on
@@ -126,8 +141,16 @@ Two cluster-free layers guard the program; a real `pulumi up` against kind
   set, so the default provider renders manifests to disk instead of contacting
   a cluster. Catches broken references, missing required fields, and runtime
   errors (preview exits non-zero → check fails). It does **not** catch
-  admission-level mistakes such as an invalid `string`-typed enum value — that
-  surfaces only under the kind smoke test.
+  admission-level mistakes such as an invalid `string`-typed enum value, nor
+  anything about whether the images actually boot — those surface only under the
+  kind smoke.
+- **kind smoke** (`scripts/kind-smoke.sh`, run in
+  `.github/workflows/pulumi-smoke.yml`). The real `pulumi up`: deploys to a kind
+  cluster, waits for the bootstrap → migration → rollout chain, and probes the
+  gateway `/health` and SPA through the ingress. The only layer that catches
+  image build/boot failures, missing runtime dependencies (e.g. the JetStream
+  streams the consumers need), and migration ordering against the per-service
+  roles. The same workflow also `pulumi preview`s the `prod` stub.
 
 ## Notes
 
@@ -136,7 +159,15 @@ Two cluster-free layers guard the program; a real `pulumi up` against kind
   runs).
 - The `MigrationJob` runs the same image as `ServiceDeployment` and overrides
   `CMD` with `pnpm db:migrate`. Both pick up `DATABASE_URL` from the same
-  Secret.
+  Secret. Each service's `drizzle.config.ts` sets `migrations.schema` to its own
+  schema (not the default global `drizzle` schema): the one database is shared
+  and each service migrates as its own role, so a shared log schema would be
+  owned by whichever service ran first and reject the rest.
+- `StreamBootstrap` is the NATS analogue of `PostgresRoles`: a one-shot Job that
+  creates the `TICKETS`/`ORDERS`/`PAYMENTS` JetStream streams idempotently
+  before any messaging service boots. The consumers call `consumer.info()` at
+  startup and crash with `StreamNotFoundError` if the stream is missing, so
+  `tickets`/`orders`/`payments`/`expiration` all `dependsOn` it.
 - The role's `search_path` is set on the role itself
   (`ALTER ROLE <user> SET search_path TO <schema>, public`), so `drizzle-kit
 migrate` lands in the right schema without query-string fiddling.

@@ -1,0 +1,23 @@
+config:
+  tix:namespace: tix
+  # Registry-qualified images: prod pulls tagged builds pushed by CI, it does
+  # not build them. The `latest` tag is a placeholder — a real prod deploy pins
+  # an immutable tag (e.g. a git SHA) via `pulumi config set tix:<svc>Image`.
+  tix:authImage: registry.example.com/tix/auth:latest
+  tix:ticketsImage: registry.example.com/tix/tickets:latest
+  tix:ordersImage: registry.example.com/tix/orders:latest
+  tix:paymentsImage: registry.example.com/tix/payments:latest
+  tix:expirationImage: registry.example.com/tix/expiration:latest
+  tix:gatewayImage: registry.example.com/tix/gateway:latest
+  tix:webImage: registry.example.com/tix/web:latest
+  tix:imagePullPolicy: IfNotPresent
+  tix:webOrigin: https://tix.example.com
+  tix:host: tix.example.com
+  # STUB STACK — no cloud target is wired yet (see issue #34 "Out of Scope" and
+  # the follow-up to select GKE/EKS/DOKS). `pulumi preview` against a stub
+  # provider validates the resource graph; `pulumi up` is intentionally not
+  # runnable until a provider + backend are configured.
+  #
+  # Secret-shaped values (postgresPassword, the per-service role passwords,
+  # betterAuthSecret, ticketsServiceToken, stripeKey) are NOT committed. Set
+  # them with `pulumi config set --secret …` against the prod backend.

@@ -1,3 +1,4 @@
 node_modules
 rendered
 Pulumi.ci-preview.yaml
+Pulumi.kind-smoke.yaml

@@ -5,6 +5,9 @@ export default defineConfig({
   schema: "./src/tickets-schema.ts",
   out: "./drizzle",
   schemaFilter: ["tickets"],
+  // Migration log lives in this service's own schema, not the shared global
+  // `drizzle` schema — see apps/auth/drizzle.config.ts for the rationale.
+  migrations: { schema: "tickets" },
   dbCredentials: {
     get url(): string {
       const u = process.env["DATABASE_URL"];

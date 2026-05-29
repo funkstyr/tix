@@ -5,6 +5,12 @@ export default defineConfig({
   schema: "./src/auth-schema.ts",
   out: "./drizzle",
   schemaFilter: ["auth"],
+  // Keep the migration log inside this service's own schema rather than the
+  // default global `drizzle` schema. One Postgres database is shared across
+  // services (ADR-0003) and each migrates as its own role — a shared log schema
+  // would be owned by whichever service ran first and reject the others.
+  // Mirrors apps/api-e2e/src/migrate.ts's `migrationsSchema`.
+  migrations: { schema: "auth" },
   dbCredentials: {
     get url(): string {
       const u = process.env["DATABASE_URL"];
