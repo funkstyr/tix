@@ -4,6 +4,12 @@ Pulumi TypeScript program that deploys tix to a Kubernetes cluster (ADR-0006).
 The `dev` stack targets a local kind / Docker Desktop cluster; `prod` is a
 stub.
 
+`Pulumi.yaml` sets `runtime.options.typescript: false` so the program runs
+through Node's native type stripping (Node >= 22.18) instead of Pulumi's
+bundled `ts-node@7`, which can't parse the repo's modern tsconfig
+(`allowImportingTsExtensions`, `verbatimModuleSyntax`, …). Any `pulumi`
+command therefore needs `pnpm install` to have run and a recent Node.
+
 ## Components
 
 | Component           | File                               | Emits                                                                                                       |
@@ -102,6 +108,26 @@ curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-aut
 | `webOrigin`           | string | `http://localhost:4000` | CORS origin the gateway accepts; matches the SPA's public URL. |
 | `host`                | string | `localhost`             | `Host` header the ingress matches; serves the whole stack.     |
 | `imagePullPolicy`     | string | `Never`                 | `Never` for dev (local-built); `IfNotPresent` for prod.        |
+
+## Validation
+
+Two cluster-free layers guard the program; a real `pulumi up` against kind
+(issue #69) is the third.
+
+- **Component unit tests** (`components/*.test.ts`, vitest). Use
+  `pulumi.runtime.setMocks` to instantiate a component in-process and assert on
+  the emitted manifest — e.g. the four `IngressRoutes` path rules, or that
+  `ServiceDeployment` drops the Service + probes for a portless worker. No CLI,
+  no cluster. Run with `pnpm -F @tix/infra-pulumi test` (also part of
+  `pnpm check`).
+- **`pulumi preview` in CI** (`.github/workflows/pulumi-preview.yml`, runs on
+  PRs touching `infra/pulumi/**`). Spins up a throwaway `ci-preview` stack on a
+  local file backend with stub secrets and `kubernetes:renderYamlToDirectory`
+  set, so the default provider renders manifests to disk instead of contacting
+  a cluster. Catches broken references, missing required fields, and runtime
+  errors (preview exits non-zero → check fails). It does **not** catch
+  admission-level mistakes such as an invalid `string`-typed enum value — that
+  surfaces only under the kind smoke test.
 
 ## Notes
 

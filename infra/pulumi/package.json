@@ -6,6 +6,7 @@
   "main": "index.ts",
   "scripts": {
     "check-types": "tsgo --noEmit",
+    "test": "vitest run --passWithNoTests",
     "pulumi:destroy": "pulumi destroy",
     "pulumi:preview": "pulumi preview",
     "pulumi:up": "pulumi up"
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "vitest": "catalog:"
   }
 }

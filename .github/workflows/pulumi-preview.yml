@@ -1,0 +1,74 @@
+name: Pulumi Preview
+
+# Cluster-free validation of the Pulumi program on PRs that touch infra. The
+# default Kubernetes provider is put in render-to-disk mode, so `pulumi preview`
+# plans the full resource graph without any kube credentials. A broken program
+# (bad references, missing required fields, runtime errors) fails the preview
+# and therefore the check. Semantic manifest assertions live in the component
+# unit tests run by the main CI `test` job; a real `pulumi up` smoke against a
+# kind cluster is issue #69.
+on:
+  pull_request:
+    paths:
+      - "infra/pulumi/**"
+      - ".github/workflows/pulumi-preview.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      # Throwaway stack on a local file backend: no real secrets are involved,
+      # so a literal passphrase is fine and no Pulumi Cloud token is required.
+      PULUMI_CONFIG_PASSPHRASE: ci-preview
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The Pulumi program runs through Node's native type stripping (see
+      # Pulumi.yaml), so its node_modules must be present at preview time.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Pulumi CLI
+        run: |
+          curl -fsSL https://get.pulumi.com | sh -s -- --version 3.243.0
+          echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
+
+      - name: Configure throwaway stack (stub secrets, stub k8s provider)
+        working-directory: infra/pulumi
+        run: |
+          pulumi login --local
+          pulumi stack init ci-preview --non-interactive
+          # index.ts calls config.requireSecret() for each of these; stub them
+          # so the program can build its resource graph.
+          for kv in \
+            postgresPassword=ci_postgres \
+            authPassword=ci_auth \
+            ticketsPassword=ci_tickets \
+            ordersPassword=ci_orders \
+            paymentsPassword=ci_payments \
+            expirationPassword=ci_expiration \
+            betterAuthSecret=ci_better_auth_secret \
+            ticketsServiceToken=ci_tickets_service_token \
+            stripeKey=sk_test_ci_placeholder; do
+            pulumi config set --secret "${kv%%=*}" "${kv#*=}"
+          done
+          # Render manifests to disk instead of contacting a cluster — this is
+          # the stub provider that lets preview run without kube credentials.
+          pulumi config set kubernetes:renderYamlToDirectory ./rendered
+
+      - name: Pulumi preview
+        working-directory: infra/pulumi
+        run: pulumi preview --non-interactive --diff
