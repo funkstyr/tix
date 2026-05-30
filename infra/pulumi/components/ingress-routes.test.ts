@@ -66,7 +66,7 @@ describe("IngressRoutes", () => {
       host: "tix.example.com",
       gateway: { name: "gateway", port: 4000 },
       web: { name: "web", port: 80 },
-      grafana: { name: "lgtm", port: 3000 },
+      grafana: { name: "grafana", port: 3000 },
     });
 
     const spec = await promiseOf(ingress.spec);
@@ -80,7 +80,7 @@ describe("IngressRoutes", () => {
       { path: "/health", pathType: "Exact", service: "gateway" },
       { path: "/api", pathType: "Prefix", service: "gateway" },
       { path: "/rpc", pathType: "Prefix", service: "gateway" },
-      { path: "/grafana", pathType: "Prefix", service: "lgtm" },
+      { path: "/grafana", pathType: "Prefix", service: "grafana" },
       { path: "/", pathType: "Prefix", service: "web" },
     ]);
   });

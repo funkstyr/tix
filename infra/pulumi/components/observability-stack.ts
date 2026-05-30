@@ -1,49 +1,59 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
-// Gateway OTel Collector: a thin OTLP receive-and-forward hop. Core distro is
-// enough — the otlp receiver, batch processor, and otlp exporter all ship in
-// core, so no contrib components are needed for a pure OTLP->OTLP gateway.
-const COLLECTOR_IMAGE = "otel/opentelemetry-collector:0.153.0";
+import { GarageBackend } from "./observability/garage-backend.ts";
+import { GarageBuckets } from "./observability/garage-buckets.ts";
+import { GrafanaBackend } from "./observability/grafana-backend.ts";
+import { LokiBackend } from "./observability/loki-backend.ts";
+import { OtelCollector } from "./observability/otel-collector.ts";
+import { PrometheusBackend } from "./observability/prometheus-backend.ts";
+import { TempoBackend } from "./observability/tempo-backend.ts";
 
-// Grafana LGTM all-in-one (Tempo / Loki / Prometheus / Grafana) as a single
-// pod. ADR-0009: the dev stack runs this image; splitting into discrete
-// components is deferred to the prod stub (see TODO(prod) below).
-const LGTM_IMAGE = "grafana/otel-lgtm:0.28.0";
+// In-cluster service endpoints. DNS names are deterministic (one Service per
+// backend, named for the backend), so the wiring between components is plain
+// strings rather than threaded Outputs.
+const GARAGE_S3_ENDPOINT = "garage:3900";
+const GARAGE_ADMIN_ENDPOINT = "http://garage:3903";
+const TEMPO_OTLP_ENDPOINT = "tempo:4317";
+const TEMPO_URL = "http://tempo:3200";
+const LOKI_URL = "http://loki:3100";
+const LOKI_OTLP_LOGS = "http://loki:3100/otlp/v1/logs";
+const PROMETHEUS_URL = "http://prometheus:9090";
+const PROMETHEUS_OTLP_METRICS = "http://prometheus:9090/api/v1/otlp/v1/metrics";
 
-const OTLP_GRPC_PORT = 4317;
-const OTLP_HTTP_PORT = 4318;
-const GRAFANA_PORT = 3000;
-// Tempo's HTTP query API. The lgtm Service exposes it so the kind smoke can
-// poll for the synthetic trace; nothing in the app path uses it.
-const TEMPO_HTTP_PORT = 3200;
-
-const COLLECTOR_CONFIG_DIR = "/etc/otelcol";
-const COLLECTOR_CONFIG_FILE = "config.yaml";
+const TEMPO_BUCKET = "tempo";
+const LOKI_BUCKET = "loki";
+const S3_KEY_NAME = "tix-observability";
 
 export type ObservabilityStackArgs = {
   namespace: pulumi.Input<string>;
   // Absolute root URL Grafana serves itself under, e.g. `http://localhost/grafana`.
-  // Must match the `/grafana` ingress prefix so sub-path serving lines up.
   grafanaRootUrl: pulumi.Input<string>;
+  garageRpcSecret: pulumi.Input<string>;
+  garageAdminToken: pulumi.Input<string>;
+  garageS3AccessKey: pulumi.Input<string>;
+  garageS3SecretKey: pulumi.Input<string>;
 };
 
-// Stands up the in-cluster OpenTelemetry path (ADR-0009): a gateway OTel
-// Collector exposed as the `otel-collector` ClusterIP, fanning received OTLP
-// traces/logs/metrics out to a Grafana LGTM backend (`lgtm` ClusterIP). This
-// slice is infra-only — no service emits to the collector yet; apps will later
-// target `otel-collector:4317`.
+// Stands up the discrete in-cluster OpenTelemetry stack (ADR-0009): Garage
+// (object store) → Tempo (traces) + Loki (logs) on S3, Prometheus (metrics) on
+// a local TSDB, Grafana (UI), all fed by a gateway OTel Collector that fans the
+// received OTLP out per signal. This slice is infra-only — no service emits to
+// the collector yet; apps will later target `otel-collector:4317`.
 //
-// TODO(prod): the `grafana/otel-lgtm` all-in-one image is a dev convenience.
-// The prod stack should split it into discrete Tempo / Loki / Mimir / Grafana
-// Deployments with real storage. prod is a non-runnable stub today, so the
-// all-in-one renders fine under `pulumi preview`.
+// dev runs this same topology as staging/prod (one stack, no all-in-one). prod
+// is a non-runnable stub today: the components render under `pulumi preview`,
+// but real object storage / credentials land when a provider is wired.
 export class ObservabilityStack extends pulumi.ComponentResource {
-  readonly collectorConfig: k8s.core.v1.ConfigMap;
-  readonly collector: k8s.apps.v1.Deployment;
+  readonly garage: GarageBackend;
+  readonly buckets: GarageBuckets;
+  readonly tempo: TempoBackend;
+  readonly loki: LokiBackend;
+  readonly prometheus: PrometheusBackend;
+  readonly grafana: GrafanaBackend;
+  readonly collector: OtelCollector;
   readonly collectorService: k8s.core.v1.Service;
-  readonly lgtm: k8s.apps.v1.Deployment;
-  readonly lgtmService: k8s.core.v1.Service;
+  readonly grafanaService: k8s.core.v1.Service;
 
   constructor(name: string, args: ObservabilityStackArgs, opts?: pulumi.ComponentResourceOptions) {
     super("tix:infra:ObservabilityStack", name, args, opts);
@@ -51,176 +61,101 @@ export class ObservabilityStack extends pulumi.ComponentResource {
     const childOpts: pulumi.ResourceOptions = { parent: this };
     const { namespace } = args;
 
-    const lgtmLabels = {
-      "app.kubernetes.io/name": "lgtm",
-      "app.kubernetes.io/component": "observability",
-    };
-
-    this.lgtm = new k8s.apps.v1.Deployment(
-      `${name}-lgtm`,
+    this.garage = new GarageBackend(
+      `${name}-garage`,
       {
-        metadata: { name: "lgtm", namespace },
-        spec: {
-          replicas: 1,
-          selector: { matchLabels: lgtmLabels },
-          template: {
-            metadata: { labels: lgtmLabels },
-            spec: {
-              terminationGracePeriodSeconds: 30,
-              containers: [
-                {
-                  name: "lgtm",
-                  image: LGTM_IMAGE,
-                  ports: [
-                    { name: "grafana", containerPort: GRAFANA_PORT },
-                    { name: "otlp-grpc", containerPort: OTLP_GRPC_PORT },
-                    { name: "otlp-http", containerPort: OTLP_HTTP_PORT },
-                    { name: "tempo", containerPort: TEMPO_HTTP_PORT },
-                  ],
-                  // Serve Grafana under the `/grafana` ingress prefix. The value
-                  // must be the string "true" (an env value is typed `string`;
-                  // a YAML boolean would fail admission), and ROOT_URL carries
-                  // no trailing slash or Grafana emits `//` redirects.
-                  env: [
-                    { name: "GF_SERVER_ROOT_URL", value: args.grafanaRootUrl },
-                    { name: "GF_SERVER_SERVE_FROM_SUB_PATH", value: "true" },
-                  ],
-                },
-              ],
-            },
-          },
-        },
+        namespace,
+        rpcSecret: args.garageRpcSecret,
+        adminToken: args.garageAdminToken,
+        s3AccessKey: args.garageS3AccessKey,
+        s3SecretKey: args.garageS3SecretKey,
+        storage: "1Gi",
       },
       childOpts,
     );
 
-    this.lgtmService = new k8s.core.v1.Service(
-      `${name}-lgtm-service`,
+    // Buckets + the S3 key must exist before Tempo/Loki boot; the Job also waits
+    // for the node to report healthy, so this dependsOn just orders pod creation.
+    this.buckets = new GarageBuckets(
+      `${name}-garage-buckets`,
       {
-        metadata: { name: "lgtm", namespace },
-        spec: {
-          selector: lgtmLabels,
-          ports: [
-            { name: "grafana", port: GRAFANA_PORT, targetPort: GRAFANA_PORT },
-            { name: "otlp-grpc", port: OTLP_GRPC_PORT, targetPort: OTLP_GRPC_PORT },
-            { name: "otlp-http", port: OTLP_HTTP_PORT, targetPort: OTLP_HTTP_PORT },
-            { name: "tempo", port: TEMPO_HTTP_PORT, targetPort: TEMPO_HTTP_PORT },
-          ],
-        },
+        namespace,
+        adminEndpoint: GARAGE_ADMIN_ENDPOINT,
+        credentialsSecretName: this.garage.credentialsSecret.metadata.name,
+        buckets: [TEMPO_BUCKET, LOKI_BUCKET],
+        keyName: S3_KEY_NAME,
       },
+      { parent: this, dependsOn: this.garage },
+    );
+
+    const credentialsSecretName = this.garage.credentialsSecret.metadata.name;
+
+    this.tempo = new TempoBackend(
+      `${name}-tempo`,
+      {
+        namespace,
+        s3Endpoint: GARAGE_S3_ENDPOINT,
+        bucket: TEMPO_BUCKET,
+        credentialsSecretName,
+        storage: "1Gi",
+      },
+      { parent: this, dependsOn: this.buckets },
+    );
+
+    this.loki = new LokiBackend(
+      `${name}-loki`,
+      {
+        namespace,
+        s3Endpoint: GARAGE_S3_ENDPOINT,
+        bucket: LOKI_BUCKET,
+        credentialsSecretName,
+      },
+      { parent: this, dependsOn: this.buckets },
+    );
+
+    // Prometheus uses a local TSDB, so it depends on nothing but the namespace.
+    this.prometheus = new PrometheusBackend(
+      `${name}-prometheus`,
+      { namespace, storage: "1Gi" },
       childOpts,
     );
 
-    const collectorLabels = {
-      "app.kubernetes.io/name": "otel-collector",
-      "app.kubernetes.io/component": "observability",
-    };
+    const backends = [this.tempo, this.loki, this.prometheus];
 
-    this.collectorConfig = new k8s.core.v1.ConfigMap(
-      `${name}-collector-config`,
+    this.grafana = new GrafanaBackend(
+      `${name}-grafana`,
       {
-        metadata: { name: "otel-collector-config", namespace },
-        data: { [COLLECTOR_CONFIG_FILE]: renderCollectorConfig(`lgtm:${OTLP_GRPC_PORT}`) },
+        namespace,
+        grafanaRootUrl: args.grafanaRootUrl,
+        tempoUrl: TEMPO_URL,
+        lokiUrl: LOKI_URL,
+        prometheusUrl: PROMETHEUS_URL,
       },
-      childOpts,
+      { parent: this, dependsOn: backends },
     );
 
-    this.collector = new k8s.apps.v1.Deployment(
+    this.collector = new OtelCollector(
       `${name}-collector`,
       {
-        metadata: { name: "otel-collector", namespace },
-        spec: {
-          replicas: 1,
-          selector: { matchLabels: collectorLabels },
-          template: {
-            metadata: { labels: collectorLabels },
-            spec: {
-              terminationGracePeriodSeconds: 30,
-              containers: [
-                {
-                  name: "otel-collector",
-                  image: COLLECTOR_IMAGE,
-                  args: [`--config=${COLLECTOR_CONFIG_DIR}/${COLLECTOR_CONFIG_FILE}`],
-                  ports: [
-                    { name: "otlp-grpc", containerPort: OTLP_GRPC_PORT },
-                    { name: "otlp-http", containerPort: OTLP_HTTP_PORT },
-                  ],
-                  volumeMounts: [
-                    { name: "config", mountPath: COLLECTOR_CONFIG_DIR, readOnly: true },
-                  ],
-                },
-              ],
-              volumes: [
-                { name: "config", configMap: { name: this.collectorConfig.metadata.name } },
-              ],
-            },
-          },
-        },
+        namespace,
+        tempoEndpoint: TEMPO_OTLP_ENDPOINT,
+        lokiLogsEndpoint: LOKI_OTLP_LOGS,
+        prometheusMetricsEndpoint: PROMETHEUS_OTLP_METRICS,
       },
-      childOpts,
+      { parent: this, dependsOn: backends },
     );
 
-    this.collectorService = new k8s.core.v1.Service(
-      `${name}-collector-service`,
-      {
-        metadata: { name: "otel-collector", namespace },
-        spec: {
-          selector: collectorLabels,
-          ports: [
-            { name: "otlp-grpc", port: OTLP_GRPC_PORT, targetPort: OTLP_GRPC_PORT },
-            { name: "otlp-http", port: OTLP_HTTP_PORT, targetPort: OTLP_HTTP_PORT },
-          ],
-        },
-      },
-      childOpts,
-    );
+    this.collectorService = this.collector.service;
+    this.grafanaService = this.grafana.service;
 
     this.registerOutputs({
-      collectorConfig: this.collectorConfig,
+      garage: this.garage,
+      buckets: this.buckets,
+      tempo: this.tempo,
+      loki: this.loki,
+      prometheus: this.prometheus,
+      grafana: this.grafana,
       collector: this.collector,
-      collectorService: this.collectorService,
-      lgtm: this.lgtm,
-      lgtmService: this.lgtmService,
     });
   }
-}
-
-// Gateway collector config: receive OTLP (gRPC + HTTP), batch, and forward all
-// three signals to the LGTM backend's OTLP gRPC endpoint. `tls.insecure` is
-// required because lgtm's OTLP listener is plaintext h2c; the `otlp` exporter
-// is gRPC, so `lgtmEndpoint` is a bare host:port with no scheme.
-function renderCollectorConfig(lgtmEndpoint: string): string {
-  return `# Generated by tix:infra:ObservabilityStack. Gateway OTLP collector (ADR-0009).
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:${OTLP_GRPC_PORT}
-      http:
-        endpoint: 0.0.0.0:${OTLP_HTTP_PORT}
-
-processors:
-  batch: {}
-
-exporters:
-  otlp:
-    endpoint: ${lgtmEndpoint}
-    tls:
-      insecure: true
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp]
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp]
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlp]
-`;
 }

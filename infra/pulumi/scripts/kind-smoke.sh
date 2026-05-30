@@ -35,11 +35,15 @@ SKIP_BUILD=""
 SERVICES=(auth tickets orders payments expiration gateway web)
 HTTP_DEPLOYMENTS=(auth tickets orders payments gateway web)
 MIGRATED=(auth tickets orders payments expiration)
-OBSERVABILITY=(otel-collector lgtm)
+# Discrete observability backends (ADR-0009). Split by workload kind so the
+# rollout waits use the right resource type; all are remote images (pulled).
+OBSERVABILITY_DEPLOYMENTS=(otel-collector grafana loki)
+OBSERVABILITY_STATEFULSETS=(garage tempo prometheus)
+OBSERVABILITY=("${OBSERVABILITY_DEPLOYMENTS[@]}" "${OBSERVABILITY_STATEFULSETS[@]}")
 
 # Pinned remote images for the synthetic-span e2e check (pulled inside the
 # cluster, not kind-loaded). telemetrygen tracks the collector minor.
-TELEMETRYGEN_IMAGE="ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:0.153.0"
+TELEMETRYGEN_IMAGE="ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.153.0"
 CURL_IMAGE="curlimages/curl:8.20.0"
 
 export PULUMI_CONFIG_PASSPHRASE="${PULUMI_CONFIG_PASSPHRASE:-kind-smoke}"
@@ -75,7 +79,9 @@ teardown() {
     kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp 2>/dev/null | tail -30 || true
     for s in "${SERVICES[@]}" "${OBSERVABILITY[@]}"; do
       printf -- '--- logs: %s ---\n' "$s"
-      kubectl -n "$NAMESPACE" logs "deployment/$s" --tail=40 2>/dev/null || true
+      # Label selector rather than deployment/$s — observability backends are a
+      # mix of Deployments and StatefulSets.
+      kubectl -n "$NAMESPACE" logs "-l=app.kubernetes.io/name=$s" --tail=40 2>/dev/null || true
     done
   fi
   if [[ -n "$TEARDOWN" ]]; then
@@ -150,6 +156,9 @@ set_secret expirationPassword expiration_dev
 set_secret betterAuthSecret "$(openssl rand -hex 32)"
 set_secret ticketsServiceToken "$(openssl rand -hex 32)"
 set_secret stripeKey sk_test_placeholder
+set_secret garageRpcSecret "$(openssl rand -hex 32)"
+set_secret garageAdminToken "$(openssl rand -hex 32)"
+set_secret garageS3SecretKey "$(openssl rand -hex 32)"
 set_plain namespace "$NAMESPACE"
 set_plain imagePullPolicy Never
 set_plain host "$INGRESS_HOST"
@@ -175,6 +184,7 @@ wait_job() {
 log "waiting on bootstrap + migrations"
 wait_job postgres-roles
 wait_job stream-bootstrap
+wait_job garage-buckets
 for s in "${MIGRATED[@]}"; do wait_job "$s-migrate"; done
 
 log "waiting on rollouts"
@@ -185,10 +195,15 @@ done
 
 # Observability stack (ADR-0009). Its images are remote (pulled, not kind-loaded),
 # so they're rolled out separately from the locally-built service images above.
+# Split by workload kind: Garage/Tempo/Prometheus are StatefulSets.
 log "waiting on observability rollouts"
-for d in "${OBSERVABILITY[@]}"; do
+for d in "${OBSERVABILITY_DEPLOYMENTS[@]}"; do
   kubectl -n "$NAMESPACE" rollout status "deployment/$d" --timeout=180s >/dev/null
   ok "deployment/$d ready"
+done
+for s in "${OBSERVABILITY_STATEFULSETS[@]}"; do
+  kubectl -n "$NAMESPACE" rollout status "statefulset/$s" --timeout=180s >/dev/null
+  ok "statefulset/$s ready"
 done
 
 # 7. probe through the ingress. Routing can lag a few seconds after the Ingress
@@ -209,7 +224,9 @@ probe() {
 log "probing ingress at http://$INGRESS_HOST"
 probe "gateway health" /health '"ok":true'
 probe "web SPA index" / '<div id="root"'
-probe "grafana ui" /grafana/login 'Grafana'
+# Probe Grafana's health endpoint (deterministic JSON) rather than scraping the
+# login HTML — proves the /grafana sub-path routes and Grafana is serving.
+probe "grafana ui" /grafana/api/health '"database"'
 
 # 8. synthetic-span end-to-end check (ADR-0009). Push one OTLP span at the
 #    gateway collector, then poll Tempo (via the LGTM backend) until it lands —
@@ -243,7 +260,7 @@ wait_job otel-smoke-span
 # Tempo search has an ingest + flush lag, so retry. The tag-search form avoids
 # TraceQL brace-encoding; a hit echoes the matched trace's "traceID".
 log "querying Tempo for the synthetic trace"
-TEMPO_QUERY='http://lgtm:3200/api/search?tags=service.name%3Dsmoke-synthetic'
+TEMPO_QUERY='http://tempo:3200/api/search?tags=service.name%3Dsmoke-synthetic'
 found=""
 for _ in $(seq 1 30); do
   if kubectl -n "$NAMESPACE" run tempo-probe --rm -i --restart=Never --quiet \
@@ -253,7 +270,7 @@ for _ in $(seq 1 30); do
   fi
   sleep 2
 done
-[[ -n "$found" ]] || die "synthetic span never appeared in Tempo (collector -> lgtm path broken)"
+[[ -n "$found" ]] || die "synthetic span never appeared in Tempo (collector -> tempo path broken)"
 ok "synthetic span visible in Tempo"
 
 log "✓ smoke passed — services + observability Ready, gateway /health ok, SPA + Grafana served through the ingress, synthetic span reached Tempo"

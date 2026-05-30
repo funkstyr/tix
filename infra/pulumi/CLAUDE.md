@@ -12,15 +12,15 @@ command therefore needs `pnpm install` to have run and a recent Node.
 
 ## Components
 
-| Component            | File                                | Emits                                                                                                                                                      |
-| -------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `StatefulInfra`      | `components/stateful-infra.ts`      | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                                                                        |
-| `PostgresRoles`      | `components/postgres-roles.ts`      | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                                                                          |
-| `StreamBootstrap`    | `components/stream-bootstrap.ts`    | ConfigMap + one-shot Job (`natsio/nats-box`) that creates the JetStream streams idempotently (mirrors `nats-init.sh`)                                      |
-| `ServiceDeployment`  | `components/service-deployment.ts`  | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes)                                                |
-| `MigrationJob`       | `components/migration-job.ts`       | k8s Job that runs the image's `pnpm db:migrate`                                                                                                            |
-| `IngressRoutes`      | `components/ingress-routes.ts`      | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`), Grafana (`/grafana/*`, optional) and web SPA (`/*`)                         |
-| `ObservabilityStack` | `components/observability-stack.ts` | Gateway OTel Collector (`otel-collector` ClusterIP, OTLP 4317/4318) + Grafana LGTM all-in-one (`lgtm` ClusterIP: Grafana 3000, OTLP, Tempo 3200); ADR-0009 |
+| Component            | File                                | Emits                                                                                                                                              |
+| -------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StatefulInfra`      | `components/stateful-infra.ts`      | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                                                                |
+| `PostgresRoles`      | `components/postgres-roles.ts`      | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                                                                  |
+| `StreamBootstrap`    | `components/stream-bootstrap.ts`    | ConfigMap + one-shot Job (`natsio/nats-box`) that creates the JetStream streams idempotently (mirrors `nats-init.sh`)                              |
+| `ServiceDeployment`  | `components/service-deployment.ts`  | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes)                                        |
+| `MigrationJob`       | `components/migration-job.ts`       | k8s Job that runs the image's `pnpm db:migrate`                                                                                                    |
+| `IngressRoutes`      | `components/ingress-routes.ts`      | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`), Grafana (`/grafana/*`, optional) and web SPA (`/*`)                 |
+| `ObservabilityStack` | `components/observability-stack.ts` | Composes the discrete o11y stack from `components/observability/`: gateway OTel Collector + Garage + Tempo + Loki + Prometheus + Grafana; ADR-0009 |
 
 `MigrationJob` and `ServiceDeployment` are reusable: no service-specific
 identifiers live in their files. Wire each service in `index.ts`.
@@ -42,23 +42,43 @@ injected as env vars — apps never hardcode hostnames.
 
 ## Observability stack (ADR-0009)
 
-`ObservabilityStack` is wired in `index.ts` alongside `StatefulInfra` (it
-depends only on the namespace). It is **infra-only** today: no service emits
-telemetry yet, so nothing `dependsOn` it. Apps will later export OTLP to the
-gateway collector at `otel-collector:4317` (gRPC) / `:4318` (HTTP); the
-collector forwards traces, logs, and metrics to the `grafana/otel-lgtm`
-all-in-one backend (service `lgtm`). Exposed via the `otelCollectorService` /
-`lgtmService` stack outputs.
+`ObservabilityStack` (`components/observability-stack.ts`) is wired in `index.ts`
+alongside `StatefulInfra` (it depends only on the namespace) and composes the
+per-backend components under `components/observability/`:
 
-Grafana is reachable through the ingress at `/grafana` — the lgtm container sets
+| Backend             | File                    | Workload                                                  | Notes                                                               |
+| ------------------- | ----------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
+| `OtelCollector`     | `otel-collector.ts`     | Deployment + Service `otel-collector` (4317/4318)         | Single OTLP ingress; fans out per signal.                           |
+| `GarageBackend`     | `garage-backend.ts`     | StatefulSet + PVC + Secret + Service `garage` (3900/3901) | S3 object store for Tempo + Loki (`server --single-node`).          |
+| `GarageBuckets`     | `garage-buckets.ts`     | one-shot Job (`curl` → Garage admin API)                  | Creates the `tempo`/`loki` buckets + imports the S3 key.            |
+| `TempoBackend`      | `tempo-backend.ts`      | StatefulSet + WAL PVC + Service `tempo` (3200/4317)       | Traces; S3 blocks in Garage.                                        |
+| `LokiBackend`       | `loki-backend.ts`       | Deployment + Service `loki` (3100)                        | Logs; S3 chunks in Garage; OTLP at `/otlp/v1/logs`.                 |
+| `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)      | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver. |
+| `GrafanaBackend`    | `grafana-backend.ts`    | Deployment + Service `grafana` (3000)                     | UI; Tempo/Loki/Prometheus datasources provisioned.                  |
+
+It is **infra-only** today: no service emits telemetry yet, so nothing
+`dependsOn` it. Apps will later export OTLP to `otel-collector:4317` (gRPC) /
+`:4318` (HTTP); the collector fans out per signal — traces→`tempo:4317`,
+logs→`loki:3100/otlp/v1/logs`, metrics→`prometheus:9090/api/v1/otlp/v1/metrics`.
+Exposed via the `otelCollectorService` / `grafanaService` / `tempoService` /
+`lokiService` / `prometheusService` / `garageService` stack outputs.
+
+Grafana is reachable through the ingress at `/grafana` — the container sets
 `GF_SERVER_ROOT_URL` + `GF_SERVER_SERVE_FROM_SUB_PATH=true` so it serves under
 that prefix with no nginx rewrite. Or port-forward directly:
-`kubectl -n tix port-forward svc/lgtm 3000:3000`. Its remote images are pulled
+`kubectl -n tix port-forward svc/grafana 3000:3000`. Backend images are remote
 (pinned tags, default pull policy), not kind-loaded like the `tix-*:dev` images.
+Tempo and Loki read their Garage S3 credentials from the `garage-credentials`
+Secret via config env-expansion (`-config.expand-env=true`), so no secret lands
+in a ConfigMap. Garage runs `server --single-node` (layout auto-assigned); since
+its image is shell-less (scratch), `GarageBuckets` drives the **admin API** with
+`curl` to create the buckets and import the predetermined S3 key.
 
-> **prod:** the all-in-one image is a dev convenience. The prod stub defers the
-> split into discrete Tempo / Loki / Mimir / Grafana Deployments — noted in
-> `observability-stack.ts`.
+> **dev = prod topology (ADR-0009 update):** `dev` runs this same discrete stack
+> as staging/prod — no all-in-one image. Object storage is **Garage** (MinIO's
+> community edition was archived in 2026). `prod` stays a non-runnable stub (same
+> components, no provider wired); real object storage / scoped creds land when a
+> provider is chosen. `TODO(prod)` markers note the per-component gaps.
 
 ## Smoke deploy (one command)
 
@@ -73,6 +93,12 @@ for poking; pass
 `--teardown` (what CI uses) to `pulumi destroy` + delete the cluster on exit,
 `--skip-build` to reuse loaded images. This is the real `pulumi up` canary
 (issue #69); CI runs the same script in `.github/workflows/pulumi-smoke.yml`.
+
+To tear the local smoke down at any time (the cluster is kept by default), run
+`pnpm -F @tix/infra-pulumi pulumi:smoke:teardown` (also `./scripts/kind-teardown.sh`):
+it removes the `kind-smoke` Pulumi stack + state (clearing any stale lock from an
+interrupted `pulumi up`) and deletes the kind cluster. Idempotent — safe to run
+even when nothing is up.
 
 ## Local deploy (kind, `dev` stack)
 
@@ -96,6 +122,9 @@ pulumi -C infra/pulumi config set --secret expirationPassword expiration_dev
 pulumi -C infra/pulumi config set --secret betterAuthSecret "$(openssl rand -hex 32)"
 pulumi -C infra/pulumi config set --secret ticketsServiceToken "$(openssl rand -hex 32)"
 pulumi -C infra/pulumi config set --secret stripeKey sk_test_placeholder
+pulumi -C infra/pulumi config set --secret garageRpcSecret "$(openssl rand -hex 32)"
+pulumi -C infra/pulumi config set --secret garageAdminToken "$(openssl rand -hex 32)"
+pulumi -C infra/pulumi config set --secret garageS3SecretKey "$(openssl rand -hex 32)"
 
 # 2. Build each service's image and load it into kind so `imagePullPolicy: Never` works.
 for svc in auth tickets orders payments expiration gateway web; do
@@ -147,6 +176,10 @@ curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-aut
 | `webOrigin`           | string | `http://localhost:4000` | CORS origin the gateway accepts; matches the SPA's public URL. |
 | `host`                | string | `localhost`             | `Host` header the ingress matches; serves the whole stack.     |
 | `imagePullPolicy`     | string | `Never`                 | `Never` for dev (local-built); `IfNotPresent` for prod.        |
+| `garageRpcSecret`     | secret | —                       | Garage RPC secret (32-byte hex); required even single-node.    |
+| `garageAdminToken`    | secret | —                       | Garage admin API bearer token; used by the bucket bootstrap.   |
+| `garageS3AccessKey`   | string | `GK…` (dev default)     | Garage S3 access key (`GK`+24 hex); Tempo/Loki authenticate.   |
+| `garageS3SecretKey`   | secret | —                       | Garage S3 secret key (64 hex).                                 |
 
 ## Validation
 
@@ -172,7 +205,7 @@ Three layers guard the program, cheapest first:
   cluster, waits for the bootstrap → migration → rollout chain, probes the
   gateway `/health`, SPA, and Grafana through the ingress, and proves the OTLP
   path end-to-end with a synthetic span (telemetrygen → `otel-collector` →
-  `lgtm` → Tempo query). The only layer that catches
+  `tempo` → Tempo query). The only layer that catches
   image build/boot failures, missing runtime dependencies (e.g. the JetStream
   streams the consumers need), and migration ordering against the per-service
   roles. The same workflow also `pulumi preview`s the `prod` stub.

@@ -40,6 +40,10 @@ const expirationPassword = config.requireSecret("expirationPassword");
 const betterAuthSecret = config.requireSecret("betterAuthSecret");
 const ticketsServiceToken = config.requireSecret("ticketsServiceToken");
 const stripeKey = config.requireSecret("stripeKey");
+const garageRpcSecret = config.requireSecret("garageRpcSecret");
+const garageAdminToken = config.requireSecret("garageAdminToken");
+const garageS3AccessKey = config.get("garageS3AccessKey") ?? "GKa1b2c3d4e5f60718293a4b5c";
+const garageS3SecretKey = config.requireSecret("garageS3SecretKey");
 const webOrigin = config.get("webOrigin") ?? "http://localhost:4000";
 const ingressHost = config.get("host") ?? "localhost";
 
@@ -70,14 +74,19 @@ const infra = new StatefulInfra(
   { dependsOn: namespace },
 );
 
-// In-cluster OpenTelemetry path (ADR-0009): gateway collector + Grafana LGTM.
-// Infra-only for now — no service emits to `otel-collector:4317` yet. Grafana
-// serves under the same `/grafana` prefix the ingress routes to it.
+// In-cluster OpenTelemetry stack (ADR-0009): gateway collector + discrete
+// Tempo/Loki/Prometheus/Grafana on Garage (S3). Infra-only for now — no service
+// emits to `otel-collector:4317` yet. Grafana serves under the `/grafana` prefix
+// the ingress routes to it.
 const observability = new ObservabilityStack(
   "tix",
   {
     namespace: namespace.metadata.name,
     grafanaRootUrl: `http://${ingressHost}/grafana`,
+    garageRpcSecret,
+    garageAdminToken,
+    garageS3AccessKey,
+    garageS3SecretKey,
   },
   { dependsOn: namespace },
 );
@@ -413,7 +422,7 @@ const ingress = new IngressRoutes("tix", {
   host: ingressHost,
   gateway: { name: gatewayDeployment.service!.metadata.name, port: GATEWAY_PORT },
   web: { name: webDeployment.service!.metadata.name, port: WEB_PORT },
-  grafana: { name: observability.lgtmService.metadata.name, port: GRAFANA_PORT },
+  grafana: { name: observability.grafanaService.metadata.name, port: GRAFANA_PORT },
 });
 
 export const namespaceName = namespace.metadata.name;
@@ -432,6 +441,10 @@ export const gatewayService = gatewayDeployment.service!.metadata.name;
 export const webService = webDeployment.service!.metadata.name;
 export const expirationDeployment = expiration.deployment.metadata.name;
 export const otelCollectorService = observability.collectorService.metadata.name;
-export const lgtmService = observability.lgtmService.metadata.name;
+export const grafanaService = observability.grafanaService.metadata.name;
+export const tempoService = observability.tempo.service.metadata.name;
+export const lokiService = observability.loki.service.metadata.name;
+export const prometheusService = observability.prometheus.service.metadata.name;
+export const garageService = observability.garage.service.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;

@@ -19,5 +19,7 @@ config:
   # runnable until a provider + backend are configured.
   #
   # Secret-shaped values (postgresPassword, the per-service role passwords,
-  # betterAuthSecret, ticketsServiceToken, stripeKey) are NOT committed. Set
-  # them with `pulumi config set --secret …` against the prod backend.
+  # betterAuthSecret, ticketsServiceToken, stripeKey, garageRpcSecret,
+  # garageAdminToken, garageS3SecretKey) are NOT committed. Set them with `pulumi config set
+  # --secret …` against the prod backend. (garageS3AccessKey defaults to a dev
+  # `GK…` key; prod should override it.)
