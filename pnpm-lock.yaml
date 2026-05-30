@@ -24,6 +24,9 @@ catalogs:
     '@opentelemetry/api':
       specifier: ^1.9.1
       version: 1.9.1
+    '@opentelemetry/core':
+      specifier: ^2.7.1
+      version: 2.7.1
     '@opentelemetry/resources':
       specifier: ^2.7.1
       version: 2.7.1
@@ -865,6 +868,12 @@ importers:
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
+      '@opentelemetry/core':
+        specifier: 'catalog:'
+        version: 2.7.1(@opentelemetry/api@1.9.1)
       arktype:
         specifier: 'catalog:'
         version: 2.2.0

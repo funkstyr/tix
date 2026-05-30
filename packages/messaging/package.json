@@ -26,6 +26,8 @@
   "dependencies": {
     "@nats-io/jetstream": "catalog:",
     "@nats-io/transport-node": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/core": "catalog:",
     "arktype": "catalog:",
     "bullmq": "catalog:"
   },

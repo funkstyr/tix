@@ -9,8 +9,11 @@ import {
 } from "@nats-io/jetstream";
 import type { JsMsg, PubAck } from "@nats-io/jetstream";
 import type { NatsConnection } from "@nats-io/transport-node";
+import type { Context } from "@opentelemetry/api";
 import { ArkErrors, type Type } from "arktype";
 import { pino, type Logger } from "pino";
+
+import { extractTraceContext, injectTraceContext } from "./traceparent";
 
 const MSG_ID_HEADER = "Nats-Msg-Id";
 
@@ -18,6 +21,13 @@ const fallbackLogger: Logger = pino({ level: "warn" });
 
 export type PublishOptions = {
   msgId?: string;
+  /**
+   * OTel context whose active span becomes the parent of the downstream consume.
+   * Injected into NATS headers as W3C trace context; the payload is untouched.
+   * Pass the context reconstructed at the outbox boundary — there is no fallback
+   * to the ambient active context, which would be the relay poll, not the cause.
+   */
+  traceContext?: Context;
 };
 
 export type Publisher = {
@@ -43,7 +53,12 @@ export function createPublisher(
   return {
     publish: async (subject, payload, opts) => {
       const data = encoder.encode(JSON.stringify(payload));
-      const pubOpts = opts?.msgId === undefined ? undefined : { msgID: opts.msgId };
+      const pubOpts = {
+        ...(opts?.msgId === undefined ? {} : { msgID: opts.msgId }),
+        ...(opts?.traceContext === undefined
+          ? {}
+          : { headers: injectTraceContext(opts.traceContext) }),
+      };
       const ack = await js.publish(subject, data, pubOpts);
 
       log.info(
@@ -60,6 +75,12 @@ export type ConsumerHandlerArgs<Payload> = {
   subject: string;
   payload: Payload;
   eventId: string;
+  /**
+   * W3C trace context extracted from the message headers. Always a usable context:
+   * `ROOT_CONTEXT` when the message carried none, so the handler starts a fresh trace
+   * rather than continuing one.
+   */
+  traceContext: Context;
   ack: () => void;
 };
 
@@ -192,9 +213,11 @@ async function processMessage<Payload>(
     msg.ack();
   };
 
+  const traceContext = extractTraceContext(msg.headers);
+
   try {
     // arktype distills the call result to `finalizeDistillation<Payload, ...>`; cast back to Payload.
-    await handler({ subject, payload: validated as Payload, eventId, ack });
+    await handler({ subject, payload: validated as Payload, eventId, traceContext, ack });
     ack();
     log.info({ eventId, subject, redelivered: msg.redelivered }, "event handled");
   } catch (err) {
