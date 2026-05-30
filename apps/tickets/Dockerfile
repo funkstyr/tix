@@ -7,14 +7,13 @@
 # so the same image can run either the service (default CMD) or the migration
 # Job (`pnpm db:migrate` via Job command override).
 
-ARG NODE_VERSION=24-alpine
+ARG NODE_VERSION=26-alpine
 ARG PNPM_VERSION=11.2.1
 
 FROM node:${NODE_VERSION} AS base
 WORKDIR /repo
 RUN apk add --no-cache libc6-compat \
-  && corepack enable \
-  && corepack prepare pnpm@${PNPM_VERSION} --activate
+  && npm i -g pnpm@${PNPM_VERSION}
 ENV CI=1
 
 FROM base AS builder

@@ -8,15 +8,14 @@
 # not carry the monorepo — there is no migration Job to share an image with
 # and the web pod only needs the compiled bundle.
 
-ARG NODE_VERSION=24-alpine
+ARG NODE_VERSION=26-alpine
 ARG PNPM_VERSION=11.2.1
 ARG NGINX_VERSION=1.27-alpine
 
 FROM node:${NODE_VERSION} AS base
 WORKDIR /repo
 RUN apk add --no-cache libc6-compat \
-  && corepack enable \
-  && corepack prepare pnpm@${PNPM_VERSION} --activate
+  && npm i -g pnpm@${PNPM_VERSION}
 ENV CI=1
 
 FROM base AS builder

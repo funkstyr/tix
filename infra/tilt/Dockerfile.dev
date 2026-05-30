@@ -15,14 +15,13 @@
 #   docker build -f infra/tilt/Dockerfile.dev --target service-dev \
 #     --build-arg SERVICE=auth -t tix-auth:dev .
 
-ARG NODE_VERSION=24-alpine
+ARG NODE_VERSION=26-alpine
 ARG PNPM_VERSION=11.2.1
 
 FROM node:${NODE_VERSION} AS base
 WORKDIR /repo
 RUN apk add --no-cache libc6-compat \
-  && corepack enable \
-  && corepack prepare pnpm@${PNPM_VERSION} --activate
+  && npm i -g pnpm@${PNPM_VERSION}
 ENV CI=1
 
 # Full monorepo + workspace node_modules. Build the @tix/* packages to `dist/`

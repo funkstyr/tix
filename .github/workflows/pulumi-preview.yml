@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: pnpm
 
       # The Pulumi program runs through Node's native type stripping (see
