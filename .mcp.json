@@ -6,6 +6,10 @@
       "env": {
         "CCLSP_CONFIG_PATH": "${CLAUDE_PROJECT_DIR}/.claude/cclsp.json"
       }
+    },
+    "playwright": {
+      "command": "pnpm",
+      "args": ["dlx", "@playwright/mcp@latest"]
     }
   }
 }

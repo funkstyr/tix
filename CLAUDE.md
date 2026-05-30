@@ -13,12 +13,17 @@ tix/
 │   ├── payments/     # Stripe charges; consumes order.* events
 │   ├── expiration/   # BullMQ delayed-job worker; auto-cancels Orders
 │   ├── gateway/      # Edge HTTP/oRPC ingress; auth fan-out
-│   └── web/          # React 19 SPA (buyer/seller UI)
+│   ├── web/          # React 19 SPA (buyer/seller UI)
+│   ├── api-e2e/      # Cross-service integration suite (vitest) — see its CLAUDE.md
+│   └── web-e2e/      # Browser e2e (Playwright + testcontainers) — see its CLAUDE.md
 ├── packages/
-│   ├── contracts/    # arktype schemas + oRPC routers (tickets, orders, subjects)
-│   ├── db-core/      # drizzle + postgres client (per-service schema; ADR-0003)
-│   ├── messaging/    # NATS JetStream + BullMQ wrappers, outbox/inbox helpers
-│   └── config/       # Shared tsconfig.base, vitest, tsdown configs
+│   ├── contracts/         # arktype schemas + oRPC routers (tickets, orders, subjects)
+│   ├── db-core/           # drizzle + postgres client (per-service schema; ADR-0003)
+│   ├── messaging/         # NATS JetStream + BullMQ wrappers, outbox/inbox helpers
+│   ├── observability/     # pino logger + oRPC request-logger middleware
+│   ├── test-helpers/      # shared test utils (wait-for, sleep, docker-available, require-value)
+│   ├── auth-test-fixture/ # boots a real auth issuer for integration tests
+│   └── config/            # Shared tsconfig.base, vitest, tsdown configs
 ├── infra/
 │   ├── docker/       # postgres-init.sql, nats-init.sh (compose bootstrap)
 │   └── pulumi/       # TypeScript manifests (ADR-0006)
@@ -30,7 +35,7 @@ tix/
 
 | Concern      | Tool                                           |
 | ------------ | ---------------------------------------------- |
-| Package mgr  | pnpm (`pnpm@11.1.3`)                           |
+| Package mgr  | pnpm (`pnpm@11.2.1`)                           |
 | Task runner  | Turbo (`turbo.json`)                           |
 | Linter       | **oxlint** (`.oxlintrc.json`)                  |
 | Formatter    | **oxfmt** (`.oxfmtrc.json`)                    |
@@ -43,19 +48,20 @@ tix/
 
 All run from the repo root. They fan out via Turbo.
 
-| Command                          | Purpose                                                   |
-| -------------------------------- | --------------------------------------------------------- |
-| `pnpm install`                   | Install all workspaces                                    |
-| `pnpm dev`                       | Build packages, then run all `dev` tasks                  |
-| `pnpm build`                     | Build everything                                          |
-| `pnpm build:packages`            | Build only `packages/*` (needed before app dev)           |
-| `pnpm check`                     | **Full gate**: lint + format + check-types + test + build |
-| `pnpm fix`                       | `oxlint --fix` + `oxfmt --write`                          |
-| `pnpm lint` / `lint:fix`         | oxlint                                                    |
-| `pnpm format` / `format:fix`     | oxfmt                                                     |
-| `pnpm check-types`               | `turbo check-types` (tsgo across all workspaces)          |
-| `pnpm test`                      | `turbo test`                                              |
-| `pnpm up-deps` / `up-deps:major` | `taze` upgrades across workspaces (minor / major)         |
+| Command                          | Purpose                                                                                            |
+| -------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `pnpm install`                   | Install all workspaces                                                                             |
+| `pnpm dev`                       | Build packages, then run all `dev` tasks                                                           |
+| `pnpm build`                     | Build everything                                                                                   |
+| `pnpm build:packages`            | Build only `packages/*` (needed before app dev)                                                    |
+| `pnpm check`                     | **Full gate**: lint + format + check-types + test + build                                          |
+| `pnpm fix`                       | `oxlint --fix` + `oxfmt --write`                                                                   |
+| `pnpm lint` / `lint:fix`         | oxlint                                                                                             |
+| `pnpm format` / `format:fix`     | oxfmt                                                                                              |
+| `pnpm check-types`               | `turbo check-types` (tsgo across all workspaces)                                                   |
+| `pnpm test`                      | `turbo test`                                                                                       |
+| `pnpm e2e`                       | Build packages, then run the `@tix/api-e2e` integration suite (needs `docker compose up -d` first) |
+| `pnpm up-deps` / `up-deps:major` | `taze` upgrades across workspaces (minor / major)                                                  |
 
 **Use `pnpm --filter <name> <script>`** (or the short `pnpm -F <name> <script>`) to run a script in a single workspace (e.g. `pnpm --filter web dev`, `pnpm -F @tix/db-core build`).
 
@@ -72,6 +78,12 @@ Shared dep versions live in `pnpm-workspace.yaml` → `catalog:`. Individual pac
 - **Reservation saga**: synchronous oRPC for reserve, async event for release (ADR-0007).
 
 Local infra is brought up via `docker-compose up` (postgres, nats, redis). Pulumi manifests in `infra/pulumi/` describe deployable resources (ADR-0006) — see [`infra/pulumi/CLAUDE.md`](./infra/pulumi/CLAUDE.md) for the kind-cluster runbook.
+
+## Testing tiers
+
+- **Unit / domain**: vitest per workspace (`pnpm test`). Pure-function-first; see the `house-style` skill.
+- **API integration** (`apps/api-e2e`): boots auth / tickets / orders / expiration as child processes against `docker compose` infra, drives the reservation saga over oRPC, and asserts the domain events fire. Run with `pnpm e2e`. Gotchas in [`apps/api-e2e/CLAUDE.md`](./apps/api-e2e/CLAUDE.md).
+- **Browser e2e** (`apps/web-e2e`): Playwright against the real SPA; spins up its own Postgres + NATS via testcontainers (no `docker compose` needed, just a running Docker daemon). Run with `pnpm -F @tix/web-e2e test:e2e`. Gotchas in [`apps/web-e2e/CLAUDE.md`](./apps/web-e2e/CLAUDE.md).
 
 ## Conventions
 
