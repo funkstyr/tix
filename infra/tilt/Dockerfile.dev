@@ -52,4 +52,8 @@ FROM deps AS web-dev
 WORKDIR /repo/apps/web
 ENV VITE_GATEWAY_URL=http://localhost:4000
 ENV VITE_STRIPE_PK=pk_test_replace_me
+# The dev server listens on 80, but the browser reaches it via Tilt's 5173→80
+# port-forward — point the HMR websocket at the forwarded port so live updates
+# don't fall back to full reloads.
+ENV VITE_HMR_CLIENT_PORT=5173
 CMD ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "80"]
