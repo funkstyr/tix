@@ -1,5 +1,6 @@
 import { jetstreamManager, RetentionPolicy, StorageType } from "@nats-io/jetstream";
 import { connect, type NatsConnection } from "@nats-io/transport-node";
+import { ROOT_CONTEXT, type SpanContext, trace, TraceFlags } from "@opentelemetry/api";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
@@ -270,6 +271,91 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       expect(deliveredIds.length).toBeGreaterThanOrEqual(2);
       expect(deliveredIds[0]).toBe(eventId);
       expect(deliveredIds[1]).toBe(eventId);
+    } finally {
+      await consumer.stop();
+      await nc.close();
+    }
+  }, 20_000);
+
+  it("propagates W3C trace context from publish to the consumer handler", async () => {
+    const { nc, subject, stream, group, publisher } = await setupContext();
+
+    const parent: SpanContext = {
+      traceId: "0af7651916cd43dd8448eb211c80319c",
+      spanId: "b7ad6b7169203331",
+      traceFlags: TraceFlags.SAMPLED,
+    };
+    const traceContext = trace.setSpanContext(ROOT_CONTEXT, parent);
+
+    const payload = {
+      ticketId: randomUUID(),
+      sellerId: randomUUID(),
+      title: "Traced concert",
+      quantityTotal: 2,
+      unitPriceCents: 2500,
+      createdAt: new Date().toISOString(),
+    };
+
+    let resolveHandled!: (args: { spanContext: SpanContext | undefined; payload: unknown }) => void;
+    const handled = new Promise<{ spanContext: SpanContext | undefined; payload: unknown }>((r) => {
+      resolveHandled = r;
+    });
+
+    const consumer = await createConsumer(nc, {
+      stream,
+      subjectFilter: subject,
+      group,
+      schema: ticketCreatedV1,
+      handler: ({ traceContext: ctx, payload: received }) => {
+        resolveHandled({ spanContext: trace.getSpanContext(ctx), payload: received });
+      },
+    });
+
+    try {
+      await publisher.publish(subject, payload, { msgId: randomUUID(), traceContext });
+
+      const observed = await handled;
+      expect(observed.spanContext?.traceId).toBe(parent.traceId);
+      expect(observed.spanContext?.spanId).toBe(parent.spanId);
+      // trace context rides in headers only; the payload is untouched.
+      expect(observed.payload).toEqual(payload);
+    } finally {
+      await consumer.stop();
+      await nc.close();
+    }
+  }, 20_000);
+
+  it("delivers a span-less root trace context when published without trace context", async () => {
+    const { nc, subject, stream, group, publisher } = await setupContext();
+
+    const payload = {
+      ticketId: randomUUID(),
+      sellerId: randomUUID(),
+      title: "Untraced concert",
+      quantityTotal: 1,
+      unitPriceCents: 100,
+      createdAt: new Date().toISOString(),
+    };
+
+    let resolveHandled!: (spanContext: SpanContext | undefined) => void;
+    const handled = new Promise<SpanContext | undefined>((r) => {
+      resolveHandled = r;
+    });
+
+    const consumer = await createConsumer(nc, {
+      stream,
+      subjectFilter: subject,
+      group,
+      schema: ticketCreatedV1,
+      handler: ({ traceContext: ctx }) => {
+        resolveHandled(trace.getSpanContext(ctx));
+      },
+    });
+
+    try {
+      await publisher.publish(subject, payload, { msgId: randomUUID() });
+
+      expect(await handled).toBeUndefined();
     } finally {
       await consumer.stop();
       await nc.close();
