@@ -8,8 +8,10 @@
 # gateway /health and the SPA through the ingress.
 #
 # This is the real `pulumi up` smoke the cluster-free `pulumi preview` and the
-# component unit tests can't give us (issue #69). CI invokes the exact same
-# script with --teardown; nothing here is CI-specific.
+# component unit tests can't give us (issue #69). CI invokes this same script
+# without --teardown (the runner is ephemeral, so pulumi destroy + kind delete
+# are wasted work) and sets SMOKE_BUILD_CACHE=gha to reuse Docker layers across
+# runs; nothing here branches on CI.
 #
 # Usage:
 #   infra/pulumi/scripts/kind-smoke.sh [--teardown] [--skip-build] [--stack NAME]
@@ -45,6 +47,13 @@ OBSERVABILITY=("${OBSERVABILITY_DEPLOYMENTS[@]}" "${OBSERVABILITY_STATEFULSETS[@
 # cluster, not kind-loaded). telemetrygen tracks the collector minor.
 TELEMETRYGEN_IMAGE="ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:v0.153.0"
 CURL_IMAGE="curlimages/curl:8.20.0"
+
+# Cross-run Docker layer cache for the service image builds. Empty locally (a
+# plain `docker build` against the daemon's warm cache is enough); CI sets it to
+# "gha" to push/pull buildkit layers through the GitHub Actions cache so the
+# shared `pnpm install` + `build:packages` layers survive between fresh runners.
+BUILD_CACHE="${SMOKE_BUILD_CACHE:-}"
+BUILD_CACHE_SCOPE="tix-smoke-builder"
 
 export PULUMI_CONFIG_PASSPHRASE="${PULUMI_CONFIG_PASSPHRASE:-kind-smoke}"
 
@@ -126,16 +135,70 @@ kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/${I
 kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s
 
 # 3. build + load images. imagePullPolicy is Never in dev, so the cluster only
-#    ever sees what kind has loaded.
+#    ever sees what kind has loaded. Every service Dockerfile shares the same
+#    expensive prefix (`pnpm install` + `build:packages`); only the trailing
+#    `pnpm --filter <svc> build` and runtime stage differ. So build the first
+#    image on its own to populate that shared layer cache, then build the rest
+#    in parallel — they reuse the warm prefix and only run their cheap tail.
+#    With BUILD_CACHE=gha the prefix also survives across CI runs.
+build_image() {  # $1 = service, $2 = "prime" to also write the shared cache
+  local s="$1" role="${2:-}"
+  if [[ "$BUILD_CACHE" != "gha" ]]; then
+    docker build -q -f "$REPO_ROOT/apps/$s/Dockerfile" -t "tix-$s:dev" "$REPO_ROOT"
+    return
+  fi
+  local cache_to=()
+  [[ "$role" == "prime" ]] \
+    && cache_to=(--cache-to "type=gha,mode=max,scope=$BUILD_CACHE_SCOPE")
+  docker buildx build -q --load \
+    --cache-from "type=gha,scope=$BUILD_CACHE_SCOPE" \
+    "${cache_to[@]}" \
+    -f "$REPO_ROOT/apps/$s/Dockerfile" -t "tix-$s:dev" "$REPO_ROOT"
+}
+
+# Pre-pull the remote observability backend images and load them into kind so
+# `pulumi up` finds them present (pinned tags → IfNotPresent) and skips the
+# in-cluster pull. Best-effort and backgrounded to overlap the service builds;
+# tags are read straight from the component sources so this never drifts from
+# what Pulumi actually deploys. On any miss the cluster just pulls as before.
+prepull_observability() {
+  local img imgs=()
+  while IFS= read -r img; do imgs+=("$img"); done < <(
+    grep -hoE '_IMAGE = "[^"]+"' "$PULUMI_DIR"/components/observability/*.ts \
+      | sed -E 's/.*"([^"]+)".*/\1/' | sort -u
+  )
+  for img in "${imgs[@]}"; do
+    docker pull -q "$img" >/dev/null 2>&1 \
+      && kind load docker-image "$img" --name "$CLUSTER" >/dev/null 2>&1 || true
+  done
+}
+
 if [[ -n "$SKIP_BUILD" ]]; then
   log "skipping image build (--skip-build)"
 else
-  log "building and loading ${#SERVICES[@]} service images"
-  for s in "${SERVICES[@]}"; do
-    docker build -q -f "$REPO_ROOT/apps/$s/Dockerfile" -t "tix-$s:dev" "$REPO_ROOT"
-    kind load docker-image "tix-$s:dev" --name "$CLUSTER"
-    ok "tix-$s:dev"
+  log "pre-pulling observability images (background) + building ${#SERVICES[@]} service images"
+  prepull_observability &
+  prepull_pid=$!
+
+  build_image "${SERVICES[0]}" prime
+  ok "tix-${SERVICES[0]}:dev"
+  build_pids=()
+  for s in "${SERVICES[@]:1}"; do
+    ( build_image "$s" && ok "tix-$s:dev" ) &
+    build_pids+=("$!")
   done
+  build_failed=0
+  for pid in "${build_pids[@]}"; do wait "$pid" || build_failed=1; done
+  [[ "$build_failed" -eq 0 ]] || die "one or more service image builds failed"
+
+  # Let the background o11y pre-pull finish before loading service images, so no
+  # two `kind load`s hit the cluster at once.
+  wait "$prepull_pid" 2>/dev/null || true
+
+  log "loading service images into kind"
+  image_tags=()
+  for s in "${SERVICES[@]}"; do image_tags+=("tix-$s:dev"); done
+  kind load docker-image "${image_tags[@]}" --name "$CLUSTER"
 fi
 
 # 4. throwaway stack on the local file backend with stub secrets. Never real

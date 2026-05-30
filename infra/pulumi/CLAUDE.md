@@ -90,9 +90,15 @@ bootstrap → migration → rollout chain, then probe the gateway `/health`, the
 SPA, and Grafana through the ingress, and push a synthetic OTLP span through
 `otel-collector` to confirm it lands in Tempo. It keeps the cluster afterwards
 for poking; pass
-`--teardown` (what CI uses) to `pulumi destroy` + delete the cluster on exit,
-`--skip-build` to reuse loaded images. This is the real `pulumi up` canary
-(issue #69); CI runs the same script in `.github/workflows/pulumi-smoke.yml`.
+`--teardown` to `pulumi destroy` + delete the cluster on exit, `--skip-build` to
+reuse loaded images. This is the real `pulumi up` canary (issue #69); CI runs the
+same script in `.github/workflows/pulumi-smoke.yml` (without `--teardown` — the
+runner is ephemeral). CI sets `SMOKE_BUILD_CACHE=gha` so the service images build
+the first one to prime the shared `pnpm install` / `build:packages` layers, then
+the rest in parallel reusing them — through a buildx GitHub Actions layer cache
+that survives between runs. The remote observability images are pre-pulled in the
+background (tags read from `components/observability/*.ts`) to overlap their pull
+with the builds.
 
 To tear the local smoke down at any time (the cluster is kept by default), run
 `pnpm -F @tix/infra-pulumi pulumi:smoke:teardown` (also `./scripts/kind-teardown.sh`):
@@ -208,7 +214,10 @@ Three layers guard the program, cheapest first:
   `tempo` → Tempo query). The only layer that catches
   image build/boot failures, missing runtime dependencies (e.g. the JetStream
   streams the consumers need), and migration ordering against the per-service
-  roles. The same workflow also `pulumi preview`s the `prod` stub.
+  roles. Because it is heavy (~minutes), the `smoke` job is kept off the routine
+  PR path — it runs on merges to `main`, nightly, manual dispatch, and PRs
+  labeled `smoke`. The `prod-preview` job in the same workflow (`pulumi
+preview`s the `prod` stub) still runs on every PR that touches infra.
 
 ## Notes
 
