@@ -6,6 +6,8 @@ import { v7 as uuidv7 } from "uuid";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
 import {
+  orderCancelInput,
+  orderCancelOutput,
   orderCreateInput,
   orderGetByIdInput,
   orderRecordOrNullOutput,
@@ -13,12 +15,18 @@ import {
   ordersListInput,
   ordersListOutput,
 } from "@tix/contracts/orders";
-import { ORDER_CREATED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
+import {
+  ORDER_CANCELLED_V1,
+  ORDER_CREATED_V1,
+  ORDER_RESERVATION_RELEASED_V1,
+} from "@tix/contracts/subjects";
 import type { ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
+import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
 import { orders, ordersOutbox, type ordersTables } from "./orders-schema.ts";
+import { transition } from "./state-machine.ts";
 import type { TicketsClient } from "./tickets-client.ts";
 
 const fallbackLogger: Logger = pino({ level: "warn" });
@@ -181,7 +189,72 @@ export function createOrdersRouter(deps: OrdersRouterDeps) {
       return { items: rows.map(toOrderRecord) };
     });
 
-  return { create, getById, list };
+  const cancel = base
+    .input(orderCancelInput)
+    .output(orderCancelOutput)
+    .handler(async ({ input }) => {
+      const session = await requireSession(authClient, input.token);
+
+      const row = await db.db.transaction(async (tx) => {
+        const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId));
+
+        // Treat non-existent and non-owned identically to `getById`: existence
+        // isn't a side channel an attacker could probe with a guessed orderId.
+        if (!order || order.buyerId !== session.user.id) {
+          throw new ORPCError("NOT_FOUND", { message: "order not found" });
+        }
+
+        const next = transition(order.status, { kind: "buyer_cancels" });
+        if (!next.ok) {
+          // Already terminal (`cancelled`/`complete`/`expired`) — cancel is a
+          // no-op. Return the order unchanged so the call stays idempotent.
+          return order;
+        }
+
+        const nextVersion = order.version + 1;
+        const updated = await updateVersioned(
+          tx,
+          orders,
+          { id: order.id, version: order.version },
+          { status: next.next },
+        );
+        if (updated.rowsAffected === 0) {
+          // A concurrent transition (expiry/payment) moved the row to a
+          // terminal state between our read and write. Re-read and return it;
+          // that writer owns the emitted events.
+          const [fresh] = await tx.select().from(orders).where(eq(orders.id, order.id));
+          return fresh ?? order;
+        }
+
+        const now = new Date().toISOString();
+
+        await enqueueEvent(tx, ordersOutbox, {
+          subject: ORDER_CANCELLED_V1,
+          eventId: uuidv7(),
+          payload: { orderId: order.id, version: nextVersion, cancelledAt: now },
+        });
+
+        // Cancel must also free the held inventory. Tickets release off
+        // order.reservation_released.v1 (not order.cancelled.v1), mirroring the
+        // expiration path in orders-consumer.
+        await enqueueEvent(tx, ordersOutbox, {
+          subject: ORDER_RESERVATION_RELEASED_V1,
+          eventId: uuidv7(),
+          payload: {
+            orderId: order.id,
+            ticketId: order.ticketId,
+            quantity: order.quantity,
+            releasedAt: now,
+          },
+        });
+
+        return { ...order, status: next.next, version: nextVersion };
+      });
+
+      return toOrderRecord(row);
+    });
+
+  return { create, getById, list, cancel };
 }
 
 type OrderRow = typeof orders.$inferSelect;

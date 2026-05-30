@@ -1,11 +1,15 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
 
 import {
+  type OrderCancelInput,
+  type OrderCancelOutput,
   type OrderCancelledV1,
   type OrderCompletedV1,
   type OrderCreatedV1,
   type OrderExpiredV1,
   type OrderReservationReleasedV1,
+  orderCancelInput,
+  orderCancelOutput,
   orderCancelledV1,
   orderCompletedV1,
   orderCreatedV1,
@@ -181,5 +185,54 @@ describe("orderReservationReleasedV1", () => {
       quantity: number;
       releasedAt: string;
     }>();
+  });
+});
+
+const goodCancelInput: OrderCancelInput = {
+  token: "session-token",
+  orderId: "33333333-3333-4333-8333-333333333333",
+};
+
+describe("orderCancelInput", () => {
+  test("accepts a known-good input", () => {
+    expect(() => orderCancelInput.assert(goodCancelInput)).not.toThrow();
+  });
+
+  test("rejects a missing token", () => {
+    const { token: _omitted, ...missing } = goodCancelInput;
+    expect(() => orderCancelInput.assert(missing)).toThrow(/token/);
+  });
+
+  test("rejects a non-uuid orderId", () => {
+    expect(() => orderCancelInput.assert({ ...goodCancelInput, orderId: "nope" })).toThrow(
+      /orderId/,
+    );
+  });
+
+  test("rejects an extra unknown field", () => {
+    expect(() => orderCancelInput.assert({ ...goodCancelInput, leakedField: "nope" })).toThrow(
+      /leakedField/,
+    );
+  });
+
+  test("inferred type matches the documented input shape", () => {
+    expectTypeOf<OrderCancelInput>().toEqualTypeOf<{ token: string; orderId: string }>();
+  });
+});
+
+describe("orderCancelOutput", () => {
+  test("accepts a cancelled order record", () => {
+    const cancelled: OrderCancelOutput = {
+      id: "33333333-3333-4333-8333-333333333333",
+      buyerId: "44444444-4444-4444-8444-444444444444",
+      ticketId: "11111111-1111-4111-8111-111111111111",
+      quantity: 2,
+      priceCents: 10_000,
+      status: "cancelled",
+      expiresAt: "2026-05-20T12:15:00.000Z",
+      version: 2,
+      createdAt: "2026-05-20T12:00:00.000Z",
+    };
+    expect(() => orderCancelOutput.assert(cancelled)).not.toThrow();
   });
 });

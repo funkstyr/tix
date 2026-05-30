@@ -23,5 +23,11 @@ export function transition(status: Status, event: Event): TransitionResult {
     return { ok: true, next: "complete" };
   }
 
+  // A buyer can abandon an order any time before it reaches a terminal state —
+  // whether it's still `created` or already `awaiting_payment`.
+  if ((status === "created" || status === "awaiting_payment") && event.kind === "buyer_cancels") {
+    return { ok: true, next: "cancelled" };
+  }
+
   return { ok: false, reason: "UnsupportedTransition" };
 }

@@ -87,6 +87,21 @@ export const orderGetByIdInput = type({
 
 export type OrderGetByIdInput = typeof orderGetByIdInput.infer;
 
+export const orderCancelInput = type({
+  "+": "reject",
+  token: "string >= 1",
+  orderId: "string.uuid",
+});
+
+export type OrderCancelInput = typeof orderCancelInput.infer;
+
+// Cancel returns the post-transition order record so the caller can render the
+// new status without a follow-up read. Already-terminal orders come back
+// unchanged (the cancel is a no-op), so the shape matches `getById`/`create`.
+export const orderCancelOutput = orderRecordOutput;
+
+export type OrderCancelOutput = typeof orderCancelOutput.infer;
+
 export const ordersListInput = type({
   "+": "reject",
   token: "string >= 1",
@@ -106,4 +121,5 @@ export type OrdersRouterClient = {
   create: (input: OrderCreateInput) => Promise<OrderRecord>;
   getById: (input: OrderGetByIdInput) => Promise<OrderRecord | null>;
   list: (input: OrdersListInput) => Promise<OrdersListOutput>;
+  cancel: (input: OrderCancelInput) => Promise<OrderRecord>;
 };

@@ -4,11 +4,15 @@ import { createFileRoute, notFound, useRouter } from "@tanstack/react-router";
 import type { OrderRecord } from "@tix/contracts/orders";
 
 import { requireAuth } from "../../auth/require-auth";
+import { useAuth } from "../../auth/use-auth";
+import { useClient } from "../../client/use-client";
 import { formatPrice } from "../../money/format-price";
+import { cancelOrder } from "../../orders/cancel-order";
 import { Countdown } from "../../orders/countdown";
 import { StripeCheckout } from "../../orders/stripe-checkout";
 
 const PAYABLE_STATUSES = new Set<OrderRecord["status"]>(["created", "awaiting_payment"]);
+const CANCELLABLE_STATUSES = new Set<OrderRecord["status"]>(["created", "awaiting_payment"]);
 
 export const Route = createFileRoute("/orders/$orderId")({
   loader: async ({ context, params }) => {
@@ -49,6 +53,7 @@ function OrderDetailPage(): JSX.Element {
   }, [router]);
 
   const payable = !expired && PAYABLE_STATUSES.has(order.status);
+  const cancellable = !expired && CANCELLABLE_STATUSES.has(order.status);
 
   return (
     <section>
@@ -72,8 +77,51 @@ function OrderDetailPage(): JSX.Element {
 
       {payable ? <StripeCheckout orderId={order.id} priceCents={order.priceCents} /> : null}
 
+      {cancellable ? <CancelAction orderId={order.id} /> : null}
+
       {expired ? <p data-testid="order-expired">Order expired</p> : null}
     </section>
+  );
+}
+
+function CancelAction({ orderId }: { orderId: string }): JSX.Element {
+  const auth = useAuth();
+  const client = useClient();
+  const router = useRouter();
+
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const onCancel = useCallback(async () => {
+    // The loader already enforced auth before rendering, so a missing token
+    // here means the session lapsed mid-view — surface it rather than calling.
+    if (auth.sessionToken === null) {
+      setError("Your session expired. Sign in again to cancel.");
+      return;
+    }
+
+    setPending(true);
+    setError(null);
+
+    const result = await cancelOrder({ client, token: auth.sessionToken, orderId });
+    if (!result.ok) {
+      setError(result.error);
+      setPending(false);
+      return;
+    }
+
+    // Re-run the loader so the displayed status catches up with the
+    // `cancelled` transition.
+    await router.invalidate();
+  }, [auth.sessionToken, client, orderId, router]);
+
+  return (
+    <>
+      {error === null ? null : <p role="alert">{error}</p>}
+      <button type="button" data-testid="cancel-order" onClick={onCancel} disabled={pending}>
+        {pending ? "Cancelling…" : "Cancel order"}
+      </button>
+    </>
   );
 }
 

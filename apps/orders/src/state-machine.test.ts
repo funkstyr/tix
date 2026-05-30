@@ -25,10 +25,18 @@ describe("transition", () => {
     });
   });
 
+  it.each(["created", "awaiting_payment"] as const)(
+    "moves %s → cancelled on buyer_cancels",
+    (status) => {
+      expect(transition(status, { kind: "buyer_cancels" })).toEqual({
+        ok: true,
+        next: "cancelled",
+      });
+    },
+  );
+
   it.each([
-    ["created", "buyer_cancels"],
     ["created", "buyer_initiates_payment"],
-    ["awaiting_payment", "buyer_cancels"],
     ["awaiting_payment", "buyer_initiates_payment"],
     ["awaiting_payment", "payment_confirmed"],
     ["awaiting_payment", "deadline_passed"],

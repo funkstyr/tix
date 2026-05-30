@@ -1,6 +1,8 @@
 import { os } from "@orpc/server";
 
 import {
+  orderCancelInput,
+  orderCancelOutput,
   orderCreateInput,
   orderGetByIdInput,
   orderRecordOrNullOutput,
@@ -90,6 +92,14 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
       .output(ordersListOutput)
       .handler(async ({ input, context }) => {
         return await clients.orders.list(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+    cancel: base
+      .input(orderCancelInput)
+      .output(orderCancelOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.orders.cancel(input, {
           context: { cookieHeader: context.cookieHeader },
         });
       }),

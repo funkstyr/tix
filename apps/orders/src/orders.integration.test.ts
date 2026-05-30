@@ -532,3 +532,173 @@ describe.skipIf(!dockerAvailable)("orders.list", () => {
     });
   });
 });
+
+describe.skipIf(!dockerAvailable)("orders.cancel", () => {
+  it("transitions a created Order to cancelled and bumps its version", async () => {
+    const seller = await signUpUser("seller-cancel@example.com");
+    const buyer = await signUpUser("buyer-cancel@example.com");
+    const ticket = await createTicket(seller.token, 5);
+
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 2,
+    });
+
+    const cancelled = await getOrdersClient().cancel({
+      token: buyer.token,
+      orderId: order.id,
+    });
+
+    expect(cancelled.id).toBe(order.id);
+    expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.version).toBe(2);
+
+    const [row] = await getOrdersDb()
+      .db.select()
+      .from(ordersTable)
+      .where(eq(ordersTable.id, order.id));
+    expect(row?.status).toBe("cancelled");
+    expect(row?.version).toBe(2);
+  });
+
+  it("enqueues order.cancelled.v1 and order.reservation_released.v1 in one transaction", async () => {
+    const seller = await signUpUser("seller-cancel-outbox@example.com");
+    const buyer = await signUpUser("buyer-cancel-outbox@example.com");
+    const ticket = await createTicket(seller.token, 5);
+
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 2,
+    });
+
+    await getOrdersClient().cancel({ token: buyer.token, orderId: order.id });
+
+    const cancelledRows = await getOrdersDb()
+      .db.select()
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, "order.cancelled.v1"));
+    expect(cancelledRows).toHaveLength(1);
+    expect(cancelledRows[0]?.payload).toMatchObject({ orderId: order.id, version: 2 });
+    expect(cancelledRows[0]?.sentAt).toBeNull();
+
+    const releasedRows = await getOrdersDb()
+      .db.select()
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, "order.reservation_released.v1"));
+    expect(releasedRows).toHaveLength(1);
+    expect(releasedRows[0]?.payload).toMatchObject({
+      orderId: order.id,
+      ticketId: ticket.id,
+      quantity: 2,
+    });
+    expect(releasedRows[0]?.sentAt).toBeNull();
+  });
+
+  it("returns the cancelled Order to its buyer via getById after cancel", async () => {
+    const seller = await signUpUser("seller-cancel-get@example.com");
+    const buyer = await signUpUser("buyer-cancel-get@example.com");
+    const ticket = await createTicket(seller.token, 5);
+
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 1,
+    });
+    await getOrdersClient().cancel({ token: buyer.token, orderId: order.id });
+
+    const fetched = await getOrdersClient().getById({ token: buyer.token, orderId: order.id });
+    expect(fetched?.status).toBe("cancelled");
+  });
+
+  // Non-ownership returns NOT_FOUND (not 403) so existence isn't a side channel,
+  // matching `getById`.
+  it("rejects cancel from a non-owner with NOT_FOUND and leaves the Order untouched", async () => {
+    const seller = await signUpUser("seller-cancel-other@example.com");
+    const buyer = await signUpUser("buyer-cancel-other@example.com");
+    const intruder = await signUpUser("intruder-cancel@example.com");
+    const ticket = await createTicket(seller.token, 5);
+
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 1,
+    });
+
+    await expect(
+      getOrdersClient().cancel({ token: intruder.token, orderId: order.id }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    const [row] = await getOrdersDb()
+      .db.select()
+      .from(ordersTable)
+      .where(eq(ordersTable.id, order.id));
+    expect(row?.status).toBe("created");
+    expect(row?.version).toBe(1);
+
+    const cancelledRows = await getOrdersDb()
+      .db.select()
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, "order.cancelled.v1"));
+    expect(cancelledRows).toHaveLength(0);
+  });
+
+  it("rejects cancel of an unknown Order with NOT_FOUND", async () => {
+    const buyer = await signUpUser("buyer-cancel-unknown@example.com");
+
+    await expect(
+      getOrdersClient().cancel({
+        token: buyer.token,
+        orderId: "00000000-0000-4000-8000-000000000000",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("rejects an unauthenticated caller with 401", async () => {
+    const seller = await signUpUser("seller-cancel-unauth@example.com");
+    const buyer = await signUpUser("buyer-cancel-unauth@example.com");
+    const ticket = await createTicket(seller.token, 2);
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 1,
+    });
+
+    await expect(
+      getOrdersClient().cancel({ token: INVALID_TOKEN, orderId: order.id }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+  });
+
+  it("is idempotent when the Order is already cancelled", async () => {
+    const seller = await signUpUser("seller-cancel-idem@example.com");
+    const buyer = await signUpUser("buyer-cancel-idem@example.com");
+    const ticket = await createTicket(seller.token, 5);
+
+    const order = await getOrdersClient().create({
+      token: buyer.token,
+      ticketId: ticket.id,
+      quantity: 2,
+    });
+
+    const first = await getOrdersClient().cancel({ token: buyer.token, orderId: order.id });
+    const second = await getOrdersClient().cancel({ token: buyer.token, orderId: order.id });
+
+    expect(first.status).toBe("cancelled");
+    expect(second.status).toBe("cancelled");
+    // No version bump and no fresh events on the second, no-op cancel.
+    expect(second.version).toBe(first.version);
+
+    const cancelledRows = await getOrdersDb()
+      .db.select()
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, "order.cancelled.v1"));
+    expect(cancelledRows).toHaveLength(1);
+
+    const releasedRows = await getOrdersDb()
+      .db.select()
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, "order.reservation_released.v1"));
+    expect(releasedRows).toHaveLength(1);
+  });
+});
