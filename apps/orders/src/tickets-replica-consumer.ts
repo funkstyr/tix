@@ -1,23 +1,23 @@
 import { type NatsConnection } from "@nats-io/transport-node";
+import { Effect } from "effect";
 import { and, eq, lt } from "drizzle-orm";
-import { type Logger } from "pino";
 
 import { TICKETS_CREATED_V1, TICKETS_UPDATED_V1 } from "@tix/contracts/subjects";
 import { ticketCreatedV1, ticketUpdatedV1 } from "@tix/contracts/tickets";
-import { type DbClient } from "@tix/db-core/client";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 
-import { ordersInbox, ticketsReplica, type ordersTables } from "./orders-schema.ts";
+import { ordersInbox, ticketsReplica } from "./orders-schema.ts";
+import type { OrdersRuntime } from "./runtime.ts";
+import { Database, InfraLogger } from "./services.ts";
 
 export const TICKETS_REPLICA_CREATED_GROUP = "orders-tickets-replica-created";
 export const TICKETS_REPLICA_UPDATED_GROUP = "orders-tickets-replica-updated";
 
 export type StartTicketsReplicaConsumerArgs = {
-  db: DbClient<typeof ordersTables>;
+  runtime: OrdersRuntime;
   nats: NatsConnection;
   stream: string;
-  logger?: Logger;
   ackWaitMs?: number;
 };
 
@@ -27,9 +27,9 @@ export type StartTicketsReplicaConsumerArgs = {
 export async function startTicketsCreatedConsumer(
   args: StartTicketsReplicaConsumerArgs,
 ): Promise<RunningConsumer> {
-  const { db, nats, stream, logger, ackWaitMs } = args;
+  const { runtime, nats, stream, ackWaitMs } = args;
 
-  const loggerOpt = logger === undefined ? {} : { logger };
+  const logger = runtime.runSync(InfraLogger);
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
   return createConsumer(nats, {
@@ -37,33 +37,39 @@ export async function startTicketsCreatedConsumer(
     subjectFilter: TICKETS_CREATED_V1,
     group: TICKETS_REPLICA_CREATED_GROUP,
     schema: ticketCreatedV1,
-    ...loggerOpt,
+    logger,
     ...ackWaitOpt,
-    handler: async ({ eventId, subject, payload }) => {
-      await db.db.transaction(async (tx) => {
-        const result = await withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-          await tx
-            .insert(ticketsReplica)
-            .values({
-              id: payload.ticketId,
-              sellerId: payload.sellerId,
-              title: payload.title,
-              quantityTotal: payload.quantityTotal,
-              unitPriceCents: payload.unitPriceCents,
-              version: 1,
-              createdAt: new Date(payload.createdAt),
-            })
-            .onConflictDoNothing();
-        });
+    handler: ({ eventId, subject, payload }) =>
+      runtime.runPromise(
+        Effect.gen(function* () {
+          const db = yield* Database;
 
-        if (result.deduped) {
-          logger?.info(
-            { eventId, ticketId: payload.ticketId },
-            "skipping duplicate tickets.created.v1",
+          const result = yield* Effect.tryPromise(() =>
+            db.db.transaction((tx) =>
+              withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                await tx
+                  .insert(ticketsReplica)
+                  .values({
+                    id: payload.ticketId,
+                    sellerId: payload.sellerId,
+                    title: payload.title,
+                    quantityTotal: payload.quantityTotal,
+                    unitPriceCents: payload.unitPriceCents,
+                    version: 1,
+                    createdAt: new Date(payload.createdAt),
+                  })
+                  .onConflictDoNothing();
+              }),
+            ),
           );
-        }
-      });
-    },
+
+          if (result.deduped) {
+            yield* Effect.logInfo("skipping duplicate tickets.created.v1").pipe(
+              Effect.annotateLogs({ eventId, ticketId: payload.ticketId }),
+            );
+          }
+        }),
+      ),
   });
 }
 
@@ -74,9 +80,9 @@ export async function startTicketsCreatedConsumer(
 export async function startTicketsUpdatedConsumer(
   args: StartTicketsReplicaConsumerArgs,
 ): Promise<RunningConsumer> {
-  const { db, nats, stream, logger, ackWaitMs } = args;
+  const { runtime, nats, stream, ackWaitMs } = args;
 
-  const loggerOpt = logger === undefined ? {} : { logger };
+  const logger = runtime.runSync(InfraLogger);
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
   return createConsumer(nats, {
@@ -84,41 +90,47 @@ export async function startTicketsUpdatedConsumer(
     subjectFilter: TICKETS_UPDATED_V1,
     group: TICKETS_REPLICA_UPDATED_GROUP,
     schema: ticketUpdatedV1,
-    ...loggerOpt,
+    logger,
     ...ackWaitOpt,
-    handler: async ({ eventId, subject, payload }) => {
-      await db.db.transaction(async (tx) => {
-        const result = await withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-          const updated = await tx
-            .update(ticketsReplica)
-            .set({
-              title: payload.title,
-              unitPriceCents: payload.unitPriceCents,
-              version: payload.version,
-            })
-            .where(
-              and(
-                eq(ticketsReplica.id, payload.ticketId),
-                lt(ticketsReplica.version, payload.version),
-              ),
-            )
-            .returning({ id: ticketsReplica.id });
+    handler: ({ eventId, subject, payload }) =>
+      runtime.runPromise(
+        Effect.gen(function* () {
+          const db = yield* Database;
 
-          if (updated.length === 0) {
-            logger?.warn(
-              { eventId, ticketId: payload.ticketId, version: payload.version },
-              "tickets.updated.v1 for unknown or newer replica row; skipping",
+          const result = yield* Effect.tryPromise(() =>
+            db.db.transaction((tx) =>
+              withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                const updated = await tx
+                  .update(ticketsReplica)
+                  .set({
+                    title: payload.title,
+                    unitPriceCents: payload.unitPriceCents,
+                    version: payload.version,
+                  })
+                  .where(
+                    and(
+                      eq(ticketsReplica.id, payload.ticketId),
+                      lt(ticketsReplica.version, payload.version),
+                    ),
+                  )
+                  .returning({ id: ticketsReplica.id });
+
+                if (updated.length === 0) {
+                  logger.warn(
+                    { eventId, ticketId: payload.ticketId, version: payload.version },
+                    "tickets.updated.v1 for unknown or newer replica row; skipping",
+                  );
+                }
+              }),
+            ),
+          );
+
+          if (result.deduped) {
+            yield* Effect.logInfo("skipping duplicate tickets.updated.v1").pipe(
+              Effect.annotateLogs({ eventId, ticketId: payload.ticketId }),
             );
           }
-        });
-
-        if (result.deduped) {
-          logger?.info(
-            { eventId, ticketId: payload.ticketId },
-            "skipping duplicate tickets.updated.v1",
-          );
-        }
-      });
-    },
+        }),
+      ),
   });
 }
