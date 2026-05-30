@@ -41,7 +41,7 @@ export function toORPCError(error: OrderError): ORPCError<string, unknown> {
 // turns into a 500 exactly as an uncaught throw does today.
 export function makeRunHandler<R>(runtime: ManagedRuntime.ManagedRuntime<R, never>) {
   return async function runHandler<A>(
-    program: Effect.Effect<A, OrderError | ORPCError, R>,
+    program: Effect.Effect<A, OrderError | ORPCError<string, unknown>, R>,
   ): Promise<A> {
     const exit = await runtime.runPromiseExit(program);
     if (Exit.isSuccess(exit)) return exit.value;
