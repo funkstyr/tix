@@ -39,6 +39,9 @@ export const ordersOutbox = ordersSchema.table("outbox", {
   subject: text("subject").notNull(),
   payload: jsonb("payload").notNull(),
   eventId: uuid("event_id").notNull().unique(),
+  // W3C traceparent captured at enqueue, replayed into publish headers by the
+  // relay (ADR-0009). Nullable: untraced rows publish unchanged.
+  traceparent: text("traceparent"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });

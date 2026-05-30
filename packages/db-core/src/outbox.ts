@@ -1,8 +1,10 @@
+import { type Context } from "@opentelemetry/api";
 import { eq, isNull } from "drizzle-orm";
 import { type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { pino, type Logger } from "pino";
 
 import { type defineOutbox } from "./schema.js";
+import { captureTraceparent, contextFromTraceparent } from "./trace-context.js";
 
 export type OutboxTable = ReturnType<typeof defineOutbox>;
 
@@ -15,20 +17,26 @@ export type EnqueueEventArgs = {
   subject: string;
   payload: unknown;
   eventId: string;
+  /** Trace context to persist; defaults to the ambient active context. */
+  traceContext?: Context;
 };
 
 export async function enqueueEvent(
   tx: AnyDb,
   table: OutboxTable,
-  { subject, payload, eventId }: EnqueueEventArgs,
+  { subject, payload, eventId, traceContext }: EnqueueEventArgs,
 ): Promise<void> {
-  await tx.insert(table).values({ subject, payload, eventId });
+  // Capture the trace context now, inside the caller's transaction — this is
+  // the causally meaningful moment. The relay replays it at publish time.
+  await tx
+    .insert(table)
+    .values({ subject, payload, eventId, traceparent: captureTraceparent(traceContext) });
 }
 
 export type OutboxPublish = (
   subject: string,
   payload: unknown,
-  options: { msgId: string },
+  options: { msgId: string; traceContext?: Context },
 ) => Promise<unknown>;
 
 export type OutboxRelayOptions = {
@@ -60,9 +68,15 @@ export function startOutboxRelay(
     subject: string;
     payload: unknown;
     eventId: string;
+    traceparent: string | null;
   }): Promise<void> {
+    const traceContext = contextFromTraceparent(row.traceparent);
+
     try {
-      await publish(row.subject, row.payload, { msgId: row.eventId });
+      await publish(row.subject, row.payload, {
+        msgId: row.eventId,
+        ...(traceContext === undefined ? {} : { traceContext }),
+      });
     } catch (err) {
       log.error(
         { eventId: row.eventId, subject: row.subject, err },
@@ -82,6 +96,7 @@ export function startOutboxRelay(
         subject: table.subject,
         payload: table.payload,
         eventId: table.eventId,
+        traceparent: table.traceparent,
       })
       .from(table)
       .where(isNull(table.sentAt))

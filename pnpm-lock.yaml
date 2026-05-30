@@ -828,6 +828,12 @@ importers:
 
   packages/db-core:
     dependencies:
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
+      '@opentelemetry/core':
+        specifier: 'catalog:'
+        version: 2.7.1(@opentelemetry/api@1.9.1)
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@opentelemetry/api@1.9.1)(kysely@0.28.17)(postgres@3.4.9)

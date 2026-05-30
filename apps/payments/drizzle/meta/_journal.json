@@ -15,6 +15,13 @@
       "when": 1779500000001,
       "tag": "0001_payments_order_id_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779500000002,
+      "tag": "0002_payments_outbox_traceparent",
+      "breakpoints": true
     }
   ]
 }

@@ -40,6 +40,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/core": "catalog:",
     "drizzle-orm": "catalog:",
     "postgres": "catalog:"
   },
