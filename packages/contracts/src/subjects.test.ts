@@ -8,10 +8,12 @@ import {
   ORDER_RESERVATION_RELEASED_V1,
   PAYMENT_CREATED_V1,
   TICKETS_CREATED_V1,
+  TICKETS_UPDATED_V1,
 } from "./subjects";
 
 test("subjects carry the documented .v1 suffix", () => {
   expect(TICKETS_CREATED_V1).toBe("tickets.created.v1");
+  expect(TICKETS_UPDATED_V1).toBe("tickets.updated.v1");
   expect(ORDER_CREATED_V1).toBe("order.created.v1");
   expect(ORDER_CANCELLED_V1).toBe("order.cancelled.v1");
   expect(ORDER_COMPLETED_V1).toBe("order.completed.v1");

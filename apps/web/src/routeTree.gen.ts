@@ -19,6 +19,8 @@ import { Route as OrdersOrderIdRouteImport } from './routes/orders/$orderId'
 import { Route as AuthSignupRouteImport } from './routes/auth/signup'
 import { Route as AuthSignoutRouteImport } from './routes/auth/signout'
 import { Route as AuthSigninRouteImport } from './routes/auth/signin'
+import { Route as TicketsTicketIdIndexRouteImport } from './routes/tickets/$ticketId.index'
+import { Route as TicketsTicketIdEditRouteImport } from './routes/tickets/$ticketId.edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,6 +72,16 @@ const AuthSigninRoute = AuthSigninRouteImport.update({
   path: '/auth/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TicketsTicketIdIndexRoute = TicketsTicketIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TicketsTicketIdRoute,
+} as any)
+const TicketsTicketIdEditRoute = TicketsTicketIdEditRouteImport.update({
+  id: '/edit',
+  path: '/edit',
+  getParentRoute: () => TicketsTicketIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -77,11 +89,13 @@ export interface FileRoutesByFullPath {
   '/auth/signout': typeof AuthSignoutRoute
   '/auth/signup': typeof AuthSignupRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
-  '/tickets/$ticketId': typeof TicketsTicketIdRoute
+  '/tickets/$ticketId': typeof TicketsTicketIdRouteWithChildren
   '/tickets/mine': typeof TicketsMineRoute
   '/tickets/new': typeof TicketsNewRoute
   '/orders/': typeof OrdersIndexRoute
   '/tickets/': typeof TicketsIndexRoute
+  '/tickets/$ticketId/edit': typeof TicketsTicketIdEditRoute
+  '/tickets/$ticketId/': typeof TicketsTicketIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -89,11 +103,12 @@ export interface FileRoutesByTo {
   '/auth/signout': typeof AuthSignoutRoute
   '/auth/signup': typeof AuthSignupRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
-  '/tickets/$ticketId': typeof TicketsTicketIdRoute
   '/tickets/mine': typeof TicketsMineRoute
   '/tickets/new': typeof TicketsNewRoute
   '/orders': typeof OrdersIndexRoute
   '/tickets': typeof TicketsIndexRoute
+  '/tickets/$ticketId/edit': typeof TicketsTicketIdEditRoute
+  '/tickets/$ticketId': typeof TicketsTicketIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -102,11 +117,13 @@ export interface FileRoutesById {
   '/auth/signout': typeof AuthSignoutRoute
   '/auth/signup': typeof AuthSignupRoute
   '/orders/$orderId': typeof OrdersOrderIdRoute
-  '/tickets/$ticketId': typeof TicketsTicketIdRoute
+  '/tickets/$ticketId': typeof TicketsTicketIdRouteWithChildren
   '/tickets/mine': typeof TicketsMineRoute
   '/tickets/new': typeof TicketsNewRoute
   '/orders/': typeof OrdersIndexRoute
   '/tickets/': typeof TicketsIndexRoute
+  '/tickets/$ticketId/edit': typeof TicketsTicketIdEditRoute
+  '/tickets/$ticketId/': typeof TicketsTicketIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +138,8 @@ export interface FileRouteTypes {
     | '/tickets/new'
     | '/orders/'
     | '/tickets/'
+    | '/tickets/$ticketId/edit'
+    | '/tickets/$ticketId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -128,11 +147,12 @@ export interface FileRouteTypes {
     | '/auth/signout'
     | '/auth/signup'
     | '/orders/$orderId'
-    | '/tickets/$ticketId'
     | '/tickets/mine'
     | '/tickets/new'
     | '/orders'
     | '/tickets'
+    | '/tickets/$ticketId/edit'
+    | '/tickets/$ticketId'
   id:
     | '__root__'
     | '/'
@@ -145,6 +165,8 @@ export interface FileRouteTypes {
     | '/tickets/new'
     | '/orders/'
     | '/tickets/'
+    | '/tickets/$ticketId/edit'
+    | '/tickets/$ticketId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -153,7 +175,7 @@ export interface RootRouteChildren {
   AuthSignoutRoute: typeof AuthSignoutRoute
   AuthSignupRoute: typeof AuthSignupRoute
   OrdersOrderIdRoute: typeof OrdersOrderIdRoute
-  TicketsTicketIdRoute: typeof TicketsTicketIdRoute
+  TicketsTicketIdRoute: typeof TicketsTicketIdRouteWithChildren
   TicketsMineRoute: typeof TicketsMineRoute
   TicketsNewRoute: typeof TicketsNewRoute
   OrdersIndexRoute: typeof OrdersIndexRoute
@@ -232,8 +254,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSigninRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tickets/$ticketId/': {
+      id: '/tickets/$ticketId/'
+      path: '/'
+      fullPath: '/tickets/$ticketId/'
+      preLoaderRoute: typeof TicketsTicketIdIndexRouteImport
+      parentRoute: typeof TicketsTicketIdRoute
+    }
+    '/tickets/$ticketId/edit': {
+      id: '/tickets/$ticketId/edit'
+      path: '/edit'
+      fullPath: '/tickets/$ticketId/edit'
+      preLoaderRoute: typeof TicketsTicketIdEditRouteImport
+      parentRoute: typeof TicketsTicketIdRoute
+    }
   }
 }
+
+interface TicketsTicketIdRouteChildren {
+  TicketsTicketIdEditRoute: typeof TicketsTicketIdEditRoute
+  TicketsTicketIdIndexRoute: typeof TicketsTicketIdIndexRoute
+}
+
+const TicketsTicketIdRouteChildren: TicketsTicketIdRouteChildren = {
+  TicketsTicketIdEditRoute: TicketsTicketIdEditRoute,
+  TicketsTicketIdIndexRoute: TicketsTicketIdIndexRoute,
+}
+
+const TicketsTicketIdRouteWithChildren = TicketsTicketIdRoute._addFileChildren(
+  TicketsTicketIdRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -241,7 +291,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthSignoutRoute: AuthSignoutRoute,
   AuthSignupRoute: AuthSignupRoute,
   OrdersOrderIdRoute: OrdersOrderIdRoute,
-  TicketsTicketIdRoute: TicketsTicketIdRoute,
+  TicketsTicketIdRoute: TicketsTicketIdRouteWithChildren,
   TicketsMineRoute: TicketsMineRoute,
   TicketsNewRoute: TicketsNewRoute,
   OrdersIndexRoute: OrdersIndexRoute,

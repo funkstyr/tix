@@ -14,6 +14,20 @@ export const ticketCreatedV1 = type({
 
 export type TicketCreatedV1 = typeof ticketCreatedV1.infer;
 
+export const ticketUpdatedV1 = type({
+  "+": "reject",
+  ticketId: "string.uuid",
+  sellerId: "string >= 1",
+  title: "string",
+  unitPriceCents: "number.integer >= 0",
+  // post-edit version of the ticket row — replicas apply the edit only when
+  // their stored version is behind, dropping stale redeliveries.
+  version: "number.integer >= 1",
+  updatedAt: "string.date.iso",
+});
+
+export type TicketUpdatedV1 = typeof ticketUpdatedV1.infer;
+
 export const ticketSnapshotOutput = type({
   id: "string.uuid",
   sellerId: "string",
@@ -47,6 +61,22 @@ export const ticketCreateInput = type({
 
 export type TicketCreateInput = typeof ticketCreateInput.infer;
 
+export const ticketUpdateInput = type({
+  token: "string >= 1",
+  ticketId: "string.uuid",
+  title: "string >= 1",
+  unitPriceCents: "number.integer >= 0",
+  // Expected current version; the edit is rejected if the row moved on under
+  // us so a stale form can't clobber a newer edit (optimistic concurrency).
+  expectedVersion: "number.integer >= 1",
+});
+
+export type TicketUpdateInput = typeof ticketUpdateInput.infer;
+
+export const ticketUpdateOutput = ticketRecordOutput;
+
+export type TicketUpdateOutput = typeof ticketUpdateOutput.infer;
+
 export const ticketGetByIdInput = type({
   ticketId: "string.uuid",
 });
@@ -77,6 +107,7 @@ export type TicketsListOutput = typeof ticketsListOutput.infer;
 
 export type TicketsRouterClient = {
   create: (input: TicketCreateInput) => Promise<TicketRecord>;
+  update: (input: TicketUpdateInput) => Promise<TicketRecord>;
   reserve: (input: ReserveTicketInput) => Promise<ReserveTicketOutput>;
   getById: (input: TicketGetByIdInput) => Promise<TicketRecord | null>;
   list: (input: TicketsListInput) => Promise<TicketsListOutput>;

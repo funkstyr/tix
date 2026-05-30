@@ -19,6 +19,7 @@ import {
   ticketsListInput,
   ticketsListMineInput,
   ticketsListOutput,
+  ticketUpdateInput,
 } from "@tix/contracts/tickets";
 
 import type { DownstreamClients } from "./downstream-clients.ts";
@@ -41,6 +42,14 @@ export function createGatewayRouter(deps: GatewayRouterDeps) {
       .output(ticketRecordOutput)
       .handler(async ({ input, context }) => {
         return await clients.tickets.create(input, {
+          context: { cookieHeader: context.cookieHeader },
+        });
+      }),
+    update: base
+      .input(ticketUpdateInput)
+      .output(ticketRecordOutput)
+      .handler(async ({ input, context }) => {
+        return await clients.tickets.update(input, {
           context: { cookieHeader: context.cookieHeader },
         });
       }),

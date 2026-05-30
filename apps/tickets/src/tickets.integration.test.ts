@@ -433,6 +433,131 @@ describe.skipIf(!dockerAvailable)("tickets.reserve", () => {
   });
 });
 
+describe.skipIf(!dockerAvailable)("tickets.update", () => {
+  it("edits title and price, bumps version, and writes a tickets.updated.v1 outbox row", async () => {
+    const seller = await signUpSeller(`edit-${randomTag()}@example.com`);
+    const created = await getTicketsClient().create({
+      token: seller.token,
+      title: "Original title",
+      quantityTotal: 10,
+      unitPriceCents: 4500,
+    });
+
+    const updated = await getTicketsClient().update({
+      token: seller.token,
+      ticketId: created.id,
+      title: "Rescheduled title",
+      unitPriceCents: 5200,
+      expectedVersion: created.version,
+    });
+
+    expect(updated.title).toBe("Rescheduled title");
+    expect(updated.unitPriceCents).toBe(5200);
+    expect(updated.version).toBe(2);
+    expect(updated.quantityTotal).toBe(10);
+    expect(updated.quantityAvailable).toBe(10);
+
+    const [row] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, created.id));
+    expect(row?.title).toBe("Rescheduled title");
+    expect(row?.unitPriceCents).toBe(5200);
+    expect(row?.version).toBe(2);
+
+    const outbox = await getTicketsDb()
+      .sql`SELECT subject, payload FROM tickets.outbox WHERE subject = 'tickets.updated.v1'`.values();
+    expect(outbox).toHaveLength(1);
+
+    const payload = outbox[0]?.[1] as Record<string, unknown>;
+    expect(payload["ticketId"]).toBe(created.id);
+    expect(payload["title"]).toBe("Rescheduled title");
+    expect(payload["unitPriceCents"]).toBe(5200);
+    expect(payload["version"]).toBe(2);
+  });
+
+  it("rejects an edit when seats are held by an order (CONFLICT reserved)", async () => {
+    const seller = await signUpSeller(`reserved-${randomTag()}@example.com`);
+    const created = await getTicketsClient().create({
+      token: seller.token,
+      title: "Held title",
+      quantityTotal: 4,
+      unitPriceCents: 3000,
+    });
+
+    await getTicketsClient().reserve({ ticketId: created.id, quantity: 1 });
+
+    const edit = getTicketsClient().update({
+      token: seller.token,
+      ticketId: created.id,
+      title: "Should not apply",
+      unitPriceCents: 9999,
+      expectedVersion: created.version,
+    });
+
+    await expect(edit).rejects.toMatchObject({ code: "CONFLICT", data: { reason: "reserved" } });
+
+    const [row] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, created.id));
+    expect(row?.title).toBe("Held title");
+    expect(row?.unitPriceCents).toBe(3000);
+  });
+
+  it("rejects a stale edit whose expectedVersion no longer matches", async () => {
+    const seller = await signUpSeller(`stale-${randomTag()}@example.com`);
+    const created = await getTicketsClient().create({
+      token: seller.token,
+      title: "First title",
+      quantityTotal: 5,
+      unitPriceCents: 1000,
+    });
+
+    await getTicketsClient().update({
+      token: seller.token,
+      ticketId: created.id,
+      title: "Second title",
+      unitPriceCents: 2000,
+      expectedVersion: created.version,
+    });
+
+    const stale = getTicketsClient().update({
+      token: seller.token,
+      ticketId: created.id,
+      title: "Third title",
+      unitPriceCents: 3000,
+      expectedVersion: created.version,
+    });
+
+    await expect(stale).rejects.toMatchObject({
+      code: "CONFLICT",
+      data: { reason: "version_conflict" },
+    });
+  });
+
+  it("rejects an edit from a seller who does not own the ticket (NOT_FOUND)", async () => {
+    const owner = await signUpSeller(`owner-${randomTag()}@example.com`);
+    const other = await signUpSeller(`intruder-${randomTag()}@example.com`);
+    const created = await getTicketsClient().create({
+      token: owner.token,
+      title: "Owned title",
+      quantityTotal: 5,
+      unitPriceCents: 1000,
+    });
+
+    const edit = getTicketsClient().update({
+      token: other.token,
+      ticketId: created.id,
+      title: "Hijacked",
+      unitPriceCents: 1,
+      expectedVersion: created.version,
+    });
+
+    await expect(edit).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
 function randomTag(): string {
   return Math.random().toString(36).slice(2, 10);
 }
