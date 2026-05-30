@@ -43,6 +43,13 @@
       "when": 1779413649148,
       "tag": "0005_orders_tickets_replica",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779413649149,
+      "tag": "0006_orders_outbox_traceparent",
+      "breakpoints": true
     }
   ]
 }

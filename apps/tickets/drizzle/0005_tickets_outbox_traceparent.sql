@@ -1,0 +1,1 @@
+ALTER TABLE "tickets"."outbox" ADD COLUMN "traceparent" text;

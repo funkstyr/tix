@@ -1,0 +1,1 @@
+ALTER TABLE "payments"."outbox" ADD COLUMN "traceparent" text;

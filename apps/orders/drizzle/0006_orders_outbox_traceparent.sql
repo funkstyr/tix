@@ -1,0 +1,1 @@
+ALTER TABLE "orders"."outbox" ADD COLUMN "traceparent" text;

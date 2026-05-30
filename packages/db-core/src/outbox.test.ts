@@ -1,3 +1,4 @@
+import { type Context, ROOT_CONTEXT, trace, TraceFlags } from "@opentelemetry/api";
 import { eq } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
 import { randomUUID } from "node:crypto";
@@ -113,6 +114,18 @@ async function waitUntil(
 }
 
 const noopPublish: OutboxPublish = async () => undefined;
+
+const TRACE_ID = "0af7651916cd43dd8448eb211c80319c";
+const SPAN_ID = "b7ad6b7169203331";
+
+function contextWithSpan(): Context {
+  return trace.setSpanContext(ROOT_CONTEXT, {
+    traceId: TRACE_ID,
+    spanId: SPAN_ID,
+    traceFlags: TraceFlags.SAMPLED,
+    isRemote: false,
+  });
+}
 
 describe.skipIf(!dockerAvailable)("enqueueEvent", () => {
   it("writes the outbox row inside the caller's transaction", async () => {
@@ -256,6 +269,45 @@ describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
     } finally {
       await relay.stop();
     }
+  }, 20_000);
+
+  it("forwards trace context captured at enqueue to publish; untraced rows publish unchanged", async () => {
+    const { db } = getClient();
+    const tracedId = randomUUID();
+    const untracedId = randomUUID();
+
+    await db.transaction(async (tx) => {
+      await enqueueEvent(tx, outboxTable, {
+        subject: SUBJECT,
+        payload: { traced: true },
+        eventId: tracedId,
+        traceContext: contextWithSpan(),
+      });
+      await enqueueEvent(tx, outboxTable, {
+        subject: SUBJECT,
+        payload: { traced: false },
+        eventId: untracedId,
+      });
+    });
+
+    const seen = new Map<string, Context | undefined>();
+    const publish: OutboxPublish = async (_subject, _payload, opts) => {
+      seen.set(opts.msgId, opts.traceContext);
+      return undefined;
+    };
+
+    const relay = startOutboxRelay(db, outboxTable, publish, { pollIntervalMs: 25 });
+    try {
+      await waitUntil(() => seen.has(tracedId) && seen.has(untracedId));
+    } finally {
+      await relay.stop();
+    }
+
+    const tracedSpan = trace.getSpanContext(seen.get(tracedId) ?? ROOT_CONTEXT);
+    expect(tracedSpan?.traceId).toBe(TRACE_ID);
+    expect(tracedSpan?.spanId).toBe(SPAN_ID);
+
+    expect(seen.get(untracedId)).toBeUndefined();
   }, 20_000);
 
   it("logs eventId and subject on publish success", async () => {

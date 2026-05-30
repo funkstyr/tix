@@ -16,6 +16,7 @@ export async function bootstrapSchema(sql: Sql, schemaName: string): Promise<voi
       subject text NOT NULL,
       payload jsonb NOT NULL,
       event_id uuid NOT NULL UNIQUE,
+      traceparent text,
       created_at timestamptz NOT NULL DEFAULT now(),
       sent_at timestamptz
     )
