@@ -3,6 +3,7 @@ import * as pulumi from "@pulumi/pulumi";
 
 import { IngressRoutes } from "./components/ingress-routes.ts";
 import { MigrationJob } from "./components/migration-job.ts";
+import { ObservabilityStack } from "./components/observability-stack.ts";
 import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts";
 import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
@@ -17,6 +18,7 @@ const ORDERS_PORT = 4003;
 const PAYMENTS_PORT = 4004;
 const GATEWAY_PORT = 4000;
 const WEB_PORT = 80;
+const GRAFANA_PORT = 3000;
 
 const NATS_URL = "nats://nats:4222";
 const REDIS_URL = "redis://redis:6379";
@@ -64,6 +66,18 @@ const infra = new StatefulInfra(
       storage: "1Gi",
     },
     nats: { storage: "1Gi" },
+  },
+  { dependsOn: namespace },
+);
+
+// In-cluster OpenTelemetry path (ADR-0009): gateway collector + Grafana LGTM.
+// Infra-only for now — no service emits to `otel-collector:4317` yet. Grafana
+// serves under the same `/grafana` prefix the ingress routes to it.
+const observability = new ObservabilityStack(
+  "tix",
+  {
+    namespace: namespace.metadata.name,
+    grafanaRootUrl: `http://${ingressHost}/grafana`,
   },
   { dependsOn: namespace },
 );
@@ -399,6 +413,7 @@ const ingress = new IngressRoutes("tix", {
   host: ingressHost,
   gateway: { name: gatewayDeployment.service!.metadata.name, port: GATEWAY_PORT },
   web: { name: webDeployment.service!.metadata.name, port: WEB_PORT },
+  grafana: { name: observability.lgtmService.metadata.name, port: GRAFANA_PORT },
 });
 
 export const namespaceName = namespace.metadata.name;
@@ -416,5 +431,7 @@ export const paymentsService = paymentsDeployment.service!.metadata.name;
 export const gatewayService = gatewayDeployment.service!.metadata.name;
 export const webService = webDeployment.service!.metadata.name;
 export const expirationDeployment = expiration.deployment.metadata.name;
+export const otelCollectorService = observability.collectorService.metadata.name;
+export const lgtmService = observability.lgtmService.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;

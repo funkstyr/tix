@@ -12,14 +12,15 @@ command therefore needs `pnpm install` to have run and a recent Node.
 
 ## Components
 
-| Component           | File                               | Emits                                                                                                                 |
-| ------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `StatefulInfra`     | `components/stateful-infra.ts`     | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                                   |
-| `PostgresRoles`     | `components/postgres-roles.ts`     | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                                     |
-| `StreamBootstrap`   | `components/stream-bootstrap.ts`   | ConfigMap + one-shot Job (`natsio/nats-box`) that creates the JetStream streams idempotently (mirrors `nats-init.sh`) |
-| `ServiceDeployment` | `components/service-deployment.ts` | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes)           |
-| `MigrationJob`      | `components/migration-job.ts`      | k8s Job that runs the image's `pnpm db:migrate`                                                                       |
-| `IngressRoutes`     | `components/ingress-routes.ts`     | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`) and web SPA (`/*`)                      |
+| Component            | File                                | Emits                                                                                                                                                      |
+| -------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StatefulInfra`      | `components/stateful-infra.ts`      | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                                                                        |
+| `PostgresRoles`      | `components/postgres-roles.ts`      | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                                                                          |
+| `StreamBootstrap`    | `components/stream-bootstrap.ts`    | ConfigMap + one-shot Job (`natsio/nats-box`) that creates the JetStream streams idempotently (mirrors `nats-init.sh`)                                      |
+| `ServiceDeployment`  | `components/service-deployment.ts`  | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes)                                                |
+| `MigrationJob`       | `components/migration-job.ts`       | k8s Job that runs the image's `pnpm db:migrate`                                                                                                            |
+| `IngressRoutes`      | `components/ingress-routes.ts`      | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`), Grafana (`/grafana/*`, optional) and web SPA (`/*`)                         |
+| `ObservabilityStack` | `components/observability-stack.ts` | Gateway OTel Collector (`otel-collector` ClusterIP, OTLP 4317/4318) + Grafana LGTM all-in-one (`lgtm` ClusterIP: Grafana 3000, OTLP, Tempo 3200); ADR-0009 |
 
 `MigrationJob` and `ServiceDeployment` are reusable: no service-specific
 identifiers live in their files. Wire each service in `index.ts`.
@@ -39,14 +40,36 @@ identifiers live in their files. Wire each service in `index.ts`.
 Service-to-service URLs are owned by `index.ts` (`http://<name>:<port>`) and
 injected as env vars — apps never hardcode hostnames.
 
+## Observability stack (ADR-0009)
+
+`ObservabilityStack` is wired in `index.ts` alongside `StatefulInfra` (it
+depends only on the namespace). It is **infra-only** today: no service emits
+telemetry yet, so nothing `dependsOn` it. Apps will later export OTLP to the
+gateway collector at `otel-collector:4317` (gRPC) / `:4318` (HTTP); the
+collector forwards traces, logs, and metrics to the `grafana/otel-lgtm`
+all-in-one backend (service `lgtm`). Exposed via the `otelCollectorService` /
+`lgtmService` stack outputs.
+
+Grafana is reachable through the ingress at `/grafana` — the lgtm container sets
+`GF_SERVER_ROOT_URL` + `GF_SERVER_SERVE_FROM_SUB_PATH=true` so it serves under
+that prefix with no nginx rewrite. Or port-forward directly:
+`kubectl -n tix port-forward svc/lgtm 3000:3000`. Its remote images are pulled
+(pinned tags, default pull policy), not kind-loaded like the `tix-*:dev` images.
+
+> **prod:** the all-in-one image is a dev convenience. The prod stub defers the
+> split into discrete Tempo / Loki / Mimir / Grafana Deployments — noted in
+> `observability-stack.ts`.
+
 ## Smoke deploy (one command)
 
 `./scripts/kind-smoke.sh` (also `pnpm -F @tix/infra-pulumi pulumi:smoke`) runs the
 whole flow end to end against a throwaway `kind-smoke` stack: create the kind
 cluster (with an ingress port-map), build + load the seven images, install
 ingress-nginx, configure stub secrets, `pulumi up`, wait on the
-bootstrap → migration → rollout chain, then probe the gateway `/health` and the
-SPA through the ingress. It keeps the cluster afterwards for poking; pass
+bootstrap → migration → rollout chain, then probe the gateway `/health`, the
+SPA, and Grafana through the ingress, and push a synthetic OTLP span through
+`otel-collector` to confirm it lands in Tempo. It keeps the cluster afterwards
+for poking; pass
 `--teardown` (what CI uses) to `pulumi destroy` + delete the cluster on exit,
 `--skip-build` to reuse loaded images. This is the real `pulumi up` canary
 (issue #69); CI runs the same script in `.github/workflows/pulumi-smoke.yml`.
@@ -146,8 +169,10 @@ Three layers guard the program, cheapest first:
   kind smoke.
 - **kind smoke** (`scripts/kind-smoke.sh`, run in
   `.github/workflows/pulumi-smoke.yml`). The real `pulumi up`: deploys to a kind
-  cluster, waits for the bootstrap → migration → rollout chain, and probes the
-  gateway `/health` and SPA through the ingress. The only layer that catches
+  cluster, waits for the bootstrap → migration → rollout chain, probes the
+  gateway `/health`, SPA, and Grafana through the ingress, and proves the OTLP
+  path end-to-end with a synthetic span (telemetrygen → `otel-collector` →
+  `lgtm` → Tempo query). The only layer that catches
   image build/boot failures, missing runtime dependencies (e.g. the JetStream
   streams the consumers need), and migration ordering against the per-service
   roles. The same workflow also `pulumi preview`s the `prod` stub.

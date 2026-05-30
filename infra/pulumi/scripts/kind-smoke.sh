@@ -35,6 +35,12 @@ SKIP_BUILD=""
 SERVICES=(auth tickets orders payments expiration gateway web)
 HTTP_DEPLOYMENTS=(auth tickets orders payments gateway web)
 MIGRATED=(auth tickets orders payments expiration)
+OBSERVABILITY=(otel-collector lgtm)
+
+# Pinned remote images for the synthetic-span e2e check (pulled inside the
+# cluster, not kind-loaded). telemetrygen tracks the collector minor.
+TELEMETRYGEN_IMAGE="ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:0.153.0"
+CURL_IMAGE="curlimages/curl:8.20.0"
 
 export PULUMI_CONFIG_PASSPHRASE="${PULUMI_CONFIG_PASSPHRASE:-kind-smoke}"
 
@@ -67,7 +73,7 @@ teardown() {
     log "smoke FAILED (exit $code) — dumping cluster diagnostics"
     kubectl -n "$NAMESPACE" get pods,jobs -o wide 2>/dev/null || true
     kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp 2>/dev/null | tail -30 || true
-    for s in "${SERVICES[@]}"; do
+    for s in "${SERVICES[@]}" "${OBSERVABILITY[@]}"; do
       printf -- '--- logs: %s ---\n' "$s"
       kubectl -n "$NAMESPACE" logs "deployment/$s" --tail=40 2>/dev/null || true
     done
@@ -177,6 +183,14 @@ for s in "${SERVICES[@]}"; do
   ok "deployment/$s ready"
 done
 
+# Observability stack (ADR-0009). Its images are remote (pulled, not kind-loaded),
+# so they're rolled out separately from the locally-built service images above.
+log "waiting on observability rollouts"
+for d in "${OBSERVABILITY[@]}"; do
+  kubectl -n "$NAMESPACE" rollout status "deployment/$d" --timeout=180s >/dev/null
+  ok "deployment/$d ready"
+done
+
 # 7. probe through the ingress. Routing can lag a few seconds after the Ingress
 #    is admitted, so retry.
 probe() {
@@ -195,5 +209,51 @@ probe() {
 log "probing ingress at http://$INGRESS_HOST"
 probe "gateway health" /health '"ok":true'
 probe "web SPA index" / '<div id="root"'
+probe "grafana ui" /grafana/login 'Grafana'
 
-log "✓ smoke passed — 7 deployments Ready, gateway /health ok, SPA served through the ingress"
+# 8. synthetic-span end-to-end check (ADR-0009). Push one OTLP span at the
+#    gateway collector, then poll Tempo (via the LGTM backend) until it lands —
+#    proving receive -> forward -> store before any service depends on the path.
+log "pushing a synthetic span through the collector"
+kubectl -n "$NAMESPACE" delete job otel-smoke-span --ignore-not-found >/dev/null 2>&1
+kubectl -n "$NAMESPACE" apply -f - >/dev/null <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: otel-smoke-span
+  namespace: $NAMESPACE
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: telemetrygen
+          image: $TELEMETRYGEN_IMAGE
+          args:
+            - traces
+            - --otlp-endpoint=otel-collector:4317
+            - --otlp-insecure
+            - --traces=1
+            - --service=smoke-synthetic
+EOF
+wait_job otel-smoke-span
+
+# Tempo search has an ingest + flush lag, so retry. The tag-search form avoids
+# TraceQL brace-encoding; a hit echoes the matched trace's "traceID".
+log "querying Tempo for the synthetic trace"
+TEMPO_QUERY='http://lgtm:3200/api/search?tags=service.name%3Dsmoke-synthetic'
+found=""
+for _ in $(seq 1 30); do
+  if kubectl -n "$NAMESPACE" run tempo-probe --rm -i --restart=Never --quiet \
+    --image="$CURL_IMAGE" -- curl -fsS "$TEMPO_QUERY" 2>/dev/null | grep -q '"traceID"'; then
+    found=1
+    break
+  fi
+  sleep 2
+done
+[[ -n "$found" ]] || die "synthetic span never appeared in Tempo (collector -> lgtm path broken)"
+ok "synthetic span visible in Tempo"
+
+log "✓ smoke passed — services + observability Ready, gateway /health ok, SPA + Grafana served through the ingress, synthetic span reached Tempo"

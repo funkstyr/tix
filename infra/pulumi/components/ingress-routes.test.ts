@@ -59,4 +59,29 @@ describe("IngressRoutes", () => {
     const spec = await promiseOf(ingress.spec);
     expect(spec.ingressClassName).toBe("nginx");
   });
+
+  it("inserts a /grafana rule before the catch-all when grafana is wired", async () => {
+    const { ingress } = new IngressRoutes("test", {
+      namespace: "tix",
+      host: "tix.example.com",
+      gateway: { name: "gateway", port: 4000 },
+      web: { name: "web", port: 80 },
+      grafana: { name: "lgtm", port: 3000 },
+    });
+
+    const spec = await promiseOf(ingress.spec);
+    const routes = (spec.rules?.[0]?.http?.paths ?? []).map((p) => ({
+      path: p.path,
+      pathType: p.pathType,
+      service: p.backend.service?.name,
+    }));
+
+    expect(routes).toEqual([
+      { path: "/health", pathType: "Exact", service: "gateway" },
+      { path: "/api", pathType: "Prefix", service: "gateway" },
+      { path: "/rpc", pathType: "Prefix", service: "gateway" },
+      { path: "/grafana", pathType: "Prefix", service: "lgtm" },
+      { path: "/", pathType: "Prefix", service: "web" },
+    ]);
+  });
 });
