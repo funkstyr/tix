@@ -9,15 +9,21 @@ export type IngressRoutesArgs = {
   host: pulumi.Input<string>;
   gateway: { name: pulumi.Input<string>; port: number };
   web: { name: pulumi.Input<string>; port: number };
+  // Optional Grafana (LGTM) backend. When set, a `/grafana` prefix route is
+  // added ahead of the `/` catch-all. Grafana serves itself under the sub-path
+  // (`GF_SERVER_SERVE_FROM_SUB_PATH`), so the prefix is passed through verbatim —
+  // no `rewrite-target` annotation, or the double-strip 404s.
+  grafana?: { name: pulumi.Input<string>; port: number };
   // Which IngressClass to attach to. ingress-nginx ships its controller as
   // class `nginx`; override only when running behind a different controller.
   ingressClassName?: pulumi.Input<string>;
 };
 
 // Emits a single Ingress fronting the gateway and web services. The gateway
-// owns three disjoint path groups (`/health`, `/api/*`, `/rpc/*`) and the
-// web SPA owns everything else — longest-prefix match on ingress-nginx makes
-// `/` the catch-all without shadowing the gateway routes.
+// owns three disjoint path groups (`/health`, `/api/*`, `/rpc/*`), Grafana
+// (when wired) owns `/grafana/*`, and the web SPA owns everything else —
+// longest-prefix match on ingress-nginx makes `/` the catch-all without
+// shadowing the more specific routes.
 export class IngressRoutes extends pulumi.ComponentResource {
   readonly ingress: k8s.networking.v1.Ingress;
 
@@ -39,6 +45,23 @@ export class IngressRoutes extends pulumi.ComponentResource {
       },
     };
 
+    // Gateway routes, then Grafana (if wired), then the SPA catch-all. The
+    // `/grafana` rule must sit ahead of `/` so the catch-all doesn't shadow it.
+    const grafanaPaths = args.grafana
+      ? [
+          {
+            path: "/grafana",
+            pathType: "Prefix",
+            backend: {
+              service: {
+                name: args.grafana.name,
+                port: { number: args.grafana.port },
+              },
+            },
+          },
+        ]
+      : [];
+
     this.ingress = new k8s.networking.v1.Ingress(
       `${name}-ingress`,
       {
@@ -56,6 +79,7 @@ export class IngressRoutes extends pulumi.ComponentResource {
                   { path: "/health", pathType: "Exact", backend: gatewayBackend },
                   { path: "/api", pathType: "Prefix", backend: gatewayBackend },
                   { path: "/rpc", pathType: "Prefix", backend: gatewayBackend },
+                  ...grafanaPaths,
                   { path: "/", pathType: "Prefix", backend: webBackend },
                 ],
               },

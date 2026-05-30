@@ -11,7 +11,9 @@ config:
   tix:webOrigin: http://localhost:4000
   tix:host: localhost
   # Secret-shaped values (postgresPassword, per-service role passwords,
-  # betterAuthSecret, ticketsServiceToken, stripeKey) are not committed.
-  # Populate them on a fresh checkout with `pulumi config set --secret …` —
+  # betterAuthSecret, ticketsServiceToken, stripeKey, garageRpcSecret,
+  # garageAdminToken, garageS3SecretKey) are not committed. (garageS3AccessKey defaults to a valid
+  # `GK…` dev key; override if desired.) Populate the rest on a fresh checkout
+  # with `pulumi config set --secret …` —
   # see `infra/pulumi/CLAUDE.md` for the exact commands. Pulumi writes them
   # back here as `secure:` blobs encrypted with the stack passphrase.

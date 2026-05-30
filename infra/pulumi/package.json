@@ -10,7 +10,8 @@
     "pulumi:destroy": "pulumi destroy",
     "pulumi:preview": "pulumi preview",
     "pulumi:up": "pulumi up",
-    "pulumi:smoke": "./scripts/kind-smoke.sh"
+    "pulumi:smoke": "./scripts/kind-smoke.sh",
+    "pulumi:smoke:teardown": "./scripts/kind-teardown.sh"
   },
   "dependencies": {
     "@pulumi/kubernetes": "^4.27.0",

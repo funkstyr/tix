@@ -62,7 +62,10 @@ jobs:
             expirationPassword=ci_expiration \
             betterAuthSecret=ci_better_auth_secret \
             ticketsServiceToken=ci_tickets_service_token \
-            stripeKey=sk_test_ci_placeholder; do
+            stripeKey=sk_test_ci_placeholder \
+            garageRpcSecret=ci_garage_rpc_secret \
+            garageAdminToken=ci_garage_admin_token \
+            garageS3SecretKey=ci_garage_s3_secret_key; do
             pulumi config set --secret "${kv%%=*}" "${kv#*=}"
           done
           # Render manifests to disk instead of contacting a cluster — this is
@@ -72,3 +75,13 @@ jobs:
       - name: Pulumi preview
         working-directory: infra/pulumi
         run: pulumi preview --non-interactive --diff
+
+  # The kind smoke scripts are now load-bearing CI infrastructure, so lint them.
+  # shellcheck ships preinstalled on ubuntu-latest.
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Shellcheck the kind smoke scripts
+        run: shellcheck infra/pulumi/scripts/*.sh

@@ -1,0 +1,161 @@
+import * as k8s from "@pulumi/kubernetes";
+import * as pulumi from "@pulumi/pulumi";
+
+// Grafana (UI). Datasources are provisioned from a ConfigMap, so a fresh pod
+// re-wires Tempo/Loki/Prometheus on every boot and needs no persistent volume
+// for dev. Reached through the ingress at `/grafana`.
+const GRAFANA_IMAGE = "grafana/grafana:12.4.3";
+
+const HTTP_PORT = 3000;
+
+export type GrafanaBackendArgs = {
+  namespace: pulumi.Input<string>;
+  // Absolute root URL Grafana serves itself under, e.g. `http://localhost/grafana`.
+  // Must match the `/grafana` ingress prefix so sub-path serving lines up.
+  grafanaRootUrl: pulumi.Input<string>;
+  tempoUrl: string;
+  lokiUrl: string;
+  prometheusUrl: string;
+  // Enable anonymous Admin access (default true). Convenient for dev — the smoke
+  // only needs `/grafana/api/health` to render — but prod should pass `false`
+  // and front Grafana with real auth. TODO(prod): also source the admin password
+  // from a Secret rather than the hardcoded dev default below.
+  anonymousAccess?: boolean;
+};
+
+// Grafana with the three backends pre-wired as datasources. Anonymous Admin
+// access defaults on for dev convenience; pass `anonymousAccess: false` to lock
+// it down.
+//
+// TODO(prod): source the admin password from a Secret, and add a PVC if
+// hand-built dashboards need to persist.
+export class GrafanaBackend extends pulumi.ComponentResource {
+  readonly datasources: k8s.core.v1.ConfigMap;
+  readonly deployment: k8s.apps.v1.Deployment;
+  readonly service: k8s.core.v1.Service;
+
+  constructor(name: string, args: GrafanaBackendArgs, opts?: pulumi.ComponentResourceOptions) {
+    super("tix:infra:GrafanaBackend", name, args, opts);
+
+    const childOpts: pulumi.ResourceOptions = { parent: this };
+    const { namespace } = args;
+
+    const labels = {
+      "app.kubernetes.io/name": "grafana",
+      "app.kubernetes.io/component": "observability",
+    };
+
+    const anonymousAccess = args.anonymousAccess ?? true;
+
+    // `GF_SERVER_SERVE_FROM_SUB_PATH` must be the string "true" (an env value is
+    // typed `string`; a YAML boolean fails admission), and ROOT_URL carries no
+    // trailing slash or Grafana emits `//`.
+    const env = [
+      { name: "GF_SERVER_ROOT_URL", value: args.grafanaRootUrl },
+      { name: "GF_SERVER_SERVE_FROM_SUB_PATH", value: "true" },
+      ...(anonymousAccess
+        ? [
+            { name: "GF_AUTH_ANONYMOUS_ENABLED", value: "true" },
+            { name: "GF_AUTH_ANONYMOUS_ORG_ROLE", value: "Admin" },
+          ]
+        : []),
+      { name: "GF_SECURITY_ADMIN_USER", value: "admin" },
+      { name: "GF_SECURITY_ADMIN_PASSWORD", value: "admin" },
+    ];
+
+    this.datasources = new k8s.core.v1.ConfigMap(
+      `${name}-datasources`,
+      {
+        metadata: { name: "grafana-datasources", namespace },
+        data: {
+          "datasources.yaml": renderDatasources(args.tempoUrl, args.lokiUrl, args.prometheusUrl),
+        },
+      },
+      childOpts,
+    );
+
+    this.deployment = new k8s.apps.v1.Deployment(
+      `${name}-deployment`,
+      {
+        metadata: { name: "grafana", namespace },
+        spec: {
+          replicas: 1,
+          selector: { matchLabels: labels },
+          template: {
+            metadata: { labels },
+            spec: {
+              terminationGracePeriodSeconds: 30,
+              containers: [
+                {
+                  name: "grafana",
+                  image: GRAFANA_IMAGE,
+                  env,
+                  ports: [{ name: "http", containerPort: HTTP_PORT }],
+                  volumeMounts: [
+                    {
+                      name: "datasources",
+                      mountPath: "/etc/grafana/provisioning/datasources",
+                      readOnly: true,
+                    },
+                  ],
+                  readinessProbe: {
+                    httpGet: { path: "/api/health", port: HTTP_PORT },
+                    initialDelaySeconds: 10,
+                    periodSeconds: 5,
+                  },
+                },
+              ],
+              volumes: [
+                { name: "datasources", configMap: { name: this.datasources.metadata.name } },
+              ],
+            },
+          },
+        },
+      },
+      childOpts,
+    );
+
+    this.service = new k8s.core.v1.Service(
+      `${name}-service`,
+      {
+        metadata: { name: "grafana", namespace },
+        spec: {
+          selector: labels,
+          ports: [{ name: "http", port: HTTP_PORT, targetPort: HTTP_PORT }],
+        },
+      },
+      childOpts,
+    );
+
+    this.registerOutputs({
+      datasources: this.datasources,
+      deployment: this.deployment,
+      service: this.service,
+    });
+  }
+}
+
+// Grafana provisioning file (apiVersion 1). Stable UIDs let dashboards and
+// Explore deep-links reference the datasources by a known handle.
+function renderDatasources(tempoUrl: string, lokiUrl: string, prometheusUrl: string): string {
+  return `# Generated by tix:infra:GrafanaBackend (ADR-0009).
+apiVersion: 1
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: ${tempoUrl}
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: ${lokiUrl}
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: ${prometheusUrl}
+    isDefault: true
+`;
+}

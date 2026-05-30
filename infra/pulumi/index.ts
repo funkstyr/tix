@@ -3,6 +3,7 @@ import * as pulumi from "@pulumi/pulumi";
 
 import { IngressRoutes } from "./components/ingress-routes.ts";
 import { MigrationJob } from "./components/migration-job.ts";
+import { ObservabilityStack } from "./components/observability-stack.ts";
 import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts";
 import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
@@ -17,6 +18,7 @@ const ORDERS_PORT = 4003;
 const PAYMENTS_PORT = 4004;
 const GATEWAY_PORT = 4000;
 const WEB_PORT = 80;
+const GRAFANA_PORT = 3000;
 
 const NATS_URL = "nats://nats:4222";
 const REDIS_URL = "redis://redis:6379";
@@ -38,6 +40,13 @@ const expirationPassword = config.requireSecret("expirationPassword");
 const betterAuthSecret = config.requireSecret("betterAuthSecret");
 const ticketsServiceToken = config.requireSecret("ticketsServiceToken");
 const stripeKey = config.requireSecret("stripeKey");
+const garageRpcSecret = config.requireSecret("garageRpcSecret");
+const garageAdminToken = config.requireSecret("garageAdminToken");
+// Non-secret S3 access-key id (the secret half is `garageS3SecretKey`). Defaults
+// to a well-known dev value so the kind smoke / dev stack work out of the box;
+// prod must override it via `pulumi config set garageS3AccessKey`. TODO(prod).
+const garageS3AccessKey = config.get("garageS3AccessKey") ?? "GKa1b2c3d4e5f60718293a4b5c";
+const garageS3SecretKey = config.requireSecret("garageS3SecretKey");
 const webOrigin = config.get("webOrigin") ?? "http://localhost:4000";
 const ingressHost = config.get("host") ?? "localhost";
 
@@ -64,6 +73,23 @@ const infra = new StatefulInfra(
       storage: "1Gi",
     },
     nats: { storage: "1Gi" },
+  },
+  { dependsOn: namespace },
+);
+
+// In-cluster OpenTelemetry stack (ADR-0009): gateway collector + discrete
+// Tempo/Loki/Prometheus/Grafana on Garage (S3). Infra-only for now — no service
+// emits to `otel-collector:4317` yet. Grafana serves under the `/grafana` prefix
+// the ingress routes to it.
+const observability = new ObservabilityStack(
+  "tix",
+  {
+    namespace: namespace.metadata.name,
+    grafanaRootUrl: `http://${ingressHost}/grafana`,
+    garageRpcSecret,
+    garageAdminToken,
+    garageS3AccessKey,
+    garageS3SecretKey,
   },
   { dependsOn: namespace },
 );
@@ -399,6 +425,7 @@ const ingress = new IngressRoutes("tix", {
   host: ingressHost,
   gateway: { name: gatewayDeployment.service!.metadata.name, port: GATEWAY_PORT },
   web: { name: webDeployment.service!.metadata.name, port: WEB_PORT },
+  grafana: { name: observability.grafana.service.metadata.name, port: GRAFANA_PORT },
 });
 
 export const namespaceName = namespace.metadata.name;
@@ -416,5 +443,11 @@ export const paymentsService = paymentsDeployment.service!.metadata.name;
 export const gatewayService = gatewayDeployment.service!.metadata.name;
 export const webService = webDeployment.service!.metadata.name;
 export const expirationDeployment = expiration.deployment.metadata.name;
+export const otelCollectorService = observability.collector.service.metadata.name;
+export const grafanaService = observability.grafana.service.metadata.name;
+export const tempoService = observability.tempo.service.metadata.name;
+export const lokiService = observability.loki.service.metadata.name;
+export const prometheusService = observability.prometheus.service.metadata.name;
+export const garageService = observability.garage.service.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;

@@ -2,19 +2,36 @@ name: Pulumi Smoke
 
 # The real `pulumi up` canary (issue #69): on a CI-spun-up kind cluster, deploy
 # the dev topology, wait for every Deployment to roll out, and probe the gateway
-# /health + SPA through the ingress, then tear down. This is the layer the
-# cluster-free `pulumi preview` (pulumi-preview.yml) and the component unit tests
-# cannot give us — admission-level mistakes and image/boot failures only surface
-# against a live API server.
+# /health + SPA through the ingress. This is the layer the cluster-free
+# `pulumi preview` (pulumi-preview.yml) and the component unit tests cannot give
+# us — admission-level mistakes and image/boot failures only surface against a
+# live API server.
 #
-# The `prod-preview` job validates the prod stack stub renders cleanly against a
-# stub provider (no cloud target is wired yet — see issue #34 "Out of Scope").
+# The `smoke` job is heavy (~minutes), so it is kept off the routine PR path: it
+# runs on merges to main, nightly, manual dispatch, and PRs explicitly labeled
+# `smoke` (see the job's `if:`). Every PR still gets the fast cluster-free
+# `pulumi preview` plus the `prod-preview` job below, which validates the prod
+# stack stub renders cleanly against a stub provider (no cloud target is wired
+# yet — see issue #34 "Out of Scope").
 on:
   pull_request:
+    # `labeled` is on top of the defaults (opened/synchronize/reopened) so adding
+    # the `smoke` label to an open PR triggers the run — without it, a label added
+    # after the last commit fires nothing. The paths filter still applies, so this
+    # only fires for PRs that touch infra.
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - "infra/pulumi/**"
       - "apps/*/Dockerfile"
       - ".github/workflows/pulumi-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/pulumi/**"
+      - "apps/*/Dockerfile"
+      - ".github/workflows/pulumi-smoke.yml"
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -32,6 +49,11 @@ env:
 
 jobs:
   smoke:
+    # Heavy `pulumi up` canary — keep it off the routine PR path. Runs on merges
+    # to main, nightly, manual dispatch, and PRs explicitly labeled `smoke`.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'smoke')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -57,12 +79,23 @@ jobs:
         with:
           install_only: true
 
+      # buildx (docker-container driver) + the GitHub Actions cache backend, so
+      # the shared `pnpm install` / `build:packages` image layers persist across
+      # runs. ghaction-github-runtime exports the ACTIONS_* tokens the `type=gha`
+      # cache exporter needs when buildx is driven directly (not via
+      # build-push-action).
+      - uses: crazy-max/ghaction-github-runtime@v3
+      - uses: docker/setup-buildx-action@v3
+
       # kubectl and docker are preinstalled on ubuntu-latest. The script creates
       # the kind cluster itself (with the ingress port-map), builds + loads the
-      # seven images, deploys, waits on the migration/rollout chain, probes the
-      # ingress, then tears everything down.
+      # seven images, deploys, waits on the migration/rollout chain, and probes
+      # the ingress. No --teardown: the runner is ephemeral, so pulumi destroy +
+      # kind delete would be wasted work (failure diagnostics still run).
       - name: Kind smoke deploy
-        run: ./infra/pulumi/scripts/kind-smoke.sh --teardown
+        env:
+          SMOKE_BUILD_CACHE: gha
+        run: ./infra/pulumi/scripts/kind-smoke.sh
 
   prod-preview:
     runs-on: ubuntu-latest
@@ -87,7 +120,10 @@ jobs:
         working-directory: infra/pulumi
         run: |
           pulumi login --local
-          pulumi stack select prod
+          # The prod stack only exists as Pulumi.prod.yaml config — on a fresh
+          # local backend it isn't in state yet, so select-or-init it (mirrors
+          # the smoke job's throwaway stack handling).
+          pulumi stack select prod 2>/dev/null || pulumi stack init prod
           # index.ts calls config.requireSecret() for each of these; stub them so
           # the program can build its resource graph without real prod secrets.
           for kv in \
@@ -99,7 +135,10 @@ jobs:
             expirationPassword=ci_expiration \
             betterAuthSecret=ci_better_auth_secret \
             ticketsServiceToken=ci_tickets_service_token \
-            stripeKey=sk_test_ci_placeholder; do
+            stripeKey=sk_test_ci_placeholder \
+            garageRpcSecret=ci_garage_rpc_secret \
+            garageAdminToken=ci_garage_admin_token \
+            garageS3SecretKey=ci_garage_s3_secret_key; do
             pulumi config set --secret "${kv%%=*}" "${kv#*=}"
           done
           # Render manifests to disk instead of contacting a cluster.
