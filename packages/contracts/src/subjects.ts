@@ -1,4 +1,5 @@
 export const TICKETS_CREATED_V1 = "tickets.created.v1";
+export const TICKETS_UPDATED_V1 = "tickets.updated.v1";
 export const ORDER_CREATED_V1 = "order.created.v1";
 export const ORDER_CANCELLED_V1 = "order.cancelled.v1";
 export const ORDER_COMPLETED_V1 = "order.completed.v1";

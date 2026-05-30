@@ -4,7 +4,7 @@ import { ArkErrors, type } from "arktype";
 import type { Level } from "pino";
 
 import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
-import { ORDERS_STREAM, PAYMENTS_STREAM } from "@tix/contracts/subjects";
+import { ORDERS_STREAM, PAYMENTS_STREAM, TICKETS_STREAM } from "@tix/contracts/subjects";
 import { createDbClient } from "@tix/db-core/client";
 import { startOutboxRelay } from "@tix/db-core/outbox";
 import { createPublisher } from "@tix/messaging/jetstream";
@@ -15,6 +15,10 @@ import { startOrdersExpiredConsumer } from "./orders-consumer.ts";
 import { startOrdersPaymentCreatedConsumer } from "./orders-payment-consumer.ts";
 import { ordersOutbox, ordersTables } from "./orders-schema.ts";
 import { createHttpTicketsClient } from "./tickets-client.ts";
+import {
+  startTicketsCreatedConsumer,
+  startTicketsUpdatedConsumer,
+} from "./tickets-replica-consumer.ts";
 
 const DEFAULT_PORT = 4003;
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
@@ -28,6 +32,7 @@ const envSchema = type({
   NATS_URL: "string > 0",
   "ORDERS_STREAM?": "string > 0",
   "PAYMENTS_STREAM?": "string > 0",
+  "TICKETS_STREAM?": "string > 0",
   "RESERVATION_TTL_MS?": "string.numeric.parse",
   "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
@@ -41,6 +46,7 @@ type Env = {
   natsUrl: string;
   stream: string;
   paymentsStream: string;
+  ticketsStream: string;
   reservationTtlMs: number;
   logLevel: Level;
 };
@@ -70,6 +76,7 @@ function parseEnv(): Env {
     natsUrl: parsed.NATS_URL,
     stream: parsed.ORDERS_STREAM ?? ORDERS_STREAM,
     paymentsStream: parsed.PAYMENTS_STREAM ?? PAYMENTS_STREAM,
+    ticketsStream: parsed.TICKETS_STREAM ?? TICKETS_STREAM,
     reservationTtlMs,
     logLevel: parsed.LOG_LEVEL ?? "info",
   };
@@ -107,6 +114,18 @@ async function main(): Promise<void> {
     stream: env.paymentsStream,
     logger,
   });
+  const ticketsCreatedConsumer = await startTicketsCreatedConsumer({
+    db,
+    nats,
+    stream: env.ticketsStream,
+    logger,
+  });
+  const ticketsUpdatedConsumer = await startTicketsUpdatedConsumer({
+    db,
+    nats,
+    stream: env.ticketsStream,
+    logger,
+  });
 
   const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
     logger.info({ port: info.port }, "orders service listening");
@@ -121,6 +140,8 @@ async function main(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
+    await ticketsUpdatedConsumer.stop();
+    await ticketsCreatedConsumer.stop();
     await paymentCreatedConsumer.stop();
     await expiredConsumer.stop();
     await relay.stop();

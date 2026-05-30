@@ -36,6 +36,13 @@
       "when": 1779413649147,
       "tag": "0004_orders_price_cents",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779413649148,
+      "tag": "0005_orders_tickets_replica",
+      "breakpoints": true
     }
   ]
 }

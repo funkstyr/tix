@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { type AuthSessionClient, requireSession } from "@tix/contracts/auth-client";
-import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
+import { TICKETS_CREATED_V1, TICKETS_UPDATED_V1 } from "@tix/contracts/subjects";
 import {
   type TicketRecord,
   ticketCreateInput,
@@ -13,9 +13,11 @@ import {
   ticketsListInput,
   ticketsListMineInput,
   ticketsListOutput,
+  ticketUpdateInput,
 } from "@tix/contracts/tickets";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import type { DbClient } from "@tix/db-core/client";
+import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
 import { reserveTicket } from "./reserve-ticket.ts";
@@ -96,6 +98,73 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
       return toTicketRecord(row);
     });
 
+  const update = base
+    .input(ticketUpdateInput)
+    .output(ticketRecordOutput)
+    .handler(async ({ input }) => {
+      const session = await requireSession(authClient, input.token);
+
+      const row = await db.db.transaction(async (tx) => {
+        const [existing] = await tx.select().from(tickets).where(eq(tickets.id, input.ticketId));
+
+        // Treat missing and non-owned identically so a seller can't probe
+        // another seller's inventory by guessing ticket ids (matches the
+        // existence-isn't-a-side-channel rule in orders.getById).
+        if (!existing || existing.sellerId !== session.user.id) {
+          throw new ORPCError("NOT_FOUND", { message: "ticket not found" });
+        }
+
+        // A ticket with seats held or sold (available < total) is locked by an
+        // order; editing its price/title underneath a buyer is disallowed.
+        if (existing.quantityAvailable !== existing.quantityTotal) {
+          throw new ORPCError("CONFLICT", {
+            message: "cannot edit a reserved ticket",
+            data: { reason: "reserved" as const },
+          });
+        }
+
+        const nextVersion = existing.version + 1;
+        const updated = await updateVersioned(
+          tx,
+          tickets,
+          { id: existing.id, version: input.expectedVersion },
+          { title: input.title, unitPriceCents: input.unitPriceCents },
+        );
+        if (updated.rowsAffected === 0) {
+          // The version-matched update affected no rows: either the client's
+          // expectedVersion was already stale, or a concurrent reserve/release
+          // bumped the version between our read and write. Both are retryable
+          // version conflicts.
+          throw new ORPCError("CONFLICT", {
+            message: "ticket was modified by someone else",
+            data: { reason: "version_conflict" as const },
+          });
+        }
+
+        await enqueueEvent(tx, ticketsOutbox, {
+          subject: TICKETS_UPDATED_V1,
+          eventId: uuidv7(),
+          payload: {
+            ticketId: existing.id,
+            sellerId: existing.sellerId,
+            title: input.title,
+            unitPriceCents: input.unitPriceCents,
+            version: nextVersion,
+            updatedAt: new Date().toISOString(),
+          },
+        });
+
+        return {
+          ...existing,
+          title: input.title,
+          unitPriceCents: input.unitPriceCents,
+          version: nextVersion,
+        };
+      });
+
+      return toTicketRecord(row);
+    });
+
   const reserve = base
     .input(reserveTicketInput)
     .output(reserveTicketOutput)
@@ -153,7 +222,7 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
       return { items: rows.map(toTicketRecord) };
     });
 
-  return { create, reserve, getById, list, listMine };
+  return { create, update, reserve, getById, list, listMine };
 }
 
 export type TicketsRouter = ReturnType<typeof createTicketsRouter>;
