@@ -15,6 +15,14 @@
     "./request-logger": {
       "types": "./dist/request-logger.d.ts",
       "import": "./dist/request-logger.js"
+    },
+    "./otel-config": {
+      "types": "./dist/otel-config.d.ts",
+      "import": "./dist/otel-config.js"
+    },
+    "./otel-layer": {
+      "types": "./dist/otel-layer.d.ts",
+      "import": "./dist/otel-layer.js"
     }
   },
   "scripts": {
@@ -24,15 +32,29 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@effect/opentelemetry": "catalog:",
+    "@effect/platform": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/resources": "catalog:",
+    "@opentelemetry/sdk-logs": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@opentelemetry/sdk-trace-node": "catalog:",
+    "@opentelemetry/sdk-trace-web": "catalog:",
+    "@opentelemetry/semantic-conventions": "catalog:",
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
     "tsdown": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@effect/opentelemetry": "catalog:",
+    "@effect/platform": "catalog:",
+    "effect": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:"
   }
