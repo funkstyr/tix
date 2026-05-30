@@ -33,6 +33,19 @@ export function toORPCError(error: OrderError): ORPCError<string, unknown> {
   }
 }
 
+// Runs a promise that may throw an `ORPCError` and lifts it into the typed `E`
+// channel. An `ORPCError` becomes a recoverable failure (the boundary rethrows it
+// unchanged, or a caller maps it to a domain tag with `Effect.catchAll`); anything
+// else becomes a defect, so an unexpected throw still surfaces as a 500 exactly as
+// it does today.
+export function tryOrpc<A>(thunk: () => Promise<A>): Effect.Effect<A, ORPCError<string, unknown>> {
+  return Effect.tryPromise({ try: thunk, catch: (e) => e }).pipe(
+    Effect.catchAll((error) =>
+      error instanceof ORPCError ? Effect.fail(error) : Effect.die(error),
+    ),
+  );
+}
+
 // Runs an oRPC handler's Effect program on the service runtime and reproduces the
 // imperative throw-at-the-boundary contract: a domain failure becomes its mapped
 // `ORPCError`, while an `ORPCError` raised inside the program (auth `UNAUTHORIZED`,

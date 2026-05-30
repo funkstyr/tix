@@ -1,37 +1,24 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
-import type { Logger } from "pino";
 
-import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
-import type { DbClient } from "@tix/db-core/client";
 import { requestLogger } from "@tix/observability/request-logger";
 
-import type { ordersTables } from "./orders-schema.ts";
 import { createOrdersRouter } from "./router.ts";
-import type { TicketsClient } from "./tickets-client.ts";
+import type { OrdersRuntime } from "./runtime.ts";
+import { InfraLogger } from "./services.ts";
 
-export type CreateOrdersAppDeps = {
-  db: DbClient<typeof ordersTables>;
-  authClient: AuthSessionClient;
-  ticketsClient: TicketsClient;
-  reservationTtlMs: number;
-  logger: Logger;
-};
-
-export function createOrdersApp(deps: CreateOrdersAppDeps): Hono {
-  const router = createOrdersRouter({
-    db: deps.db,
-    authClient: deps.authClient,
-    ticketsClient: deps.ticketsClient,
-    reservationTtlMs: deps.reservationTtlMs,
-    logger: deps.logger,
-  });
+export function createOrdersApp(runtime: OrdersRuntime): Hono {
+  const router = createOrdersRouter(runtime);
   const rpc = new RPCHandler(router);
+
+  // The wire-level request logger stays pino (ADR-0008 keeps pino until the final
+  // cleanup slice); pull it from the runtime so there's a single logger instance.
+  const logger = runtime.runSync(InfraLogger);
 
   const app = new Hono();
 
-  app.use("*", requestLogger(deps.logger));
+  app.use("*", requestLogger(logger));
 
   app.get("/health", (c) => c.json({ service: "orders", ok: true }));
 
