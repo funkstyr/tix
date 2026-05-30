@@ -96,9 +96,6 @@ catalogs:
     tsdown:
       specifier: ^0.22.0
       version: 0.22.0
-    tsx:
-      specifier: ^4.22.3
-      version: 4.22.3
     uuid:
       specifier: ^14.0.0
       version: 14.0.0
@@ -134,9 +131,6 @@ importers:
       oxlint:
         specifier: ^1.66.0
         version: 1.66.0
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
       turbo:
         specifier: ^2.9.14
         version: 2.9.14
@@ -234,9 +228,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -295,9 +286,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -377,9 +365,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -459,9 +444,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -538,9 +520,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -617,9 +596,6 @@ importers:
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -948,9 +924,6 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260515.1
-      tsx:
-        specifier: 'catalog:'
-        version: 4.22.3
 
 packages:
 

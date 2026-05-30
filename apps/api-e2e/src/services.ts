@@ -20,7 +20,9 @@ type ServiceSpec = {
 const children: { name: ServiceName; child: ChildProcess }[] = [];
 
 function spawnService(spec: ServiceSpec): void {
-  const child = spawn("pnpm", ["--filter", spec.name, "exec", "tsx", "src/index.ts"], {
+  // `node` runs the service's TypeScript directly via native type-stripping
+  // (the repo enforces `erasableSyntaxOnly`), so no tsx/transpile step is needed.
+  const child = spawn("pnpm", ["--filter", spec.name, "exec", "node", "src/index.ts"], {
     cwd: repoRoot,
     env: { ...process.env, ...spec.env, LOG_LEVEL: process.env["LOG_LEVEL"] ?? "info" },
     stdio: ["ignore", "pipe", "pipe"],

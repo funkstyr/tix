@@ -27,7 +27,6 @@
     "lefthook": "^2.1.8",
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
-    "tsx": "catalog:",
     "turbo": "^2.9.14",
     "vitest": "catalog:"
   },

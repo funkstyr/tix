@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1.7
+#
+# Dev image for the Tilt in-cluster loop (NOT used by the kind smoke or prod).
+#
+# Unlike the per-service production Dockerfiles — which build to `dist/` and run
+# `node dist/index.mjs` — this carries the whole monorepo and runs each service's
+# TypeScript directly via `node --watch` (the package `dev` script). Tilt's
+# `live_update` then syncs changed source into the running container and the
+# in-container watcher restarts the process: no image rebuild per edit.
+#
+# Built once per service with `--build-arg SERVICE=<name>` against the repo root.
+# BuildKit caches the shared `deps` stage across all seven builds, so only the
+# first is slow.
+#
+#   docker build -f infra/tilt/Dockerfile.dev --target service-dev \
+#     --build-arg SERVICE=auth -t tix-auth:dev .
+
+ARG NODE_VERSION=24-alpine
+ARG PNPM_VERSION=11.2.1
+
+FROM node:${NODE_VERSION} AS base
+WORKDIR /repo
+RUN apk add --no-cache libc6-compat \
+  && corepack enable \
+  && corepack prepare pnpm@${PNPM_VERSION} --activate
+ENV CI=1
+
+# Full monorepo + workspace node_modules. Build the @tix/* packages to `dist/`
+# because the services import the built output, not the package sources. The
+# service's own source is left as-is and run by `node --watch`. This stage is
+# identical across every service build, so BuildKit reuses it.
+FROM base AS deps
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm build:packages
+
+# A backend service: run its `dev` script (`node --env-file-if-exists=.env
+# --watch src/index.ts`). In-cluster the `.env` is absent — Kubernetes injects
+# DATABASE_URL et al. via the Pulumi-rendered Secret/env — so the flag is a
+# no-op and the service reads its config from the container environment. The
+# same image also serves the migration Job, which overrides CMD with
+# `pnpm db:migrate` from this WORKDIR.
+FROM deps AS service-dev
+ARG SERVICE
+WORKDIR /repo/apps/${SERVICE}
+CMD ["pnpm", "dev"]
+
+# The web SPA: serve Vite's dev server (with HMR) on the port the rendered web
+# Deployment exposes (80). The manifest gives web no env, so the browser-facing
+# values are baked here as dev defaults; the SPA reaches the gateway through
+# Tilt's port-forward (localhost:4000), not the in-cluster Service DNS.
+FROM deps AS web-dev
+WORKDIR /repo/apps/web
+ENV VITE_GATEWAY_URL=http://localhost:4000
+ENV VITE_STRIPE_PK=pk_test_replace_me
+CMD ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "80"]

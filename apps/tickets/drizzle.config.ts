@@ -1,4 +1,11 @@
 import { defineConfig } from "drizzle-kit";
+import { existsSync } from "node:fs";
+
+// Load this service's `.env` (the same file `pnpm dev` reads via
+// `--env-file-if-exists`) so `db:migrate`/`db:generate` see DATABASE_URL.
+// drizzle-kit has no `--env-file` flag. No-op in CI / k8s, where the env is
+// injected and no `.env` file is present.
+if (existsSync(".env")) process.loadEnvFile(".env");
 
 export default defineConfig({
   dialect: "postgresql",

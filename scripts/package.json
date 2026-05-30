@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check-types": "tsgo --noEmit",
-    "smoke:infra": "tsx smoke-infra.ts"
+    "smoke:infra": "node smoke-infra.ts"
   },
   "dependencies": {
     "nats": "catalog:",
@@ -14,7 +14,6 @@
   "devDependencies": {
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
-    "tsx": "catalog:"
+    "@typescript/native-preview": "catalog:"
   }
 }

@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsdown",
     "check-types": "tsgo --noEmit",
-    "dev": "tsx watch src/index.ts",
+    "dev": "node --env-file-if-exists=.env --watch src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "start": "node dist/index.mjs",
@@ -42,7 +42,6 @@
     "drizzle-kit": "catalog:",
     "testcontainers": "catalog:",
     "tsdown": "catalog:",
-    "tsx": "catalog:",
     "vitest": "catalog:"
   }
 }
