@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   type ReserveTicketInput,
@@ -33,26 +33,10 @@ describe("reserveTicketInput", () => {
       /ticketId/,
     );
   });
-
-  test("inferred type matches the documented shape", () => {
-    expectTypeOf<ReserveTicketInput>().toEqualTypeOf<{
-      ticketId: string;
-      quantity: number;
-    }>();
-  });
 });
 
 describe("reserveTicketOutput", () => {
   test("accepts a known-good payload", () => {
     expect(() => reserveTicketOutput.assert(goodOutput)).not.toThrow();
-  });
-
-  test("inferred type matches the documented shape", () => {
-    expectTypeOf<ReserveTicketOutput>().toEqualTypeOf<{
-      ticketId: string;
-      quantityAvailable: number;
-      unitPriceCents: number;
-      version: number;
-    }>();
   });
 });

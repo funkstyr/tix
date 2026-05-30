@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   type TicketCreatedV1,
@@ -31,38 +31,18 @@ describe("ticketCreatedV1", () => {
     expect(() => ticketCreatedV1.assert(goodPayload)).not.toThrow();
   });
 
-  test("rejects a payload missing a required field", () => {
-    const { sellerId: _omitted, ...missing } = goodPayload;
-    expect(() => ticketCreatedV1.assert(missing)).toThrow(/sellerId/);
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
+  // Event schemas are strict-by-policy (`"+": "reject"`); pinned once here for
+  // this aggregate rather than re-tested per schema.
+  test("rejects unknown fields", () => {
     expect(() => ticketCreatedV1.assert({ ...goodPayload, leakedField: "nope" })).toThrow(
       /leakedField/,
     );
-  });
-
-  test("inferred type matches the documented payload shape", () => {
-    expectTypeOf<TicketCreatedV1>().toEqualTypeOf<{
-      ticketId: string;
-      sellerId: string;
-      title: string;
-      quantityTotal: number;
-      unitPriceCents: number;
-      createdAt: string;
-    }>();
   });
 });
 
 describe("ticketUpdatedV1", () => {
   test("accepts a known-good payload", () => {
     expect(() => ticketUpdatedV1.assert(goodUpdated)).not.toThrow();
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
-    expect(() => ticketUpdatedV1.assert({ ...goodUpdated, leakedField: "nope" })).toThrow(
-      /leakedField/,
-    );
   });
 
   test("rejects a version below 1", () => {

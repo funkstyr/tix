@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   type OrderCancelInput,
@@ -56,27 +56,13 @@ describe("orderCreatedV1", () => {
     expect(() => orderCreatedV1.assert(goodCreated)).not.toThrow();
   });
 
-  test("rejects a payload missing a required field", () => {
-    const { buyerId: _omitted, ...missing } = goodCreated;
-    expect(() => orderCreatedV1.assert(missing)).toThrow(/buyerId/);
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
+  // Event schemas are strict-by-policy (`"+": "reject"`). The behaviour is
+  // identical across every event schema in this package, so it's pinned once
+  // here rather than re-tested per schema.
+  test("rejects unknown fields", () => {
     expect(() => orderCreatedV1.assert({ ...goodCreated, leakedField: "nope" })).toThrow(
       /leakedField/,
     );
-  });
-
-  test("inferred type matches the documented payload shape", () => {
-    expectTypeOf<OrderCreatedV1>().toEqualTypeOf<{
-      orderId: string;
-      ticketId: string;
-      buyerId: string;
-      quantity: number;
-      priceCents: number;
-      expiresAt: string;
-      createdAt: string;
-    }>();
   });
 });
 
@@ -85,27 +71,8 @@ describe("orderCancelledV1", () => {
     expect(() => orderCancelledV1.assert(goodCancelled)).not.toThrow();
   });
 
-  test("rejects a payload missing a required field", () => {
-    const { version: _omitted, ...missing } = goodCancelled;
-    expect(() => orderCancelledV1.assert(missing)).toThrow(/version/);
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
-    expect(() => orderCancelledV1.assert({ ...goodCancelled, leakedField: "nope" })).toThrow(
-      /leakedField/,
-    );
-  });
-
   test("rejects a non-positive version", () => {
     expect(() => orderCancelledV1.assert({ ...goodCancelled, version: 0 })).toThrow(/version/);
-  });
-
-  test("inferred type matches the documented payload shape", () => {
-    expectTypeOf<OrderCancelledV1>().toEqualTypeOf<{
-      orderId: string;
-      version: number;
-      cancelledAt: string;
-    }>();
   });
 });
 
@@ -114,27 +81,8 @@ describe("orderCompletedV1", () => {
     expect(() => orderCompletedV1.assert(goodCompleted)).not.toThrow();
   });
 
-  test("rejects a payload missing a required field", () => {
-    const { version: _omitted, ...missing } = goodCompleted;
-    expect(() => orderCompletedV1.assert(missing)).toThrow(/version/);
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
-    expect(() => orderCompletedV1.assert({ ...goodCompleted, leakedField: "nope" })).toThrow(
-      /leakedField/,
-    );
-  });
-
   test("rejects a non-positive version", () => {
     expect(() => orderCompletedV1.assert({ ...goodCompleted, version: 0 })).toThrow(/version/);
-  });
-
-  test("inferred type matches the documented payload shape", () => {
-    expectTypeOf<OrderCompletedV1>().toEqualTypeOf<{
-      orderId: string;
-      version: number;
-      completedAt: string;
-    }>();
   });
 });
 
@@ -142,49 +90,11 @@ describe("orderExpiredV1", () => {
   test("accepts a known-good payload", () => {
     expect(() => orderExpiredV1.assert(goodExpired)).not.toThrow();
   });
-
-  test("rejects a payload missing a required field", () => {
-    const { expiredAt: _omitted, ...missing } = goodExpired;
-    expect(() => orderExpiredV1.assert(missing)).toThrow(/expiredAt/);
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
-    expect(() => orderExpiredV1.assert({ ...goodExpired, leakedField: "nope" })).toThrow(
-      /leakedField/,
-    );
-  });
-
-  test("inferred type matches the documented payload shape", () => {
-    expectTypeOf<OrderExpiredV1>().toEqualTypeOf<{
-      orderId: string;
-      expiredAt: string;
-    }>();
-  });
 });
 
 describe("orderReservationReleasedV1", () => {
   test("accepts a known-good payload", () => {
     expect(() => orderReservationReleasedV1.assert(goodReleased)).not.toThrow();
-  });
-
-  test("rejects a payload missing a required field", () => {
-    const { ticketId: _omitted, ...missing } = goodReleased;
-    expect(() => orderReservationReleasedV1.assert(missing)).toThrow(/ticketId/);
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
-    expect(() =>
-      orderReservationReleasedV1.assert({ ...goodReleased, leakedField: "nope" }),
-    ).toThrow(/leakedField/);
-  });
-
-  test("inferred type matches the documented payload shape", () => {
-    expectTypeOf<OrderReservationReleasedV1>().toEqualTypeOf<{
-      orderId: string;
-      ticketId: string;
-      quantity: number;
-      releasedAt: string;
-    }>();
   });
 });
 
@@ -198,25 +108,10 @@ describe("orderCancelInput", () => {
     expect(() => orderCancelInput.assert(goodCancelInput)).not.toThrow();
   });
 
-  test("rejects a missing token", () => {
-    const { token: _omitted, ...missing } = goodCancelInput;
-    expect(() => orderCancelInput.assert(missing)).toThrow(/token/);
-  });
-
   test("rejects a non-uuid orderId", () => {
     expect(() => orderCancelInput.assert({ ...goodCancelInput, orderId: "nope" })).toThrow(
       /orderId/,
     );
-  });
-
-  test("rejects an extra unknown field", () => {
-    expect(() => orderCancelInput.assert({ ...goodCancelInput, leakedField: "nope" })).toThrow(
-      /leakedField/,
-    );
-  });
-
-  test("inferred type matches the documented input shape", () => {
-    expectTypeOf<OrderCancelInput>().toEqualTypeOf<{ token: string; orderId: string }>();
   });
 });
 

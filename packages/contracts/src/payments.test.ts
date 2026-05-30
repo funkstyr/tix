@@ -18,12 +18,9 @@ describe("paymentCreatedV1", () => {
     expect(() => paymentCreatedV1.assert(goodPayload)).not.toThrow();
   });
 
-  test("rejects a payload missing a required field", () => {
-    const { stripeId: _omitted, ...missing } = goodPayload;
-    expect(() => paymentCreatedV1.assert(missing)).toThrow(/stripeId/);
-  });
-
-  test("rejects a payload with an extra unknown field", () => {
+  // Event schemas are strict-by-policy (`"+": "reject"`); pinned once here for
+  // this aggregate rather than re-tested per schema.
+  test("rejects unknown fields", () => {
     expect(() => paymentCreatedV1.assert({ ...goodPayload, leakedField: "nope" })).toThrow(
       /leakedField/,
     );

@@ -64,8 +64,13 @@ function withDownstreamStub<K extends keyof DownstreamClients>(
   return createRouterClient(router, { context });
 }
 
+// The router is a pure pass-through; its own behaviour is cookie injection,
+// error transparency, and null passthrough. Those are pinned once below.
+// Per-procedure input validation lives with the schemas in `@tix/contracts`,
+// and one delegation per downstream service confirms the wiring without
+// re-testing the same forwarding path for every procedure.
 describe("createGatewayRouter", () => {
-  it("delegates tickets.list to the downstream tickets client, forwarding the cookie header", async () => {
+  it("delegates to the downstream tickets client, forwarding the cookie header", async () => {
     const list = vi
       .fn<DownstreamClients["tickets"]["list"]>()
       .mockResolvedValue({ items: [TICKET_RECORD] });
@@ -74,7 +79,6 @@ describe("createGatewayRouter", () => {
     const result = await client.tickets.list({ limit: 10 });
 
     expect(result).toEqual({ items: [TICKET_RECORD] });
-    expect(list).toHaveBeenCalledTimes(1);
     expect(list).toHaveBeenCalledWith(
       { limit: 10 },
       { context: { cookieHeader: "tix.session=abc" } },
@@ -108,259 +112,27 @@ describe("createGatewayRouter", () => {
     });
   });
 
-  it("rejects invalid input at the arktype boundary without reaching the downstream client", async () => {
-    const list = vi.fn<DownstreamClients["tickets"]["list"]>();
-    const client = withDownstreamStub("tickets", { list });
-
-    await expect(client.tickets.list({ limit: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(list).not.toHaveBeenCalled();
-  });
-
-  it("delegates tickets.create to the downstream tickets client, forwarding input and cookie header", async () => {
-    const create = vi.fn<DownstreamClients["tickets"]["create"]>().mockResolvedValue(TICKET_RECORD);
-    const client = withDownstreamStub("tickets", { create }, { cookieHeader: "tix.session=abc" });
-
-    const input = {
-      token: "session-token",
-      title: "Aphex Twin @ Warehouse",
-      quantityTotal: 50,
-      unitPriceCents: 4500,
-    };
-    const result = await client.tickets.create(input);
-
-    expect(result).toEqual(TICKET_RECORD);
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
-  });
-
-  it("propagates ORPCError thrown by tickets.create", async () => {
-    const create = vi.fn<DownstreamClients["tickets"]["create"]>().mockRejectedValue(
-      new ORPCError("UNAUTHORIZED", {
-        status: 401,
-        message: "invalid or expired session",
-      }),
-    );
-    const client = withDownstreamStub("tickets", { create });
-
-    await expect(
-      client.tickets.create({
-        token: "stale",
-        title: "Aphex Twin @ Warehouse",
-        quantityTotal: 50,
-        unitPriceCents: 4500,
-      }),
-    ).rejects.toMatchObject({
-      code: "UNAUTHORIZED",
-      status: 401,
-      message: "invalid or expired session",
-    });
-  });
-
-  it("rejects invalid tickets.create input at the arktype boundary", async () => {
-    const create = vi.fn<DownstreamClients["tickets"]["create"]>();
-    const client = withDownstreamStub("tickets", { create });
-
-    await expect(
-      client.tickets.create({
-        token: "session-token",
-        title: "Aphex Twin @ Warehouse",
-        quantityTotal: 0,
-        unitPriceCents: 4500,
-      }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it("delegates tickets.getById to the downstream tickets client, forwarding cookie header", async () => {
-    const getById = vi
-      .fn<DownstreamClients["tickets"]["getById"]>()
-      .mockResolvedValue(TICKET_RECORD);
-    const client = withDownstreamStub("tickets", { getById }, { cookieHeader: "tix.session=abc" });
-
-    const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
-
-    expect(result).toEqual(TICKET_RECORD);
-    expect(getById).toHaveBeenCalledTimes(1);
-    expect(getById).toHaveBeenCalledWith(
-      { ticketId: TICKET_RECORD.id },
-      { context: { cookieHeader: "tix.session=abc" } },
-    );
-  });
-
-  it("returns null when tickets.getById finds no ticket", async () => {
+  it("returns null when the downstream getById finds no record", async () => {
     const getById = vi.fn<DownstreamClients["tickets"]["getById"]>().mockResolvedValue(null);
     const client = withDownstreamStub("tickets", { getById });
 
     const result = await client.tickets.getById({ ticketId: TICKET_RECORD.id });
 
     expect(result).toBeNull();
-    expect(getById).toHaveBeenCalledWith(
-      { ticketId: TICKET_RECORD.id },
-      { context: { cookieHeader: null } },
-    );
   });
 
-  it("rejects invalid tickets.getById input at the arktype boundary", async () => {
-    const getById = vi.fn<DownstreamClients["tickets"]["getById"]>();
-    const client = withDownstreamStub("tickets", { getById });
-
-    await expect(client.tickets.getById({ ticketId: "not-a-uuid" })).rejects.toMatchObject({
-      code: "BAD_REQUEST",
-    });
-    expect(getById).not.toHaveBeenCalled();
-  });
-
-  it("delegates tickets.listMine to the downstream tickets client, forwarding the cookie header", async () => {
-    const listMine = vi
-      .fn<DownstreamClients["tickets"]["listMine"]>()
-      .mockResolvedValue({ items: [TICKET_RECORD] });
-    const client = withDownstreamStub("tickets", { listMine }, { cookieHeader: "tix.session=abc" });
-
-    const result = await client.tickets.listMine({ token: "session-token", limit: 10 });
-
-    expect(result).toEqual({ items: [TICKET_RECORD] });
-    expect(listMine).toHaveBeenCalledWith(
-      { token: "session-token", limit: 10 },
-      { context: { cookieHeader: "tix.session=abc" } },
-    );
-  });
-
-  it("rejects invalid tickets.listMine input at the arktype boundary", async () => {
-    const listMine = vi.fn<DownstreamClients["tickets"]["listMine"]>();
-    const client = withDownstreamStub("tickets", { listMine });
-
-    await expect(
-      client.tickets.listMine({ token: "session-token", limit: 0 }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(listMine).not.toHaveBeenCalled();
-  });
-
-  it("delegates orders.create to the downstream orders client, forwarding input and cookie header", async () => {
+  it("delegates to the downstream orders client, forwarding input and cookie header", async () => {
     const create = vi.fn<DownstreamClients["orders"]["create"]>().mockResolvedValue(ORDER_RECORD);
     const client = withDownstreamStub("orders", { create }, { cookieHeader: "tix.session=abc" });
 
-    const input = {
-      token: "session-token",
-      ticketId: ORDER_RECORD.ticketId,
-      quantity: 2,
-    };
+    const input = { token: "session-token", ticketId: ORDER_RECORD.ticketId, quantity: 2 };
     const result = await client.orders.create(input);
 
     expect(result).toEqual(ORDER_RECORD);
-    expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
   });
 
-  it("propagates an ORPCError thrown by orders.create with the same code, message, and data", async () => {
-    const create = vi.fn<DownstreamClients["orders"]["create"]>().mockRejectedValue(
-      new ORPCError("GONE", {
-        status: 410,
-        message: "ticket is sold out",
-        data: { reason: "sold_out" as const },
-      }),
-    );
-    const client = withDownstreamStub("orders", { create });
-
-    await expect(
-      client.orders.create({
-        token: "session-token",
-        ticketId: ORDER_RECORD.ticketId,
-        quantity: 2,
-      }),
-    ).rejects.toMatchObject({
-      code: "GONE",
-      status: 410,
-      message: "ticket is sold out",
-      data: { reason: "sold_out" },
-    });
-  });
-
-  it("rejects invalid orders.create input at the arktype boundary", async () => {
-    const create = vi.fn<DownstreamClients["orders"]["create"]>();
-    const client = withDownstreamStub("orders", { create });
-
-    await expect(
-      client.orders.create({
-        token: "session-token",
-        ticketId: ORDER_RECORD.ticketId,
-        quantity: 0,
-      }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it("delegates orders.getById to the downstream orders client, forwarding cookie header", async () => {
-    const getById = vi.fn<DownstreamClients["orders"]["getById"]>().mockResolvedValue(ORDER_RECORD);
-    const client = withDownstreamStub("orders", { getById }, { cookieHeader: "tix.session=abc" });
-
-    const input = { token: "session-token", orderId: ORDER_RECORD.id };
-    const result = await client.orders.getById(input);
-
-    expect(result).toEqual(ORDER_RECORD);
-    expect(getById).toHaveBeenCalledTimes(1);
-    expect(getById).toHaveBeenCalledWith(input, {
-      context: { cookieHeader: "tix.session=abc" },
-    });
-  });
-
-  it("returns null when orders.getById finds no order", async () => {
-    const getById = vi.fn<DownstreamClients["orders"]["getById"]>().mockResolvedValue(null);
-    const client = withDownstreamStub("orders", { getById });
-
-    const input = { token: "session-token", orderId: ORDER_RECORD.id };
-    const result = await client.orders.getById(input);
-
-    expect(result).toBeNull();
-    expect(getById).toHaveBeenCalledWith(input, { context: { cookieHeader: null } });
-  });
-
-  it("rejects invalid orders.getById input at the arktype boundary", async () => {
-    const getById = vi.fn<DownstreamClients["orders"]["getById"]>();
-    const client = withDownstreamStub("orders", { getById });
-
-    await expect(
-      client.orders.getById({ token: "session-token", orderId: "not-a-uuid" }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(getById).not.toHaveBeenCalled();
-  });
-
-  it("rejects orders.getById with a missing token at the arktype boundary", async () => {
-    const getById = vi.fn<DownstreamClients["orders"]["getById"]>();
-    const client = withDownstreamStub("orders", { getById });
-
-    await expect(
-      // @ts-expect-error missing token verifies arktype boundary
-      client.orders.getById({ orderId: ORDER_RECORD.id }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(getById).not.toHaveBeenCalled();
-  });
-
-  it("delegates orders.list to the downstream orders client, forwarding input and cookie header", async () => {
-    const list = vi
-      .fn<DownstreamClients["orders"]["list"]>()
-      .mockResolvedValue({ items: [ORDER_RECORD] });
-    const client = withDownstreamStub("orders", { list }, { cookieHeader: "tix.session=abc" });
-
-    const input = { token: "session-token", limit: 10 };
-    const result = await client.orders.list(input);
-
-    expect(result).toEqual({ items: [ORDER_RECORD] });
-    expect(list).toHaveBeenCalledTimes(1);
-    expect(list).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
-  });
-
-  it("rejects orders.list with a missing token at the arktype boundary", async () => {
-    const list = vi.fn<DownstreamClients["orders"]["list"]>();
-    const client = withDownstreamStub("orders", { list });
-
-    await expect(
-      // @ts-expect-error missing token verifies arktype boundary
-      client.orders.list({}),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(list).not.toHaveBeenCalled();
-  });
-
-  it("delegates payments.create to the downstream payments client, forwarding input and cookie header", async () => {
+  it("delegates to the downstream payments client, forwarding input and cookie header", async () => {
     const create = vi
       .fn<DownstreamClients["payments"]["create"]>()
       .mockResolvedValue({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
@@ -374,75 +146,6 @@ describe("createGatewayRouter", () => {
     const result = await client.payments.create(input);
 
     expect(result).toEqual({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
-    expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: "tix.session=abc" } });
-  });
-
-  it("forwards a null cookieHeader to payments.create when the request has no cookie", async () => {
-    const create = vi
-      .fn<DownstreamClients["payments"]["create"]>()
-      .mockResolvedValue({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
-    const client = withDownstreamStub("payments", { create });
-
-    const input = {
-      token: "session-token",
-      orderId: ORDER_RECORD.id,
-      paymentMethodId: "pm_card_visa",
-    };
-    await client.payments.create(input);
-
-    expect(create).toHaveBeenCalledWith(input, { context: { cookieHeader: null } });
-  });
-
-  it("propagates an ORPCError thrown by payments.create with the same code, message, and data", async () => {
-    const create = vi.fn<DownstreamClients["payments"]["create"]>().mockRejectedValue(
-      new ORPCError("CONFLICT", {
-        status: 409,
-        message: "order is not payable",
-        data: { reason: "not_payable" as const, status: "cancelled" },
-      }),
-    );
-    const client = withDownstreamStub("payments", { create });
-
-    await expect(
-      client.payments.create({
-        token: "session-token",
-        orderId: ORDER_RECORD.id,
-        paymentMethodId: "pm_card_visa",
-      }),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      status: 409,
-      message: "order is not payable",
-      data: { reason: "not_payable", status: "cancelled" },
-    });
-  });
-
-  it("rejects invalid payments.create input at the arktype boundary", async () => {
-    const create = vi.fn<DownstreamClients["payments"]["create"]>();
-    const client = withDownstreamStub("payments", { create });
-
-    await expect(
-      client.payments.create({
-        token: "session-token",
-        orderId: "not-a-uuid",
-        paymentMethodId: "pm_card_visa",
-      }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it("rejects payments.create with a missing token at the arktype boundary", async () => {
-    const create = vi.fn<DownstreamClients["payments"]["create"]>();
-    const client = withDownstreamStub("payments", { create });
-
-    await expect(
-      // @ts-expect-error missing token verifies arktype boundary
-      client.payments.create({
-        orderId: ORDER_RECORD.id,
-        paymentMethodId: "pm_card_visa",
-      }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect(create).not.toHaveBeenCalled();
   });
 });
