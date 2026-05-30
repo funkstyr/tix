@@ -10,7 +10,15 @@ type OtlpLogRecord = {
   readonly spanId?: string;
 };
 
-const makeCapturingClient = (sink: Array<unknown>): HttpClient.HttpClient =>
+type OtlpExportPayload = {
+  readonly resourceLogs?: ReadonlyArray<{
+    readonly scopeLogs?: ReadonlyArray<{
+      readonly logRecords?: ReadonlyArray<OtlpLogRecord>;
+    }>;
+  }>;
+};
+
+const makeCapturingClient = (sink: Array<OtlpExportPayload>): HttpClient.HttpClient =>
   HttpClient.make((request) =>
     Effect.sync(() => {
       const body = request.body;
@@ -23,17 +31,16 @@ const makeCapturingClient = (sink: Array<unknown>): HttpClient.HttpClient =>
     }),
   );
 
-const firstLogRecord = (sink: ReadonlyArray<unknown>): OtlpLogRecord => {
+const firstLogRecord = (sink: ReadonlyArray<OtlpExportPayload>): OtlpLogRecord => {
   for (const payload of sink) {
-    const record = (payload as any)?.resourceLogs?.[0]?.scopeLogs?.[0]?.logRecords?.[0];
-
-    if (record !== undefined) return record as OtlpLogRecord;
+    const record = payload.resourceLogs?.[0]?.scopeLogs?.[0]?.logRecords?.[0];
+    if (record !== undefined) return record;
   }
 
   throw new Error("no OTLP log record was captured");
 };
 
-const runWith = (sink: Array<unknown>, program: Effect.Effect<void>) =>
+const runWith = (sink: Array<OtlpExportPayload>, program: Effect.Effect<void>) =>
   Effect.runPromise(
     Effect.provide(
       program,
@@ -45,7 +52,7 @@ const runWith = (sink: Array<unknown>, program: Effect.Effect<void>) =>
 
 describe("otlpLayer", () => {
   it("attaches trace and span ids to logs emitted inside a span", async () => {
-    const sink: Array<unknown> = [];
+    const sink: Array<OtlpExportPayload> = [];
 
     await runWith(sink, Effect.log("hello").pipe(Effect.withSpan("unit-span")));
 
@@ -56,7 +63,7 @@ describe("otlpLayer", () => {
   });
 
   it("emits a log with no trace/span ids when no span is active", async () => {
-    const sink: Array<unknown> = [];
+    const sink: Array<OtlpExportPayload> = [];
 
     await runWith(sink, Effect.log("hello"));
 
