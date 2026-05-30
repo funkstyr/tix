@@ -33,12 +33,14 @@
     "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
     "postgres": "catalog:",
     "uuid": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@nats-io/jetstream": "catalog:",
     "@tix/config": "workspace:*",
     "@tix/test-helpers": "workspace:*",
