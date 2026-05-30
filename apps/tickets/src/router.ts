@@ -123,13 +123,6 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
           });
         }
 
-        if (existing.version !== input.expectedVersion) {
-          throw new ORPCError("CONFLICT", {
-            message: "ticket was modified by someone else",
-            data: { reason: "version_conflict" as const },
-          });
-        }
-
         const nextVersion = existing.version + 1;
         const updated = await updateVersioned(
           tx,
@@ -138,8 +131,10 @@ export function createTicketsRouter(deps: TicketsRouterDeps) {
           { title: input.title, unitPriceCents: input.unitPriceCents },
         );
         if (updated.rowsAffected === 0) {
-          // A concurrent reserve/release bumped the version between our read and
-          // write — surface as a retryable conflict rather than a silent no-op.
+          // The version-matched update affected no rows: either the client's
+          // expectedVersion was already stale, or a concurrent reserve/release
+          // bumped the version between our read and write. Both are retryable
+          // version conflicts.
           throw new ORPCError("CONFLICT", {
             message: "ticket was modified by someone else",
             data: { reason: "version_conflict" as const },
