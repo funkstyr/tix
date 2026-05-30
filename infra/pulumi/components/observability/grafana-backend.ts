@@ -16,14 +16,19 @@ export type GrafanaBackendArgs = {
   tempoUrl: string;
   lokiUrl: string;
   prometheusUrl: string;
+  // Enable anonymous Admin access (default true). Convenient for dev — the smoke
+  // only needs `/grafana/api/health` to render — but prod should pass `false`
+  // and front Grafana with real auth. TODO(prod): also source the admin password
+  // from a Secret rather than the hardcoded dev default below.
+  anonymousAccess?: boolean;
 };
 
 // Grafana with the three backends pre-wired as datasources. Anonymous Admin
-// access is enabled for dev convenience (the smoke only needs `/grafana/login`
-// to render); prod would lock this down behind real auth.
+// access defaults on for dev convenience; pass `anonymousAccess: false` to lock
+// it down.
 //
-// TODO(prod): disable anonymous access, source the admin password from a Secret,
-// and add a PVC if hand-built dashboards need to persist.
+// TODO(prod): source the admin password from a Secret, and add a PVC if
+// hand-built dashboards need to persist.
 export class GrafanaBackend extends pulumi.ComponentResource {
   readonly datasources: k8s.core.v1.ConfigMap;
   readonly deployment: k8s.apps.v1.Deployment;
@@ -39,6 +44,24 @@ export class GrafanaBackend extends pulumi.ComponentResource {
       "app.kubernetes.io/name": "grafana",
       "app.kubernetes.io/component": "observability",
     };
+
+    const anonymousAccess = args.anonymousAccess ?? true;
+
+    // `GF_SERVER_SERVE_FROM_SUB_PATH` must be the string "true" (an env value is
+    // typed `string`; a YAML boolean fails admission), and ROOT_URL carries no
+    // trailing slash or Grafana emits `//`.
+    const env = [
+      { name: "GF_SERVER_ROOT_URL", value: args.grafanaRootUrl },
+      { name: "GF_SERVER_SERVE_FROM_SUB_PATH", value: "true" },
+      ...(anonymousAccess
+        ? [
+            { name: "GF_AUTH_ANONYMOUS_ENABLED", value: "true" },
+            { name: "GF_AUTH_ANONYMOUS_ORG_ROLE", value: "Admin" },
+          ]
+        : []),
+      { name: "GF_SECURITY_ADMIN_USER", value: "admin" },
+      { name: "GF_SECURITY_ADMIN_PASSWORD", value: "admin" },
+    ];
 
     this.datasources = new k8s.core.v1.ConfigMap(
       `${name}-datasources`,
@@ -66,17 +89,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
                 {
                   name: "grafana",
                   image: GRAFANA_IMAGE,
-                  // `GF_SERVER_SERVE_FROM_SUB_PATH` must be the string "true" (an
-                  // env value is typed `string`; a YAML boolean fails admission),
-                  // and ROOT_URL carries no trailing slash or Grafana emits `//`.
-                  env: [
-                    { name: "GF_SERVER_ROOT_URL", value: args.grafanaRootUrl },
-                    { name: "GF_SERVER_SERVE_FROM_SUB_PATH", value: "true" },
-                    { name: "GF_AUTH_ANONYMOUS_ENABLED", value: "true" },
-                    { name: "GF_AUTH_ANONYMOUS_ORG_ROLE", value: "Admin" },
-                    { name: "GF_SECURITY_ADMIN_USER", value: "admin" },
-                    { name: "GF_SECURITY_ADMIN_PASSWORD", value: "admin" },
-                  ],
+                  env,
                   ports: [{ name: "http", containerPort: HTTP_PORT }],
                   volumeMounts: [
                     {

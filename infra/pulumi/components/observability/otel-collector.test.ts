@@ -1,26 +1,20 @@
-import * as pulumi from "@pulumi/pulumi";
 import { describe, expect, it } from "vitest";
 
-import { OtelCollector } from "./otel-collector.ts";
-
-pulumi.runtime.setMocks({
-  newResource: (args: pulumi.runtime.MockResourceArgs) => ({
-    id: `${args.name}-id`,
-    state: args.inputs,
-  }),
-  call: (args: pulumi.runtime.MockCallArgs) => args.inputs,
-});
-
-function promiseOf<T>(output: pulumi.Output<T>): Promise<T> {
-  return new Promise((resolve) => output.apply(resolve));
-}
+import { promiseOf } from "../pulumi-mocks.ts";
+import {
+  OtelCollector,
+  type OtlpGrpcEndpoint,
+  type OtlpHttpLogsEndpoint,
+  type OtlpHttpMetricsEndpoint,
+} from "./otel-collector.ts";
 
 function build(): OtelCollector {
   return new OtelCollector("test", {
     namespace: "tix",
-    tempoEndpoint: "tempo:4317",
-    lokiLogsEndpoint: "http://loki:3100/otlp/v1/logs",
-    prometheusMetricsEndpoint: "http://prometheus:9090/api/v1/otlp/v1/metrics",
+    tempoEndpoint: "tempo:4317" as OtlpGrpcEndpoint,
+    lokiLogsEndpoint: "http://loki:3100/otlp/v1/logs" as OtlpHttpLogsEndpoint,
+    prometheusMetricsEndpoint:
+      "http://prometheus:9090/api/v1/otlp/v1/metrics" as OtlpHttpMetricsEndpoint,
   });
 }
 

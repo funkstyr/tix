@@ -46,15 +46,15 @@ injected as env vars — apps never hardcode hostnames.
 alongside `StatefulInfra` (it depends only on the namespace) and composes the
 per-backend components under `components/observability/`:
 
-| Backend             | File                    | Workload                                                  | Notes                                                               |
-| ------------------- | ----------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
-| `OtelCollector`     | `otel-collector.ts`     | Deployment + Service `otel-collector` (4317/4318)         | Single OTLP ingress; fans out per signal.                           |
-| `GarageBackend`     | `garage-backend.ts`     | StatefulSet + PVC + Secret + Service `garage` (3900/3901) | S3 object store for Tempo + Loki (`server --single-node`).          |
-| `GarageBuckets`     | `garage-buckets.ts`     | one-shot Job (`curl` → Garage admin API)                  | Creates the `tempo`/`loki` buckets + imports the S3 key.            |
-| `TempoBackend`      | `tempo-backend.ts`      | StatefulSet + WAL PVC + Service `tempo` (3200/4317)       | Traces; S3 blocks in Garage.                                        |
-| `LokiBackend`       | `loki-backend.ts`       | Deployment + Service `loki` (3100)                        | Logs; S3 chunks in Garage; OTLP at `/otlp/v1/logs`.                 |
-| `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)      | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver. |
-| `GrafanaBackend`    | `grafana-backend.ts`    | Deployment + Service `grafana` (3000)                     | UI; Tempo/Loki/Prometheus datasources provisioned.                  |
+| Backend             | File                    | Workload                                                       | Notes                                                                         |
+| ------------------- | ----------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `OtelCollector`     | `otel-collector.ts`     | Deployment + Service `otel-collector` (4317/4318)              | Single OTLP ingress; fans out per signal.                                     |
+| `GarageBackend`     | `garage-backend.ts`     | StatefulSet + PVC + Secret + Service `garage` (3900/3901/3903) | S3 object store for Tempo + Loki (`server --single-node`); admin API on 3903. |
+| `GarageBuckets`     | `garage-buckets.ts`     | one-shot Job (`curl` → Garage admin API)                       | Creates the `tempo`/`loki` buckets + imports the S3 key.                      |
+| `TempoBackend`      | `tempo-backend.ts`      | StatefulSet + WAL PVC + Service `tempo` (3200/4317)            | Traces; S3 blocks in Garage.                                                  |
+| `LokiBackend`       | `loki-backend.ts`       | Deployment + Service `loki` (3100)                             | Logs; S3 chunks in Garage; OTLP at `/otlp/v1/logs`.                           |
+| `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)           | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver.           |
+| `GrafanaBackend`    | `grafana-backend.ts`    | Deployment + Service `grafana` (3000)                          | UI; Tempo/Loki/Prometheus datasources provisioned.                            |
 
 It is **infra-only** today: no service emits telemetry yet, so nothing
 `dependsOn` it. Apps will later export OTLP to `otel-collector:4317` (gRPC) /
@@ -93,10 +93,10 @@ for poking; pass
 `--teardown` to `pulumi destroy` + delete the cluster on exit, `--skip-build` to
 reuse loaded images. This is the real `pulumi up` canary (issue #69); CI runs the
 same script in `.github/workflows/pulumi-smoke.yml` (without `--teardown` — the
-runner is ephemeral). CI sets `SMOKE_BUILD_CACHE=gha` so the service images build
-the first one to prime the shared `pnpm install` / `build:packages` layers, then
-the rest in parallel reusing them — through a buildx GitHub Actions layer cache
-that survives between runs. The remote observability images are pre-pulled in the
+runner is ephemeral). CI sets `SMOKE_BUILD_CACHE=gha`: the first service image is
+built alone to prime the shared `pnpm install` / `build:packages` layers, then
+the rest build in parallel reusing them — through a buildx GitHub Actions layer
+cache that survives between runs. The remote observability images are pre-pulled in the
 background (tags read from `components/observability/*.ts`) to overlap their pull
 with the builds.
 
@@ -216,8 +216,8 @@ Three layers guard the program, cheapest first:
   streams the consumers need), and migration ordering against the per-service
   roles. Because it is heavy (~minutes), the `smoke` job is kept off the routine
   PR path — it runs on merges to `main`, nightly, manual dispatch, and PRs
-  labeled `smoke`. The `prod-preview` job in the same workflow (`pulumi
-preview`s the `prod` stub) still runs on every PR that touches infra.
+  labeled `smoke`. The `prod-preview` job in the same workflow (which
+  `pulumi preview`s the `prod` stub) still runs on every PR that touches infra.
 
 ## Notes
 

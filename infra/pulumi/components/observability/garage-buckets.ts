@@ -6,13 +6,25 @@ import * as pulumi from "@pulumi/pulumi";
 // admin API (HTTP) with curl — `curlimages/curl` ships a busybox shell.
 const CURL_IMAGE = "curlimages/curl:8.20.0";
 
+// Fixed k8s name for the bootstrap Job (and its script ConfigMap). The kind
+// smoke gates on `job/garage-buckets` by this exact name, so it must not inherit
+// the parent stack's component-name prefix (`tix-garage-buckets`) — this mirrors
+// how the sibling backends fix their metadata names independent of the Pulumi
+// resource name (e.g. `otel-collector`).
+const JOB_NAME = "garage-buckets";
+
+// The buckets Tempo/Loki store into. A closed set so a typo is a compile error
+// and Tempo/Loki can only ask for a bucket this Job actually creates.
+export type GarageBucketName = "tempo" | "loki";
+
 export type GarageBucketsArgs = {
   namespace: pulumi.Input<string>;
   // Base URL of the Garage admin API, e.g. `http://garage:3903`.
   adminEndpoint: string;
   // Secret carrying GARAGE_ADMIN_TOKEN (bearer) + the S3 access key / secret to import.
   credentialsSecretName: pulumi.Input<string>;
-  buckets: string[];
+  // Non-empty: the Job always has at least one bucket to create + grant.
+  buckets: readonly [GarageBucketName, ...GarageBucketName[]];
   keyName: string;
 };
 
@@ -34,7 +46,7 @@ export class GarageBuckets extends pulumi.ComponentResource {
     this.configMap = new k8s.core.v1.ConfigMap(
       `${name}-script`,
       {
-        metadata: { name: `${name}-script`, namespace: args.namespace },
+        metadata: { name: `${JOB_NAME}-script`, namespace: args.namespace },
         data: {
           "garage-init.sh": renderInitScript(args.adminEndpoint, args.buckets, args.keyName),
         },
@@ -45,14 +57,14 @@ export class GarageBuckets extends pulumi.ComponentResource {
     this.job = new k8s.batch.v1.Job(
       `${name}-job`,
       {
-        metadata: { name, namespace: args.namespace },
+        metadata: { name: JOB_NAME, namespace: args.namespace },
         spec: {
           backoffLimit: 5,
           ttlSecondsAfterFinished: 600,
           template: {
             metadata: {
               labels: {
-                "app.kubernetes.io/name": name,
+                "app.kubernetes.io/name": JOB_NAME,
                 "app.kubernetes.io/component": "bootstrap",
               },
             },
@@ -80,11 +92,17 @@ export class GarageBuckets extends pulumi.ComponentResource {
 }
 
 // Generated bootstrap script, run by curl against the Garage admin API. Idempotent:
-// CreateBucket / ImportKey tolerate an already-provisioned node (falling back to
-// GetBucketInfo for the bucket id), and AllowBucketKey is a no-op when the grant
-// already exists. Auth is the GARAGE_ADMIN_TOKEN bearer; the S3 key to import
-// comes from GARAGE_S3_ACCESS_KEY / GARAGE_S3_SECRET_KEY.
-function renderInitScript(adminEndpoint: string, buckets: string[], keyName: string): string {
+// CreateBucket falls back to GetBucketInfo for the bucket id, and ImportKey
+// tolerates an already-imported key — but only after confirming the key is in
+// fact present, so a real failure (bad token, schema drift) still aborts rather
+// than being swallowed. Each grant is read back to confirm it stuck. Auth is the
+// GARAGE_ADMIN_TOKEN bearer; the S3 key comes from GARAGE_S3_ACCESS_KEY /
+// GARAGE_S3_SECRET_KEY.
+function renderInitScript(
+  adminEndpoint: string,
+  buckets: readonly GarageBucketName[],
+  keyName: string,
+): string {
   const perBucket = buckets
     .map(
       (b) => `
@@ -94,6 +112,12 @@ if [ -z "$bucket_id" ]; then
   exit 1
 fi
 api AllowBucketKey "{\\"bucketId\\":\\"$bucket_id\\",\\"accessKeyId\\":\\"$GARAGE_S3_ACCESS_KEY\\",\\"permissions\\":{\\"read\\":true,\\"write\\":true,\\"owner\\":true}}" >/dev/null
+# Read the grant back: a 2xx that didn't actually attach the key would otherwise
+# surface only later as opaque S3 AccessDenied errors in Tempo/Loki.
+if ! curl -fsS "$ADMIN/v2/GetBucketInfo?globalAlias=${b}" -H "$AUTH" 2>/dev/null | grep -q "$GARAGE_S3_ACCESS_KEY"; then
+  echo "garage-buckets: grant for $GARAGE_S3_ACCESS_KEY on ${b} did not stick" >&2
+  exit 1
+fi
 echo "garage-buckets: granted ${keyName} on ${b} ($bucket_id)"`,
     )
     .join("\n");
@@ -127,8 +151,21 @@ until curl -fsS "$ADMIN/v2/GetClusterHealth" -H "$AUTH" 2>/dev/null | grep -qE '
   sleep 1
 done
 
-# Import the predetermined S3 key (ignore "already exists" on reruns).
-api ImportKey "{\\"accessKeyId\\":\\"$GARAGE_S3_ACCESS_KEY\\",\\"secretAccessKey\\":\\"$GARAGE_S3_SECRET_KEY\\",\\"name\\":\\"${keyName}\\"}" >/dev/null 2>&1 || true
+# Import the predetermined S3 key. ImportKey is not cleanly idempotent — on a
+# rerun where the key already exists it errors — so tolerate failure only when
+# the key is in fact already present; anything else (bad admin token, API schema
+# drift) must abort instead of being masked by a blanket "|| true".
+import_key() {
+  if api ImportKey "{\\"accessKeyId\\":\\"$GARAGE_S3_ACCESS_KEY\\",\\"secretAccessKey\\":\\"$GARAGE_S3_SECRET_KEY\\",\\"name\\":\\"${keyName}\\"}" >/dev/null 2>&1; then
+    return 0
+  fi
+  if curl -fsS "$ADMIN/v2/GetKeyInfo?id=$GARAGE_S3_ACCESS_KEY" -H "$AUTH" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "garage-buckets: ImportKey failed and key $GARAGE_S3_ACCESS_KEY is absent" >&2
+  return 1
+}
+import_key
 echo "garage-buckets: key ${keyName} present"
 
 # Create the bucket if absent, else look it up; echo its id.

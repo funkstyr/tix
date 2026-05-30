@@ -1,6 +1,8 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import type { GarageBucketName } from "./garage-buckets.ts";
+
 // Loki (logs), single-binary mode (`-target=all`, the default). Chunks + index
 // land in Garage (S3). Config syntax targets Loki 3.x (tsdb / schema v13 / native
 // OTLP ingest at /otlp/v1/logs).
@@ -11,7 +13,7 @@ const HTTP_PORT = 3100;
 export type LokiBackendArgs = {
   namespace: pulumi.Input<string>;
   s3Endpoint: string;
-  bucket: string;
+  bucket: GarageBucketName;
   credentialsSecretName: pulumi.Input<string>;
 };
 

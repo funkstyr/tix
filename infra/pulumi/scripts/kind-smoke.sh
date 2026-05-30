@@ -16,8 +16,9 @@
 # Usage:
 #   infra/pulumi/scripts/kind-smoke.sh [--teardown] [--skip-build] [--stack NAME]
 #
-#   --teardown     pulumi destroy + delete the kind cluster on exit (CI default;
-#                  locally the cluster is kept so you can poke at it afterwards).
+#   --teardown     pulumi destroy + delete the kind cluster on exit. Local
+#                  cleanup only — CI does NOT pass this (the runner is ephemeral),
+#                  and without it the cluster is kept so you can poke at it.
 #   --skip-build   reuse images already loaded into the cluster (fast reruns).
 #   --stack NAME   Pulumi stack to use (default: kind-smoke; throwaway, local
 #                  file backend, stub secrets — never point this at real ones).
@@ -35,7 +36,6 @@ INGRESS_NGINX_REF="${INGRESS_NGINX_REF:-controller-v1.12.1}"
 TEARDOWN=""
 SKIP_BUILD=""
 SERVICES=(auth tickets orders payments expiration gateway web)
-HTTP_DEPLOYMENTS=(auth tickets orders payments gateway web)
 MIGRATED=(auth tickets orders payments expiration)
 # Discrete observability backends (ADR-0009). Split by workload kind so the
 # rollout waits use the right resource type; all are remote images (pulled).
@@ -95,7 +95,10 @@ teardown() {
   fi
   if [[ -n "$TEARDOWN" ]]; then
     log "tearing down (pulumi destroy + kind delete)"
-    pulumi -C "$PULUMI_DIR" destroy --stack "$STACK" --yes --skip-preview 2>/dev/null || true
+    # Deleting the cluster orphans any half-removed Pulumi state, so surface a
+    # failed destroy rather than swallowing it — kind-teardown.sh clears the rest.
+    pulumi -C "$PULUMI_DIR" destroy --stack "$STACK" --yes --skip-preview 2>/dev/null \
+      || log "pulumi destroy failed; deleting cluster anyway — run kind-teardown.sh to clear stack state"
     kind delete cluster --name "$CLUSTER" 2>/dev/null || true
   else
     log "cluster '$CLUSTER' / stack '$STACK' left running — rerun with --teardown to clean up"
@@ -168,8 +171,14 @@ prepull_observability() {
       | sed -E 's/.*"([^"]+)".*/\1/' | sort -u
   )
   for img in "${imgs[@]}"; do
-    docker pull -q "$img" >/dev/null 2>&1 \
-      && kind load docker-image "$img" --name "$CLUSTER" >/dev/null 2>&1 || true
+    if docker pull -q "$img" >/dev/null 2>&1 \
+      && kind load docker-image "$img" --name "$CLUSTER" >/dev/null 2>&1; then
+      :
+    else
+      # Best-effort: the cluster pulls on its own. Leave a breadcrumb so a yanked
+      # tag shows up here instead of as a silent rollout timeout minutes later.
+      echo "  prepull: $img unavailable, cluster will pull on demand" >&2
+    fi
   done
 }
 
@@ -183,13 +192,17 @@ else
   build_image "${SERVICES[0]}" prime
   ok "tix-${SERVICES[0]}:dev"
   build_pids=()
+  build_names=()
   for s in "${SERVICES[@]:1}"; do
     ( build_image "$s" && ok "tix-$s:dev" ) &
     build_pids+=("$!")
+    build_names+=("$s")
   done
-  build_failed=0
-  for pid in "${build_pids[@]}"; do wait "$pid" || build_failed=1; done
-  [[ "$build_failed" -eq 0 ]] || die "one or more service image builds failed"
+  build_failed=()
+  for i in "${!build_pids[@]}"; do
+    wait "${build_pids[$i]}" || build_failed+=("${build_names[$i]}")
+  done
+  [[ "${#build_failed[@]}" -eq 0 ]] || die "service image build(s) failed: ${build_failed[*]}"
 
   # Let the background o11y pre-pull finish before loading service images, so no
   # two `kind load`s hit the cluster at once.
@@ -325,8 +338,11 @@ wait_job otel-smoke-span
 log "querying Tempo for the synthetic trace"
 TEMPO_QUERY='http://tempo:3200/api/search?tags=service.name%3Dsmoke-synthetic'
 found=""
-for _ in $(seq 1 30); do
-  if kubectl -n "$NAMESPACE" run tempo-probe --rm -i --restart=Never --quiet \
+for i in $(seq 1 30); do
+  # Unique pod name per attempt: a fixed name can collide with the previous
+  # iteration's pod still Terminating after `--rm` ("pods 'tempo-probe' already
+  # exists"), which would abort the probe spuriously.
+  if kubectl -n "$NAMESPACE" run "tempo-probe-$i" --rm -i --restart=Never --quiet \
     --image="$CURL_IMAGE" -- curl -fsS "$TEMPO_QUERY" 2>/dev/null | grep -q '"traceID"'; then
     found=1
     break

@@ -1,6 +1,8 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import type { GarageBucketName } from "./garage-buckets.ts";
+
 // Tempo (traces), monolithic single-binary mode. Blocks land in Garage (S3); the
 // WAL + local cache live on a small PVC. Config syntax targets Tempo 3.x.
 const TEMPO_IMAGE = "grafana/tempo:3.0.0";
@@ -11,7 +13,7 @@ const OTLP_GRPC_PORT = 4317;
 export type TempoBackendArgs = {
   namespace: pulumi.Input<string>;
   s3Endpoint: string;
-  bucket: string;
+  bucket: GarageBucketName;
   credentialsSecretName: pulumi.Input<string>;
   storage: string;
 };

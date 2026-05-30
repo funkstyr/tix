@@ -1,19 +1,7 @@
-import * as pulumi from "@pulumi/pulumi";
 import { describe, expect, it } from "vitest";
 
+import { promiseOf } from "../pulumi-mocks.ts";
 import { PrometheusBackend } from "./prometheus-backend.ts";
-
-pulumi.runtime.setMocks({
-  newResource: (args: pulumi.runtime.MockResourceArgs) => ({
-    id: `${args.name}-id`,
-    state: args.inputs,
-  }),
-  call: (args: pulumi.runtime.MockCallArgs) => args.inputs,
-});
-
-function promiseOf<T>(output: pulumi.Output<T>): Promise<T> {
-  return new Promise((resolve) => output.apply(resolve));
-}
 
 function build(): PrometheusBackend {
   return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi" });

@@ -1,28 +1,34 @@
-import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
 import { GarageBackend } from "./observability/garage-backend.ts";
-import { GarageBuckets } from "./observability/garage-buckets.ts";
+import { GarageBuckets, type GarageBucketName } from "./observability/garage-buckets.ts";
 import { GrafanaBackend } from "./observability/grafana-backend.ts";
 import { LokiBackend } from "./observability/loki-backend.ts";
-import { OtelCollector } from "./observability/otel-collector.ts";
+import {
+  OtelCollector,
+  type OtlpGrpcEndpoint,
+  type OtlpHttpLogsEndpoint,
+  type OtlpHttpMetricsEndpoint,
+} from "./observability/otel-collector.ts";
 import { PrometheusBackend } from "./observability/prometheus-backend.ts";
 import { TempoBackend } from "./observability/tempo-backend.ts";
 
 // In-cluster service endpoints. DNS names are deterministic (one Service per
 // backend, named for the backend), so the wiring between components is plain
-// strings rather than threaded Outputs.
+// strings rather than threaded Outputs. The collector fan-out endpoints are
+// branded at definition so each can only be passed to its matching arg.
 const GARAGE_S3_ENDPOINT = "garage:3900";
 const GARAGE_ADMIN_ENDPOINT = "http://garage:3903";
-const TEMPO_OTLP_ENDPOINT = "tempo:4317";
+const TEMPO_OTLP_ENDPOINT = "tempo:4317" as OtlpGrpcEndpoint;
 const TEMPO_URL = "http://tempo:3200";
 const LOKI_URL = "http://loki:3100";
-const LOKI_OTLP_LOGS = "http://loki:3100/otlp/v1/logs";
+const LOKI_OTLP_LOGS = "http://loki:3100/otlp/v1/logs" as OtlpHttpLogsEndpoint;
 const PROMETHEUS_URL = "http://prometheus:9090";
-const PROMETHEUS_OTLP_METRICS = "http://prometheus:9090/api/v1/otlp/v1/metrics";
+const PROMETHEUS_OTLP_METRICS =
+  "http://prometheus:9090/api/v1/otlp/v1/metrics" as OtlpHttpMetricsEndpoint;
 
-const TEMPO_BUCKET = "tempo";
-const LOKI_BUCKET = "loki";
+const TEMPO_BUCKET: GarageBucketName = "tempo";
+const LOKI_BUCKET: GarageBucketName = "loki";
 const S3_KEY_NAME = "tix-observability";
 
 export type ObservabilityStackArgs = {
@@ -52,8 +58,6 @@ export class ObservabilityStack extends pulumi.ComponentResource {
   readonly prometheus: PrometheusBackend;
   readonly grafana: GrafanaBackend;
   readonly collector: OtelCollector;
-  readonly collectorService: k8s.core.v1.Service;
-  readonly grafanaService: k8s.core.v1.Service;
 
   constructor(name: string, args: ObservabilityStackArgs, opts?: pulumi.ComponentResourceOptions) {
     super("tix:infra:ObservabilityStack", name, args, opts);
@@ -144,9 +148,6 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       },
       { parent: this, dependsOn: backends },
     );
-
-    this.collectorService = this.collector.service;
-    this.grafanaService = this.grafana.service;
 
     this.registerOutputs({
       garage: this.garage,

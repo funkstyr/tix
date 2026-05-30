@@ -75,3 +75,13 @@ jobs:
       - name: Pulumi preview
         working-directory: infra/pulumi
         run: pulumi preview --non-interactive --diff
+
+  # The kind smoke scripts are now load-bearing CI infrastructure, so lint them.
+  # shellcheck ships preinstalled on ubuntu-latest.
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Shellcheck the kind smoke scripts
+        run: shellcheck infra/pulumi/scripts/*.sh

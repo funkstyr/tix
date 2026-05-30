@@ -12,15 +12,24 @@ const OTLP_HTTP_PORT = 4318;
 const CONFIG_DIR = "/etc/otelcol";
 const CONFIG_FILE = "config.yaml";
 
+// The three fan-out endpoints are all strings of three *different*, non-
+// interchangeable shapes (bare gRPC host:port vs. signal-specific OTLP/HTTP
+// URLs). Branding them keeps the metrics URL from being passed where the logs
+// URL belongs — a transposition the plain `string` type happily accepted and
+// neither `pulumi preview` nor the type-checker would have caught.
+export type OtlpGrpcEndpoint = string & { readonly __brand: "OtlpGrpcEndpoint" };
+export type OtlpHttpLogsEndpoint = string & { readonly __brand: "OtlpHttpLogsEndpoint" };
+export type OtlpHttpMetricsEndpoint = string & { readonly __brand: "OtlpHttpMetricsEndpoint" };
+
 export type OtelCollectorArgs = {
   namespace: pulumi.Input<string>;
   // gRPC OTLP endpoint of the trace backend, bare host:port (e.g. `tempo:4317`).
-  tempoEndpoint: string;
+  tempoEndpoint: OtlpGrpcEndpoint;
   // Full OTLP/HTTP logs URL of the log backend (e.g. `http://loki:3100/otlp/v1/logs`).
-  lokiLogsEndpoint: string;
+  lokiLogsEndpoint: OtlpHttpLogsEndpoint;
   // Full OTLP/HTTP metrics URL of the metrics backend
   // (e.g. `http://prometheus:9090/api/v1/otlp/v1/metrics`).
-  prometheusMetricsEndpoint: string;
+  prometheusMetricsEndpoint: OtlpHttpMetricsEndpoint;
 };
 
 // The gateway collector. Apps export OTLP here (`otel-collector:4317` gRPC /
