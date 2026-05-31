@@ -9,7 +9,7 @@ if (existsSync(".env")) process.loadEnvFile(".env");
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/orders-schema.ts",
+  schema: "./src/domain/schema.ts",
   out: "./drizzle",
   schemaFilter: ["orders"],
   // Migration log lives in this service's own schema, not the shared global
