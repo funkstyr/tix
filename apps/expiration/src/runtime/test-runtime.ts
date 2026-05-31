@@ -1,0 +1,94 @@
+import type { NatsConnection } from "@nats-io/transport-node";
+import { Layer, Logger, ManagedRuntime } from "effect";
+
+import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
+import { type DelayedScheduler } from "@tix/messaging/jobs";
+import { createLogger } from "@tix/observability/logger";
+
+import type { ExpireOrderPayload } from "../expire-order-job.ts";
+import type { ExpirationEnv } from "./config.ts";
+import type { ExpirationRuntime } from "./runtime.ts";
+import {
+  Database,
+  EventPublisher,
+  ExpirationConfig,
+  type ExpirationDb,
+  Nats,
+  Scheduler,
+} from "./services.ts";
+
+export type ExpirationTestDeps = {
+  db: ExpirationDb;
+  nats?: NatsConnection;
+  scheduler?: DelayedScheduler<ExpireOrderPayload>;
+  // Overrides the nats-backed publisher — e.g. to simulate a lost ack and force a
+  // BullMQ retry that JetStream then dedupes.
+  publisher?: Publisher;
+};
+
+// Builds a ManagedRuntime from explicit, already-constructed collaborators instead of the
+// env-driven resource layers, so integration tests drive the same Effect programs the
+// consumer and worker run in production. The caller owns the lifecycle of the `nats`
+// connection and `scheduler` it passes in (closed in test teardown); OTLP is omitted —
+// logs go through Effect's pretty logger. Any collaborator a given test omits gets a
+// throwing stub so an accidental dependency surfaces loudly.
+export function createExpirationTestRuntime(deps: ExpirationTestDeps): ExpirationRuntime {
+  const logger = createLogger({ name: "expiration-test", level: "fatal" });
+
+  const base = Layer.mergeAll(
+    Layer.succeed(ExpirationConfig, makeTestEnv()),
+    Layer.succeed(Database, deps.db),
+  );
+
+  const nats = deps.nats;
+  const natsLayer = Layer.succeed(Nats, nats ?? throwingNats());
+
+  const publisher =
+    deps.publisher ??
+    (nats === undefined ? throwingPublisher() : createPublisher(nats, { logger }));
+  const publisherLayer = Layer.succeed(EventPublisher, publisher);
+
+  const schedulerLayer = Layer.succeed(Scheduler, deps.scheduler ?? throwingScheduler());
+
+  return ManagedRuntime.make(
+    Layer.mergeAll(base, natsLayer, publisherLayer, schedulerLayer, Logger.pretty),
+  );
+}
+
+function makeTestEnv(): ExpirationEnv {
+  return {
+    databaseUrl: "postgres://test",
+    natsUrl: "nats://test",
+    redis: { host: "localhost", port: 6379 },
+    stream: "ORDERS",
+    otelEndpoint: "http://otel.test:4318",
+    logLevel: "fatal",
+  };
+}
+
+function throwingNats(): NatsConnection {
+  return new Proxy({} as NatsConnection, {
+    get() {
+      throw new Error("Nats not provided to test runtime");
+    },
+  });
+}
+
+function throwingPublisher(): ReturnType<typeof createPublisher> {
+  return {
+    publish: () => {
+      throw new Error("EventPublisher not provided to test runtime");
+    },
+  };
+}
+
+function throwingScheduler(): DelayedScheduler<ExpireOrderPayload> {
+  return {
+    scheduleDelayed: () => {
+      throw new Error("Scheduler not provided to test runtime");
+    },
+    close: () => {
+      throw new Error("Scheduler not provided to test runtime");
+    },
+  };
+}

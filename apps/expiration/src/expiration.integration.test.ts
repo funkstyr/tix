@@ -1,6 +1,6 @@
 import { jetstreamManager, type PubAck, RetentionPolicy, StorageType } from "@nats-io/jetstream";
 import { connect, type NatsConnection } from "@nats-io/transport-node";
-import { Queue, type ConnectionOptions } from "bullmq";
+import { Queue, type ConnectionOptions, type Worker } from "bullmq";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -11,16 +11,25 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { orderExpiredV1, type OrderExpiredV1 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1, ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
-import { createConsumer, createPublisher, type Publisher } from "@tix/messaging/jetstream";
+import {
+  createConsumer,
+  createPublisher,
+  type Publisher,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
+import { createScheduler, type DelayedScheduler } from "@tix/messaging/jobs";
 
+import { startExpirationConsumer } from "./consumers/order-created.consumer.ts";
 import { expirationInbox, expirationTables } from "./expiration-schema.ts";
 import {
+  EXPIRATION_JOB_ATTEMPTS,
+  EXPIRATION_JOB_BACKOFF_MS,
   EXPIRATION_JOB_NAME,
   EXPIRATION_QUEUE,
-  startExpirationService,
   type ExpireOrderPayload,
-  type RunningExpirationService,
-} from "./expiration-service.ts";
+} from "./expire-order-job.ts";
+import { startExpireOrderWorker } from "./expire/expire-order.worker.ts";
+import { createExpirationTestRuntime } from "./runtime/test-runtime.ts";
 
 const expirationMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -44,8 +53,14 @@ let redisContainer: StartedTestContainer | undefined;
 let nats: NatsConnection | undefined;
 let db: ExpirationDbClient | undefined;
 let redis: ConnectionOptions | undefined;
-let service: RunningExpirationService | undefined;
 let streamName: string | undefined;
+
+// Per-test handles. The consumer schedules jobs; the worker fires them; the scheduler is
+// the BullMQ queue both the worker (production wiring) and the worker tests (direct
+// scheduling) use.
+let consumer: RunningConsumer | undefined;
+let worker: Worker<ExpireOrderPayload, void> | undefined;
+let scheduler: DelayedScheduler<ExpireOrderPayload> | undefined;
 
 // BullMQ + ioredis emit a `Connection is closed.` rejection when the worker's
 // blocking BRPOPLPUSH resolves after `worker.close()`. It's harmless shutdown
@@ -109,6 +124,11 @@ function requireHarness(): {
   return { db, nats, redis, stream: streamName };
 }
 
+function requireScheduler(): DelayedScheduler<ExpireOrderPayload> {
+  if (!scheduler) throw new Error("scheduler not started");
+  return scheduler;
+}
+
 beforeEach(async () => {
   if (!dockerAvailable) return;
   streamName = `S_${randomUUID().replace(/-/g, "")}`;
@@ -131,18 +151,34 @@ beforeEach(async () => {
     storage: StorageType.Memory,
   });
 
-  service = await startExpirationService({
+  // Mirror the production SchedulerLayer's retry config so the lost-ack test's failed job
+  // actually retries (the at-least-once path JetStream then dedupes).
+  scheduler = createScheduler<ExpireOrderPayload>(harness.redis, {
+    queueName: EXPIRATION_QUEUE,
+    defaultJobOptions: {
+      attempts: EXPIRATION_JOB_ATTEMPTS,
+      backoff: { type: "exponential", delay: EXPIRATION_JOB_BACKOFF_MS },
+    },
+  });
+
+  const runtime = createExpirationTestRuntime({
     db: harness.db,
     nats: harness.nats,
-    stream: harness.stream,
-    redis: harness.redis,
+    scheduler,
   });
+
+  worker = startExpireOrderWorker({ runtime, redis: harness.redis });
+  consumer = await startExpirationConsumer({ runtime, nats: harness.nats, stream: harness.stream });
 });
 
 afterEach(async () => {
   if (!dockerAvailable) return;
-  await service?.stop();
-  service = undefined;
+  await consumer?.stop();
+  consumer = undefined;
+  await worker?.close();
+  worker = undefined;
+  await scheduler?.close();
+  scheduler = undefined;
 
   if (nats && streamName) {
     const manager = await jetstreamManager(nats);
@@ -208,7 +244,7 @@ async function awaitExpiredEvent(
     resolveEvent = r;
   });
 
-  const consumer = await createConsumer(nc, {
+  const expiredConsumer = await createConsumer(nc, {
     stream,
     subjectFilter: ORDER_EXPIRED_V1,
     group: `test-expired-${randomUUID()}`,
@@ -223,7 +259,7 @@ async function awaitExpiredEvent(
   try {
     return await received;
   } finally {
-    await consumer.stop();
+    await expiredConsumer.stop();
   }
 }
 
@@ -245,7 +281,7 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
       const job = await queue.getJob(orderId);
       expect(job).toBeTruthy();
       expect(job?.id).toBe(orderId);
-      expect(job?.data).toEqual({ orderId, expiredAt: expiresAt });
+      expect(job?.data).toMatchObject({ orderId, expiredAt: expiresAt });
     } finally {
       await queue.close();
     }
@@ -305,8 +341,8 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
 
       const jobA = await queue.getJob(orderA);
       const jobB = await queue.getJob(orderB);
-      expect(jobA?.data).toEqual({ orderId: orderA, expiredAt: expiresA });
-      expect(jobB?.data).toEqual({ orderId: orderB, expiredAt: expiresB });
+      expect(jobA?.data).toMatchObject({ orderId: orderA, expiredAt: expiresA });
+      expect(jobB?.data).toMatchObject({ orderId: orderB, expiredAt: expiresB });
 
       const inboxRows = await dbRef.db.select().from(expirationInbox);
       expect(inboxRows).toHaveLength(2);
@@ -319,12 +355,11 @@ describe.skipIf(!dockerAvailable)("expiration consumer", () => {
 describe.skipIf(!dockerAvailable)("expiration worker", () => {
   it("publishes a schema-valid order.expired.v1 after the scheduled delay", async () => {
     const { nats: nc, stream } = requireHarness();
-    if (!service) throw new Error("service not started");
 
     const orderId = randomUUID();
     const expiredAt = new Date(Date.now() + 200).toISOString();
     const scheduledAt = Date.now();
-    await service.scheduler.scheduleDelayed(
+    await requireScheduler().scheduleDelayed(
       EXPIRATION_JOB_NAME,
       { orderId, expiredAt },
       200,
@@ -342,10 +377,13 @@ describe.skipIf(!dockerAvailable)("expiration worker", () => {
   it("dedupes via JetStream msgId when a publish ack is lost and BullMQ retries", async () => {
     const { db: dbRef, nats: nc, redis: redisRef, stream } = requireHarness();
 
-    // Tear down the auto-started service so we can inject a publisher that simulates
-    // a lost ack: the first publish reaches JetStream successfully, but the handler
-    // throws afterward — forcing a BullMQ retry that should be dedup'd server-side.
-    await service?.stop();
+    // Tear down the auto-started worker so only the lossy-publisher worker processes the
+    // queue. The injected publisher simulates a lost ack: the first publish reaches
+    // JetStream successfully, but the handler throws afterward — forcing a BullMQ retry
+    // that should be dedup'd server-side.
+    await consumer?.stop();
+    consumer = undefined;
+    await worker?.close();
 
     const realPublisher = createPublisher(nc);
     const acks: PubAck[] = [];
@@ -360,24 +398,24 @@ describe.skipIf(!dockerAvailable)("expiration worker", () => {
       },
     };
 
-    service = await startExpirationService({
+    const runtime = createExpirationTestRuntime({
       db: dbRef,
       nats: nc,
-      stream,
-      redis: redisRef,
+      scheduler: requireScheduler(),
       publisher: lossyPublisher,
     });
+    worker = startExpireOrderWorker({ runtime, redis: redisRef });
 
     // Resolve once BullMQ has marked the retried job completed; without waiting
     // for this, tearing the worker down while the completion write is in flight
     // surfaces an ioredis "Connection is closed" unhandled rejection.
     const retryCompleted = new Promise<void>((resolve) => {
-      service?.worker.once("completed", () => resolve());
+      worker?.once("completed", () => resolve());
     });
 
     const orderId = randomUUID();
     const expiredAt = new Date(Date.now() + 50).toISOString();
-    await service.scheduler.scheduleDelayed(
+    await requireScheduler().scheduleDelayed(
       EXPIRATION_JOB_NAME,
       { orderId, expiredAt },
       50,
@@ -397,11 +435,10 @@ describe.skipIf(!dockerAvailable)("expiration worker", () => {
 
   it("leaves no delayed or waiting jobs after a successful fire", async () => {
     const { nats: nc, redis: redisRef, stream } = requireHarness();
-    if (!service) throw new Error("service not started");
 
     const orderId = randomUUID();
     const expiredAt = new Date(Date.now() + 100).toISOString();
-    await service.scheduler.scheduleDelayed(
+    await requireScheduler().scheduleDelayed(
       EXPIRATION_JOB_NAME,
       { orderId, expiredAt },
       100,
