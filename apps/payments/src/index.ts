@@ -1,124 +1,101 @@
 import { serve } from "@hono/node-server";
-import { connect } from "@nats-io/transport-node";
-import { ArkErrors, type } from "arktype";
-import type { Level } from "pino";
-import Stripe from "stripe";
+import { Cause, Effect, Exit, Fiber } from "effect";
 
-import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
-import { PAYMENTS_STREAM } from "@tix/contracts/subjects";
-import { createDbClient } from "@tix/db-core/client";
 import { startOutboxRelay } from "@tix/db-core/outbox";
-import { createPublisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
-import { createPaymentsApp } from "./payments-app.ts";
 import {
   startPaymentsOrderCancelledConsumer,
   startPaymentsOrderCreatedConsumer,
-} from "./payments-consumer.ts";
-import { paymentsOutbox, paymentsTables } from "./payments-schema.ts";
-import { createStripePaymentIntentClient } from "./stripe-payment-intent.ts";
+} from "./consumers/order-projection.consumer.ts";
+import { paymentsOutbox } from "./domain/schema.ts";
+import { createPaymentsApp } from "./http/app.ts";
+import { parseEnv } from "./runtime/config.ts";
+import { makePaymentsRuntime } from "./runtime/runtime.ts";
+import { Database, EventPublisher, Nats } from "./runtime/services.ts";
 
-const DEFAULT_PORT = 4004;
-
-const envSchema = type({
-  "PAYMENTS_HTTP_PORT?": "string.numeric.parse",
-  DATABASE_URL: "string > 0",
-  AUTH_BASE_URL: "string > 0",
-  NATS_URL: "string > 0",
-  STRIPE_KEY: "string > 0",
-  "PAYMENTS_STREAM?": "string > 0",
-  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
-});
-
-type Env = {
-  port: number;
-  databaseUrl: string;
-  authBaseUrl: string;
-  natsUrl: string;
-  stripeKey: string;
-  stream: string;
-  logLevel: Level;
-};
-
-function parseEnv(): Env {
-  const parsed = envSchema(process.env);
-  if (parsed instanceof ArkErrors) {
-    throw new Error(`invalid environment: ${parsed.summary}`);
-  }
-
-  const port = parsed.PAYMENTS_HTTP_PORT ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid PAYMENTS_HTTP_PORT: ${port}`);
-  }
-
-  return {
-    port,
-    databaseUrl: parsed.DATABASE_URL,
-    authBaseUrl: parsed.AUTH_BASE_URL,
-    natsUrl: parsed.NATS_URL,
-    stripeKey: parsed.STRIPE_KEY,
-    stream: parsed.PAYMENTS_STREAM ?? PAYMENTS_STREAM,
-    logLevel: parsed.LOG_LEVEL ?? "info",
-  };
-}
-
+// Last-resort logger for boot/shutdown failures outside the runtime's lifecycle.
 const fallbackLogger = createLogger({ name: "payments" });
 
-async function main(): Promise<void> {
-  const env = parseEnv();
-  const logger = createLogger({ name: "payments", level: env.logLevel });
+const env = parseEnv();
+const runtime = makePaymentsRuntime(env);
 
-  const db = createDbClient("payments", env.databaseUrl, { schema: paymentsTables });
-  const authClient = createHttpAuthSessionClient(env.authBaseUrl);
-  const stripe = new Stripe(env.stripeKey);
-  const paymentIntentClient = createStripePaymentIntentClient(stripe);
+// The boot program acquires the relay, the two consumers, and the HTTP server as scoped
+// resources, then parks on `Effect.never`. Interrupting the fiber runs the Scope finalizers
+// LIFO (server → consumers → relay); disposing the runtime then closes the NATS connection
+// and the db pool. This replaces the hand-rolled imperative construction and reverse-order
+// shutdown.
+const program = Effect.gen(function* () {
+  const db = yield* Database;
+  const publisher = yield* EventPublisher;
+  const nats = yield* Nats;
 
-  const nats = await connect({ servers: env.natsUrl });
-  const publisher = createPublisher(nats, { logger });
-  const relay = startOutboxRelay(db.db, paymentsOutbox, publisher.publish, { logger });
+  yield* Effect.acquireRelease(
+    Effect.sync(() => startOutboxRelay(db.db, paymentsOutbox, publisher.publish)),
+    (relay) => Effect.promise(() => relay.stop()),
+  );
 
-  const orderCreatedConsumer = await startPaymentsOrderCreatedConsumer({
-    db,
-    nats,
-    stream: env.stream,
-    logger,
-  });
+  yield* Effect.acquireRelease(
+    Effect.promise(() => startPaymentsOrderCreatedConsumer({ runtime, nats, stream: env.stream })),
+    (consumer) => Effect.promise(() => consumer.stop()),
+  );
 
-  const orderCancelledConsumer = await startPaymentsOrderCancelledConsumer({
-    db,
-    nats,
-    stream: env.stream,
-    logger,
-  });
+  yield* Effect.acquireRelease(
+    Effect.promise(() =>
+      startPaymentsOrderCancelledConsumer({ runtime, nats, stream: env.stream }),
+    ),
+    (consumer) => Effect.promise(() => consumer.stop()),
+  );
 
-  const app = createPaymentsApp({ db, authClient, paymentIntentClient, logger });
+  const app = createPaymentsApp(runtime);
 
-  const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
-    logger.info({ port: info.port }, "payments service listening");
-  });
+  yield* Effect.acquireRelease(
+    Effect.async<ReturnType<typeof serve>>((resume) => {
+      const server = serve({ fetch: app.fetch, port: env.port }, () => {
+        resume(Effect.succeed(server));
+      });
+    }),
+    (server) =>
+      Effect.async<void>((resume) => {
+        server.close((err) => resume(err ? Effect.die(err) : Effect.void));
+      }),
+  );
 
-  let shuttingDown = false;
-  const shutdown = async (signal: string): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
+  yield* Effect.logInfo("payments service listening").pipe(Effect.annotateLogs({ port: env.port }));
 
-    logger.info({ signal }, "shutting down payments service");
-    await new Promise<void>((resolve, reject) => {
-      server.close((err) => (err ? reject(err) : resolve()));
+  yield* Effect.never;
+});
+
+// `Effect.scoped` ties the acquired resources to this fiber's lifetime: parking on
+// `Effect.never` keeps them open, and interrupting the fiber closes the scope, running the
+// finalizers LIFO.
+const fiber = runtime.runFork(Effect.scoped(program));
+
+let shuttingDown = false;
+
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  fallbackLogger.info({ signal }, "shutting down payments service");
+
+  void Effect.runPromise(Fiber.interrupt(fiber))
+    .then(() => runtime.dispose())
+    .then(() => process.exit(0))
+    .catch((err: unknown) => {
+      fallbackLogger.fatal({ err }, "error during payments shutdown");
+      process.exit(1);
     });
-    await orderCancelledConsumer.stop();
-    await orderCreatedConsumer.stop();
-    await relay.stop();
-    await nats.close();
-    await db.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-main().catch((err: unknown) => {
-  fallbackLogger.fatal({ err }, "payments service failed to start");
-  process.exit(1);
+// A failure before shutdown (e.g. NATS unreachable at boot) tears the runtime down and
+// exits non-zero, mirroring the old `main().catch`.
+fiber.addObserver((exit) => {
+  if (shuttingDown || Exit.isSuccess(exit)) return;
+
+  fallbackLogger.fatal({ cause: Cause.pretty(exit.cause) }, "payments service failed");
+  void runtime.dispose().finally(() => process.exit(1));
 });
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

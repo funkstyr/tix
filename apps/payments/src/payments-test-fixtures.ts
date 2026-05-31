@@ -11,7 +11,7 @@ import type { AuthRouterClient } from "@tix/contracts/auth";
 import { createInProcessAuthSessionClient } from "@tix/contracts/auth-client";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 
-import { orderReadModel, paymentsTables } from "./payments-schema.ts";
+import { orderReadModel, paymentsTables } from "./domain/schema.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_BASE_URL = "http://localhost:4004";

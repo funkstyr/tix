@@ -7,7 +7,7 @@ import { paymentCreatedV1, type PaymentIntentStatus } from "@tix/contracts/payme
 import { PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
-import { payments, paymentsOutbox, type paymentsTables } from "./payments-schema.ts";
+import { payments, paymentsOutbox, type paymentsTables } from "./domain/schema.ts";
 
 type PaymentsDb = PostgresJsDatabase<typeof paymentsTables>;
 
@@ -62,7 +62,7 @@ export async function recordPayment(
       });
     }
 
-    return { id: existing.id, status: existing.status as PaymentIntentStatus };
+    return { id: existing.id, status: existing.status };
   }
 
   const payload = paymentCreatedV1.assert({
