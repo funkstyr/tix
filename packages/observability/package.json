@@ -23,6 +23,18 @@
     "./otel-layer": {
       "types": "./dist/otel-layer.d.ts",
       "import": "./dist/otel-layer.js"
+    },
+    "./otel-context": {
+      "types": "./dist/otel-context.d.ts",
+      "import": "./dist/otel-context.js"
+    },
+    "./otel-trace": {
+      "types": "./dist/otel-trace.d.ts",
+      "import": "./dist/otel-trace.js"
+    },
+    "./otel-http": {
+      "types": "./dist/otel-http.d.ts",
+      "import": "./dist/otel-http.js"
     }
   },
   "scripts": {
@@ -35,6 +47,8 @@
     "@effect/opentelemetry": "catalog:",
     "@effect/platform": "catalog:",
     "@opentelemetry/api": "catalog:",
+    "@opentelemetry/context-async-hooks": "catalog:",
+    "@opentelemetry/core": "catalog:",
     "@opentelemetry/resources": "catalog:",
     "@opentelemetry/sdk-logs": "catalog:",
     "@opentelemetry/sdk-metrics": "catalog:",
@@ -55,6 +69,8 @@
     "@effect/opentelemetry": "catalog:",
     "@effect/platform": "catalog:",
     "@opentelemetry/api": "catalog:",
+    "@opentelemetry/context-async-hooks": "catalog:",
+    "@opentelemetry/core": "catalog:",
     "@opentelemetry/resources": "catalog:",
     "@opentelemetry/sdk-logs": "catalog:",
     "@opentelemetry/sdk-metrics": "catalog:",

@@ -12,7 +12,6 @@ import {
   AuthClient,
   Database,
   EventPublisher,
-  InfraLogger,
   Nats,
   type OrdersDb,
   OrdersConfig,
@@ -34,9 +33,7 @@ export type OrdersTestDeps = {
 // `@effect/vitest` in scope so TTL/expiry assertions are deterministic.
 export function createOrdersTestLayer(
   deps: OrdersTestDeps,
-): Layer.Layer<
-  OrdersConfig | Database | InfraLogger | AuthClient | Tickets | EventPublisher | Nats
-> {
+): Layer.Layer<OrdersConfig | Database | AuthClient | Tickets | EventPublisher | Nats> {
   const env = makeTestEnv(deps.reservationTtlMs ?? DEFAULT_RESERVATION_TTL_MS);
   const logger = createLogger({ name: "orders-test", level: "fatal" });
   const nats = deps.nats;
@@ -44,7 +41,6 @@ export function createOrdersTestLayer(
   return Layer.mergeAll(
     Layer.succeed(OrdersConfig, env),
     Layer.succeed(Database, deps.db),
-    Layer.succeed(InfraLogger, logger),
     Layer.succeed(AuthClient, deps.authClient ?? throwingAuthClient()),
     Layer.succeed(Tickets, deps.ticketsClient ?? throwingTicketsClient()),
     Layer.succeed(Nats, nats ?? throwingNats()),
@@ -63,11 +59,7 @@ export function createOrdersTestRuntime(deps: OrdersTestDeps): OrdersRuntime {
   const env = makeTestEnv(deps.reservationTtlMs ?? DEFAULT_RESERVATION_TTL_MS);
   const logger = createLogger({ name: "orders-test", level: "fatal" });
 
-  const base = Layer.mergeAll(
-    Layer.succeed(OrdersConfig, env),
-    Layer.succeed(Database, deps.db),
-    Layer.succeed(InfraLogger, logger),
-  );
+  const base = Layer.mergeAll(Layer.succeed(OrdersConfig, env), Layer.succeed(Database, deps.db));
 
   // Auth/Tickets/Nats/Publisher are only needed by the handlers/consumers a given
   // test exercises; provide a throwing stub for any the test omits so an accidental

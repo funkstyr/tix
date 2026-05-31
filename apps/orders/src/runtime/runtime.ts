@@ -1,6 +1,7 @@
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import { Layer, Logger, ManagedRuntime } from "effect";
 
+import { globalContextManagerLayer } from "@tix/observability/otel-context";
 import { otlpLayer } from "@tix/observability/otel-layer";
 
 import type { OrdersEnv } from "./config.ts";
@@ -11,8 +12,6 @@ import {
   DatabaseLayer,
   EventPublisher,
   EventPublisherLayer,
-  InfraLogger,
-  InfraLoggerLayer,
   Nats,
   NatsLayer,
   makeOrdersConfigLayer,
@@ -23,26 +22,24 @@ import {
 
 // Every service the orders runtime exposes. Handlers, consumers, and the relay
 // program against this `R` channel.
-export type OrdersServices =
-  | OrdersConfig
-  | Database
-  | Nats
-  | EventPublisher
-  | AuthClient
-  | Tickets
-  | InfraLogger;
+export type OrdersServices = OrdersConfig | Database | Nats | EventPublisher | AuthClient | Tickets;
 
 export type OrdersRuntime = ManagedRuntime.ManagedRuntime<OrdersServices, never>;
 
-// Logs export over OTLP with the service name hard-set to "orders" (the endpoint
-// still comes from env, defaulting to the in-cluster collector). Hard-setting the
-// name — rather than reading OTEL_SERVICE_NAME via makeOtelLayer — keeps the error
+// Traces, logs, and metrics export over OTLP with the service name hard-set to "orders"
+// (the endpoint still comes from env, defaulting to the in-cluster collector). Hard-setting
+// the name — rather than reading OTEL_SERVICE_NAME via makeOtelLayer — keeps the error
 // channel `never`, so booting never depends on that env var being present.
+//
+// `globalContextManagerLayer` installs the async context manager that lets the OTLP tracer's
+// span bridge reach the outbox / NATS / outbound-HTTP propagation paths (see otel-context.ts).
+// `Logger.pretty` is local-dev console only; OTLP log export lives inside `otlpLayer`.
 function makeObservabilityLayer(env: OrdersEnv): Layer.Layer<never> {
-  return Layer.merge(
+  return Layer.mergeAll(
     otlpLayer({ serviceName: "orders", baseUrl: env.otelEndpoint }).pipe(
       Layer.provide(FetchHttpClient.layer),
     ),
+    globalContextManagerLayer,
     Logger.pretty,
   );
 }
@@ -54,13 +51,7 @@ function makeObservabilityLayer(env: OrdersEnv): Layer.Layer<never> {
 export function makeOrdersLayer(env: OrdersEnv): Layer.Layer<OrdersServices> {
   const configLayer = makeOrdersConfigLayer(env);
 
-  const resources = Layer.mergeAll(
-    DatabaseLayer,
-    NatsLayer,
-    InfraLoggerLayer,
-    AuthClientLayer,
-    TicketsLayer,
-  );
+  const resources = Layer.mergeAll(DatabaseLayer, NatsLayer, AuthClientLayer, TicketsLayer);
 
   const services = EventPublisherLayer.pipe(
     Layer.provideMerge(resources),

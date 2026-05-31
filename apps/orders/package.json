@@ -28,6 +28,7 @@
     "@effect/platform": "catalog:",
     "@hono/node-server": "catalog:",
     "@nats-io/transport-node": "catalog:",
+    "@opentelemetry/api": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",

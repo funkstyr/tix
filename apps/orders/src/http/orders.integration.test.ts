@@ -1,3 +1,4 @@
+import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { createRouterClient } from "@orpc/server";
 import { createAuth } from "auth/instance";
 import { createAuthRouter } from "auth/router";
@@ -78,7 +79,7 @@ function buildClients(ordersDb: OrdersDbClient, ticketsDb: TicketsDbClient, auth
     });
     const ordersRouter = createOrdersRouter(runtime);
 
-    return createRouterClient(ordersRouter);
+    return createRouterClient(ordersRouter, { context: { otelParent: ROOT_CONTEXT } });
   }
 
   return {

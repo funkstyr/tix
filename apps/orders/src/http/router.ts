@@ -1,6 +1,7 @@
+import type { Context as OtelContext } from "@opentelemetry/api";
 import { ORPCError, os } from "@orpc/server";
 import { desc, eq } from "drizzle-orm";
-import { Clock, Effect } from "effect";
+import { Clock, Effect, Metric } from "effect";
 import { v7 as uuidv7 } from "uuid";
 
 import { requireSession } from "@tix/contracts/auth-client";
@@ -21,6 +22,7 @@ import {
 } from "@tix/contracts/subjects";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
+import { externalParent } from "@tix/observability/otel-trace";
 
 import {
   BuyerIsSeller,
@@ -31,11 +33,20 @@ import {
 } from "../domain/errors.ts";
 import { orders, ordersOutbox } from "../domain/schema.ts";
 import { transition } from "../domain/state-machine.ts";
+import {
+  ordersCreatedTotal,
+  orderValueCents,
+  reservationConflictsTotal,
+} from "../runtime/metrics.ts";
 import type { OrdersRuntime } from "../runtime/runtime.ts";
 import { AuthClient, Database, type OrdersDb, OrdersConfig, Tickets } from "../runtime/services.ts";
 import { makeRunHandler, tryOrpc } from "./boundary.ts";
 
 const DEFAULT_LIST_LIMIT = 50;
+
+// Threaded from the Hono boundary (app.ts): the inbound request's trace context, so each
+// handler's span continues the caller's trace.
+export type OrdersRequestContext = { otelParent: OtelContext };
 
 // Exported as a standalone program (against the service `R` channel) so tests can
 // run it under an ambient `TestClock` — the router just wraps it with `run`, which
@@ -74,7 +85,9 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
         > => {
           // Lost the race: between getById and reserve, another buyer claimed the seats.
           if (error.code === "CONFLICT") {
-            return Effect.fail(new ReservationConflict({ ticketId: input.ticketId }));
+            return Metric.increment(reservationConflictsTotal).pipe(
+              Effect.zipRight(Effect.fail(new ReservationConflict({ ticketId: input.ticketId }))),
+            );
           }
 
           if (error.code === "NOT_FOUND") {
@@ -134,6 +147,7 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
         return inserted;
       }),
     ).pipe(
+      Effect.withSpan("orders.db.create_order"),
       // The insert (or its outbox enqueue) failed after the seats were reserved.
       // Compensate first, then re-raise the original failure.
       Effect.catchAll((err) =>
@@ -145,154 +159,184 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
       ),
     );
 
+    yield* Metric.increment(ordersCreatedTotal);
+    yield* Metric.update(orderValueCents, priceCents);
+
     return toOrderRecord(row);
   });
+}
+
+// One span per oRPC request, parented onto the inbound trace context when present
+// (otherwise a fresh root). Internal db/transaction spans hang off this one, and the
+// active span here is what `enqueueEvent`/outbound clients capture for propagation.
+function withRequestSpan<A, E, R>(
+  op: string,
+  context: OrdersRequestContext,
+  program: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> {
+  return program.pipe(
+    Effect.withSpan(`orders.rpc.${op}`, { parent: externalParent(context.otelParent) }),
+  );
 }
 
 export function createOrdersRouter(runtime: OrdersRuntime) {
   const run = makeRunHandler(runtime);
 
-  const base = os;
+  const base = os.$context<OrdersRequestContext>();
 
   const create = base
     .input(orderCreateInput)
     .output(orderRecordOutput)
-    .handler(({ input }) => run(createOrderProgram(input)));
+    .handler(({ input, context }) =>
+      run(withRequestSpan("create", context, createOrderProgram(input))),
+    );
 
   const getById = base
     .input(orderGetByIdInput)
     .output(orderRecordOrNullOutput)
-    .handler(({ input }) =>
+    .handler(({ input, context }) =>
       run(
-        Effect.gen(function* () {
-          const authClient = yield* AuthClient;
-          const db = yield* Database;
+        withRequestSpan(
+          "get_by_id",
+          context,
+          Effect.gen(function* () {
+            const authClient = yield* AuthClient;
+            const db = yield* Database;
 
-          const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+            const session = yield* tryOrpc(() => requireSession(authClient, input.token));
 
-          const [row] = yield* tryOrpc(() =>
-            db.db.select().from(orders).where(eq(orders.id, input.orderId)),
-          );
-          if (!row) return null;
+            const [row] = yield* tryOrpc(() =>
+              db.db.select().from(orders).where(eq(orders.id, input.orderId)),
+            );
+            if (!row) return null;
 
-          // Treat non-ownership identically to "not found" so existence isn't a side channel.
-          if (row.buyerId !== session.user.id) return null;
+            // Treat non-ownership identically to "not found" so existence isn't a side channel.
+            if (row.buyerId !== session.user.id) return null;
 
-          return toOrderRecord(row);
-        }),
+            return toOrderRecord(row);
+          }),
+        ),
       ),
     );
 
   const list = base
     .input(ordersListInput)
     .output(ordersListOutput)
-    .handler(({ input }) =>
+    .handler(({ input, context }) =>
       run(
-        Effect.gen(function* () {
-          const authClient = yield* AuthClient;
-          const db = yield* Database;
+        withRequestSpan(
+          "list",
+          context,
+          Effect.gen(function* () {
+            const authClient = yield* AuthClient;
+            const db = yield* Database;
 
-          const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+            const session = yield* tryOrpc(() => requireSession(authClient, input.token));
 
-          const limit = input.limit ?? DEFAULT_LIST_LIMIT;
+            const limit = input.limit ?? DEFAULT_LIST_LIMIT;
 
-          // desc(id) is the tie-break when two rows share a millisecond on
-          // createdAt. Holds because every insert goes through `create` above with
-          // an explicit uuidv7 (monotonic per source) — see the note on
-          // `orders.id` in orders-schema.ts.
-          const rows = yield* tryOrpc(() =>
-            db.db
-              .select()
-              .from(orders)
-              .where(eq(orders.buyerId, session.user.id))
-              .orderBy(desc(orders.createdAt), desc(orders.id))
-              .limit(limit),
-          );
+            // desc(id) is the tie-break when two rows share a millisecond on
+            // createdAt. Holds because every insert goes through `create` above with
+            // an explicit uuidv7 (monotonic per source) — see the note on
+            // `orders.id` in orders-schema.ts.
+            const rows = yield* tryOrpc(() =>
+              db.db
+                .select()
+                .from(orders)
+                .where(eq(orders.buyerId, session.user.id))
+                .orderBy(desc(orders.createdAt), desc(orders.id))
+                .limit(limit),
+            );
 
-          return { items: rows.map(toOrderRecord) };
-        }),
+            return { items: rows.map(toOrderRecord) };
+          }),
+        ),
       ),
     );
 
   const cancel = base
     .input(orderCancelInput)
     .output(orderCancelOutput)
-    .handler(({ input }) =>
+    .handler(({ input, context }) =>
       run(
-        Effect.gen(function* () {
-          const authClient = yield* AuthClient;
-          const db = yield* Database;
+        withRequestSpan(
+          "cancel",
+          context,
+          Effect.gen(function* () {
+            const authClient = yield* AuthClient;
+            const db = yield* Database;
 
-          const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+            const session = yield* tryOrpc(() => requireSession(authClient, input.token));
 
-          const nowMs = yield* Clock.currentTimeMillis;
-          const now = new Date(nowMs).toISOString();
+            const nowMs = yield* Clock.currentTimeMillis;
+            const now = new Date(nowMs).toISOString();
 
-          // The transaction returns a discriminated result so the not-found case
-          // can be raised as a tagged failure outside the non-Effect island.
-          const result = yield* tryOrpc(() =>
-            db.db.transaction(async (tx): Promise<CancelResult> => {
-              const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId));
+            // The transaction returns a discriminated result so the not-found case
+            // can be raised as a tagged failure outside the non-Effect island.
+            const result = yield* tryOrpc(() =>
+              db.db.transaction(async (tx): Promise<CancelResult> => {
+                const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId));
 
-              // Treat non-existent and non-owned identically to `getById`:
-              // existence isn't a side channel an attacker could probe with a
-              // guessed orderId.
-              if (!order || order.buyerId !== session.user.id) {
-                return { kind: "not_found" };
-              }
+                // Treat non-existent and non-owned identically to `getById`:
+                // existence isn't a side channel an attacker could probe with a
+                // guessed orderId.
+                if (!order || order.buyerId !== session.user.id) {
+                  return { kind: "not_found" };
+                }
 
-              const next = transition(order.status, { kind: "buyer_cancels" });
-              if (!next.ok) {
-                // Already terminal (`cancelled`/`complete`/`expired`) — cancel is
-                // a no-op. Return the order unchanged so the call stays idempotent.
-                return { kind: "ok", row: order };
-              }
+                const next = transition(order.status, { kind: "buyer_cancels" });
+                if (!next.ok) {
+                  // Already terminal (`cancelled`/`complete`/`expired`) — cancel is
+                  // a no-op. Return the order unchanged so the call stays idempotent.
+                  return { kind: "ok", row: order };
+                }
 
-              const nextVersion = order.version + 1;
-              const updated = await updateVersioned(
-                tx,
-                orders,
-                { id: order.id, version: order.version },
-                { status: next.next },
-              );
-              if (updated.rowsAffected === 0) {
-                // A concurrent transition (expiry/payment) moved the row to a
-                // terminal state between our read and write. Re-read and return
-                // it; that writer owns the emitted events.
-                const [fresh] = await tx.select().from(orders).where(eq(orders.id, order.id));
-                return { kind: "ok", row: fresh ?? order };
-              }
+                const nextVersion = order.version + 1;
+                const updated = await updateVersioned(
+                  tx,
+                  orders,
+                  { id: order.id, version: order.version },
+                  { status: next.next },
+                );
+                if (updated.rowsAffected === 0) {
+                  // A concurrent transition (expiry/payment) moved the row to a
+                  // terminal state between our read and write. Re-read and return
+                  // it; that writer owns the emitted events.
+                  const [fresh] = await tx.select().from(orders).where(eq(orders.id, order.id));
+                  return { kind: "ok", row: fresh ?? order };
+                }
 
-              await enqueueEvent(tx, ordersOutbox, {
-                subject: ORDER_CANCELLED_V1,
-                eventId: uuidv7(),
-                payload: { orderId: order.id, version: nextVersion, cancelledAt: now },
-              });
+                await enqueueEvent(tx, ordersOutbox, {
+                  subject: ORDER_CANCELLED_V1,
+                  eventId: uuidv7(),
+                  payload: { orderId: order.id, version: nextVersion, cancelledAt: now },
+                });
 
-              // Cancel must also free the held inventory. Tickets release off
-              // order.reservation_released.v1 (not order.cancelled.v1), mirroring
-              // the expiration path in orders-consumer.
-              await enqueueEvent(tx, ordersOutbox, {
-                subject: ORDER_RESERVATION_RELEASED_V1,
-                eventId: uuidv7(),
-                payload: {
-                  orderId: order.id,
-                  ticketId: order.ticketId,
-                  quantity: order.quantity,
-                  releasedAt: now,
-                },
-              });
+                // Cancel must also free the held inventory. Tickets release off
+                // order.reservation_released.v1 (not order.cancelled.v1), mirroring
+                // the expiration path in orders-consumer.
+                await enqueueEvent(tx, ordersOutbox, {
+                  subject: ORDER_RESERVATION_RELEASED_V1,
+                  eventId: uuidv7(),
+                  payload: {
+                    orderId: order.id,
+                    ticketId: order.ticketId,
+                    quantity: order.quantity,
+                    releasedAt: now,
+                  },
+                });
 
-              return { kind: "ok", row: { ...order, status: next.next, version: nextVersion } };
-            }),
-          );
+                return { kind: "ok", row: { ...order, status: next.next, version: nextVersion } };
+              }),
+            ).pipe(Effect.withSpan("orders.db.cancel_order"));
 
-          if (result.kind === "not_found") {
-            return yield* Effect.fail(new OrderNotFound({ orderId: input.orderId }));
-          }
+            if (result.kind === "not_found") {
+              return yield* Effect.fail(new OrderNotFound({ orderId: input.orderId }));
+            }
 
-          return toOrderRecord(result.row);
-        }),
+            return toOrderRecord(result.row);
+          }),
+        ),
       ),
     );
 

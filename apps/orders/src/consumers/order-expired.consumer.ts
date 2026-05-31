@@ -9,11 +9,12 @@ import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { externalParent } from "@tix/observability/otel-trace";
 
 import { orders, ordersInbox, ordersOutbox } from "../domain/schema.ts";
 import { transition } from "../domain/state-machine.ts";
 import type { OrdersRuntime } from "../runtime/runtime.ts";
-import { Database, InfraLogger } from "../runtime/services.ts";
+import { Database } from "../runtime/services.ts";
 
 export const ORDERS_EXPIRATION_CONSUMER_GROUP = "orders-expiration";
 
@@ -29,10 +30,6 @@ export async function startOrdersExpiredConsumer(
 ): Promise<RunningConsumer> {
   const { runtime, nats, stream, ackWaitMs } = args;
 
-  // The JetStream loop and the transaction island still log through pino (kept
-  // until ADR-0008's final cleanup slice); the Effect program logs through the
-  // runtime's logger.
-  const logger = runtime.runSync(InfraLogger);
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
   return createConsumer(nats, {
@@ -40,9 +37,8 @@ export async function startOrdersExpiredConsumer(
     subjectFilter: ORDER_EXPIRED_V1,
     group: ORDERS_EXPIRATION_CONSUMER_GROUP,
     schema: orderExpiredV1,
-    logger,
     ...ackWaitOpt,
-    handler: ({ eventId, subject, payload }) =>
+    handler: ({ eventId, subject, payload, traceContext }) =>
       runtime.runPromise(
         Effect.gen(function* () {
           const db = yield* Database;
@@ -55,21 +51,15 @@ export async function startOrdersExpiredConsumer(
                   .select()
                   .from(orders)
                   .where(eq(orders.id, payload.orderId));
-                if (!order) {
-                  logger.warn(
-                    { eventId, orderId: payload.orderId },
-                    "order.expired.v1 for unknown order; skipping",
-                  );
-                  return;
-                }
+                if (!order) return { kind: "unknown_order" as const };
 
                 const next = transition(order.status, { kind: "deadline_passed" });
                 if (!next.ok) {
-                  logger.info(
-                    { eventId, orderId: order.id, status: order.status, reason: next.reason },
-                    "order.expired.v1 ignored by FSM",
-                  );
-                  return;
+                  return {
+                    kind: "fsm_ignored" as const,
+                    status: order.status,
+                    reason: next.reason,
+                  };
                 }
 
                 const updated = await updateVersioned(
@@ -83,11 +73,7 @@ export async function startOrdersExpiredConsumer(
                   // terminal state between our read and write, where `order.expired`
                   // is correctly a no-op. The inbox row commits regardless, so the
                   // event won't be re-delivered.
-                  logger.warn(
-                    { eventId, orderId: order.id, version: order.version },
-                    "order version changed under us; skipping release",
-                  );
-                  return;
+                  return { kind: "version_conflict" as const, version: order.version };
                 }
 
                 await enqueueEvent(tx, ordersOutbox, {
@@ -100,16 +86,57 @@ export async function startOrdersExpiredConsumer(
                     releasedAt: new Date(nowMs).toISOString(),
                   },
                 });
+
+                return { kind: "released" as const };
               }),
             ),
-          );
+          ).pipe(Effect.withSpan("orders.db.expire_order"));
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate order.expired.v1").pipe(
               Effect.annotateLogs({ eventId, orderId: payload.orderId }),
             );
+
+            return;
           }
-        }),
+
+          const outcome = result.result;
+          switch (outcome.kind) {
+            case "unknown_order":
+              yield* Effect.logWarning("order.expired.v1 for unknown order; skipping").pipe(
+                Effect.annotateLogs({ eventId, orderId: payload.orderId }),
+              );
+              break;
+
+            case "fsm_ignored":
+              yield* Effect.logInfo("order.expired.v1 ignored by FSM").pipe(
+                Effect.annotateLogs({
+                  eventId,
+                  orderId: payload.orderId,
+                  status: outcome.status,
+                  reason: outcome.reason,
+                }),
+              );
+              break;
+
+            case "version_conflict":
+              yield* Effect.logWarning("order version changed under us; skipping release").pipe(
+                Effect.annotateLogs({
+                  eventId,
+                  orderId: payload.orderId,
+                  version: outcome.version,
+                }),
+              );
+              break;
+
+            case "released":
+              break;
+          }
+        }).pipe(
+          Effect.withSpan("orders.consume.order_expired", {
+            parent: externalParent(traceContext),
+          }),
+        ),
       ),
   });
 }

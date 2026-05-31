@@ -9,11 +9,12 @@ import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { externalParent } from "@tix/observability/otel-trace";
 
 import { orders, ordersInbox, ordersOutbox } from "../domain/schema.ts";
 import { transition } from "../domain/state-machine.ts";
 import type { OrdersRuntime } from "../runtime/runtime.ts";
-import { Database, InfraLogger } from "../runtime/services.ts";
+import { Database } from "../runtime/services.ts";
 
 export const ORDERS_PAYMENT_CREATED_CONSUMER_GROUP = "orders-payment-created";
 
@@ -29,7 +30,6 @@ export async function startOrdersPaymentCreatedConsumer(
 ): Promise<RunningConsumer> {
   const { runtime, nats, stream, ackWaitMs } = args;
 
-  const logger = runtime.runSync(InfraLogger);
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
   return createConsumer(nats, {
@@ -37,14 +37,15 @@ export async function startOrdersPaymentCreatedConsumer(
     subjectFilter: PAYMENT_CREATED_V1,
     group: ORDERS_PAYMENT_CREATED_CONSUMER_GROUP,
     schema: paymentCreatedV1,
-    logger,
     ...ackWaitOpt,
-    handler: ({ eventId, subject, payload }) =>
+    handler: ({ eventId, subject, payload, traceContext }) =>
       runtime.runPromise(
         Effect.gen(function* () {
           const db = yield* Database;
           const nowMs = yield* Clock.currentTimeMillis;
 
+          // The transaction returns a discriminated outcome so the diagnostics that used
+          // to log inside the (non-Effect) island now log through Effect — span-correlated.
           const result = yield* Effect.tryPromise(() =>
             db.db.transaction((tx) =>
               withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
@@ -52,21 +53,15 @@ export async function startOrdersPaymentCreatedConsumer(
                   .select()
                   .from(orders)
                   .where(eq(orders.id, payload.orderId));
-                if (!order) {
-                  logger.warn(
-                    { eventId, orderId: payload.orderId },
-                    "payment.created.v1 for unknown order; skipping",
-                  );
-                  return;
-                }
+                if (!order) return { kind: "unknown_order" as const };
 
                 const next = transition(order.status, { kind: "payment_confirmed" });
                 if (!next.ok) {
-                  logger.info(
-                    { eventId, orderId: order.id, status: order.status, reason: next.reason },
-                    "payment.created.v1 ignored by FSM",
-                  );
-                  return;
+                  return {
+                    kind: "fsm_ignored" as const,
+                    status: order.status,
+                    reason: next.reason,
+                  };
                 }
 
                 const nextVersion = order.version + 1;
@@ -80,11 +75,7 @@ export async function startOrdersPaymentCreatedConsumer(
                   // Order moved to a terminal state under us (e.g. expired right
                   // before payment.created arrived). Inbox row commits regardless,
                   // so the event won't be re-delivered.
-                  logger.warn(
-                    { eventId, orderId: order.id, version: order.version },
-                    "order version changed under us; skipping payment_confirmed",
-                  );
-                  return;
+                  return { kind: "version_conflict" as const, version: order.version };
                 }
 
                 await enqueueEvent(tx, ordersOutbox, {
@@ -96,16 +87,59 @@ export async function startOrdersPaymentCreatedConsumer(
                     completedAt: new Date(nowMs).toISOString(),
                   },
                 });
+
+                return { kind: "completed" as const };
               }),
             ),
-          );
+          ).pipe(Effect.withSpan("orders.db.confirm_payment"));
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate payment.created.v1").pipe(
               Effect.annotateLogs({ eventId, orderId: payload.orderId }),
             );
+
+            return;
           }
-        }),
+
+          const outcome = result.result;
+          switch (outcome.kind) {
+            case "unknown_order":
+              yield* Effect.logWarning("payment.created.v1 for unknown order; skipping").pipe(
+                Effect.annotateLogs({ eventId, orderId: payload.orderId }),
+              );
+              break;
+
+            case "fsm_ignored":
+              yield* Effect.logInfo("payment.created.v1 ignored by FSM").pipe(
+                Effect.annotateLogs({
+                  eventId,
+                  orderId: payload.orderId,
+                  status: outcome.status,
+                  reason: outcome.reason,
+                }),
+              );
+              break;
+
+            case "version_conflict":
+              yield* Effect.logWarning(
+                "order version changed under us; skipping payment_confirmed",
+              ).pipe(
+                Effect.annotateLogs({
+                  eventId,
+                  orderId: payload.orderId,
+                  version: outcome.version,
+                }),
+              );
+              break;
+
+            case "completed":
+              break;
+          }
+        }).pipe(
+          Effect.withSpan("orders.consume.payment_created", {
+            parent: externalParent(traceContext),
+          }),
+        ),
       ),
   });
 }

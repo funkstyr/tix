@@ -1,12 +1,17 @@
 import { expect, it } from "@effect/vitest";
 import { ORPCError } from "@orpc/server";
-import { Effect, TestClock } from "effect";
+import { Effect, Metric, TestClock } from "effect";
 
 import type { AuthSession } from "@tix/contracts/auth";
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import type { ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
 
 import { ReservationConflict, TicketNotFound } from "../domain/errors.ts";
+import {
+  ordersCreatedTotal,
+  orderValueCents,
+  reservationConflictsTotal,
+} from "../runtime/metrics.ts";
 import type { OrdersDb } from "../runtime/services.ts";
 import { createOrdersTestLayer } from "../runtime/test-runtime.ts";
 import type { TicketsClient, TicketSnapshot } from "../tickets-client.ts";
@@ -128,5 +133,55 @@ it.effect("maps a reserve NOT_FOUND to TicketNotFound", () =>
     );
 
     expect(error).toBeInstanceOf(TicketNotFound);
+  }),
+);
+
+// Metrics are a process-global registry, so assert on the delta a single run produces
+// rather than an absolute value.
+it.effect("counts a created order and records its value", () =>
+  Effect.gen(function* () {
+    const layer = createOrdersTestLayer({
+      db: capturingDb({}),
+      authClient: stubAuth(),
+      ticketsClient: stubTickets(),
+      reservationTtlMs: RESERVATION_TTL_MS,
+    });
+
+    const createdBefore = (yield* Metric.value(ordersCreatedTotal)).count;
+    const valueBefore = yield* Metric.value(orderValueCents);
+
+    yield* createOrderProgram({ token: "t", ticketId: TICKET_ID, quantity: 2 }).pipe(
+      Effect.provide(layer),
+    );
+
+    const createdAfter = (yield* Metric.value(ordersCreatedTotal)).count;
+    const valueAfter = yield* Metric.value(orderValueCents);
+
+    expect(createdAfter - createdBefore).toBe(1);
+    expect(valueAfter.count - valueBefore.count).toBe(1);
+    // 2 × 5000c unit price = 10_000c recorded in the histogram.
+    expect(valueAfter.sum - valueBefore.sum).toBe(10_000);
+  }),
+);
+
+// Losing the reservation race increments the conflict counter (before any DB write).
+it.effect("counts a reservation conflict", () =>
+  Effect.gen(function* () {
+    const layer = createOrdersTestLayer({
+      db: capturingDb({}),
+      authClient: stubAuth(),
+      ticketsClient: stubTicketsRejectingReserve("CONFLICT"),
+    });
+
+    const before = (yield* Metric.value(reservationConflictsTotal)).count;
+
+    yield* createOrderProgram({ token: "t", ticketId: TICKET_ID, quantity: 2 }).pipe(
+      Effect.provide(layer),
+      Effect.flip,
+    );
+
+    const after = (yield* Metric.value(reservationConflictsTotal)).count;
+
+    expect(after - before).toBe(1);
   }),
 );

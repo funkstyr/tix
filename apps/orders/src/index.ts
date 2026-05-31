@@ -14,7 +14,7 @@ import { ordersOutbox } from "./domain/schema.ts";
 import { createOrdersApp } from "./http/app.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makeOrdersRuntime } from "./runtime/runtime.ts";
-import { Database, EventPublisher, InfraLogger, Nats } from "./runtime/services.ts";
+import { Database, EventPublisher, Nats } from "./runtime/services.ts";
 
 // Last-resort logger for boot/shutdown failures outside the runtime's lifecycle.
 const fallbackLogger = createLogger({ name: "orders" });
@@ -31,10 +31,9 @@ const program = Effect.gen(function* () {
   const db = yield* Database;
   const publisher = yield* EventPublisher;
   const nats = yield* Nats;
-  const logger = yield* InfraLogger;
 
   yield* Effect.acquireRelease(
-    Effect.sync(() => startOutboxRelay(db.db, ordersOutbox, publisher.publish, { logger })),
+    Effect.sync(() => startOutboxRelay(db.db, ordersOutbox, publisher.publish)),
     (relay) => Effect.promise(() => relay.stop()),
   );
 
@@ -64,8 +63,7 @@ const program = Effect.gen(function* () {
 
   yield* Effect.acquireRelease(
     Effect.async<ReturnType<typeof serve>>((resume) => {
-      const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
-        logger.info({ port: info.port }, "orders service listening");
+      const server = serve({ fetch: app.fetch, port: env.port }, () => {
         resume(Effect.succeed(server));
       });
     }),
@@ -74,6 +72,8 @@ const program = Effect.gen(function* () {
         server.close((err) => resume(err ? Effect.die(err) : Effect.void));
       }),
   );
+
+  yield* Effect.logInfo("orders service listening").pipe(Effect.annotateLogs({ port: env.port }));
 
   yield* Effect.never;
 });

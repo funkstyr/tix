@@ -1,11 +1,10 @@
 import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { Context, Effect, Layer } from "effect";
-import type { Logger } from "pino";
 
 import { type AuthSessionClient, createHttpAuthSessionClient } from "@tix/contracts/auth-client";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
-import { createLogger } from "@tix/observability/logger";
+import { traceparentHeaders } from "@tix/observability/otel-http";
 
 import { ordersTables } from "../domain/schema.ts";
 import { createHttpTicketsClient, type TicketsClient } from "../tickets-client.ts";
@@ -31,19 +30,9 @@ export class AuthClient extends Context.Tag("orders/AuthClient")<AuthClient, Aut
 
 export class Tickets extends Context.Tag("orders/Tickets")<Tickets, TicketsClient>() {}
 
-// Pino logger for the wire/infra adapters (publisher, outbox relay, JetStream
-// consumer loop) that still take a pino `Logger`. Orders' own business logic logs
-// through Effect; pino removal is ADR-0008's final cleanup slice.
-export class InfraLogger extends Context.Tag("orders/InfraLogger")<InfraLogger, Logger>() {}
-
 export function makeOrdersConfigLayer(env: OrdersEnv): Layer.Layer<OrdersConfig> {
   return Layer.succeed(OrdersConfig, env);
 }
-
-export const InfraLoggerLayer: Layer.Layer<InfraLogger, never, OrdersConfig> = Layer.effect(
-  InfraLogger,
-  Effect.map(OrdersConfig, (env) => createLogger({ name: "orders", level: env.logLevel })),
-);
 
 // The db client connects lazily, so acquisition is synchronous; release drains
 // the pool. Scope finalization tears it down automatically (LIFO) at shutdown.
@@ -71,25 +60,29 @@ export const NatsLayer: Layer.Layer<Nats, never, OrdersConfig> = Layer.scoped(
   }),
 );
 
-export const EventPublisherLayer: Layer.Layer<EventPublisher, never, Nats | InfraLogger> =
-  Layer.effect(
-    EventPublisher,
-    Effect.gen(function* () {
-      const nats = yield* Nats;
-      const logger = yield* InfraLogger;
+// The publisher's wire-level logging falls back to the messaging package's internal
+// logger; orders threads no pino logger (ADR-0009). Trace context rides on NATS headers
+// the relay injects from the stored outbox value, not from this layer.
+export const EventPublisherLayer: Layer.Layer<EventPublisher, never, Nats> = Layer.effect(
+  EventPublisher,
+  Effect.map(Nats, (nats) => createPublisher(nats)),
+);
 
-      return createPublisher(nats, { logger });
-    }),
-  );
-
+// `traceparentHeaders` reads the active span (live thanks to the OTel context bridge) on
+// every call, so outbound auth/tickets requests carry W3C `traceparent` to continue the
+// trace at the next instrumented service.
 export const AuthClientLayer: Layer.Layer<AuthClient, never, OrdersConfig> = Layer.effect(
   AuthClient,
-  Effect.map(OrdersConfig, (env) => createHttpAuthSessionClient(env.authBaseUrl)),
+  Effect.map(OrdersConfig, (env) =>
+    createHttpAuthSessionClient(env.authBaseUrl, { headers: traceparentHeaders }),
+  ),
 );
 
 export const TicketsLayer: Layer.Layer<Tickets, never, OrdersConfig> = Layer.effect(
   Tickets,
   Effect.map(OrdersConfig, (env) =>
-    createHttpTicketsClient(env.ticketsBaseUrl, env.ticketsServiceToken),
+    createHttpTicketsClient(env.ticketsBaseUrl, env.ticketsServiceToken, {
+      headers: traceparentHeaders,
+    }),
   ),
 );
