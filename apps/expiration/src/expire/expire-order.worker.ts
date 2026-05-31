@@ -4,6 +4,7 @@ import { Clock, Effect, Metric } from "effect";
 import { ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { createWorker } from "@tix/messaging/jobs";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withTimeout } from "@tix/observability/resilience";
 
 import { EXPIRATION_QUEUE, type ExpireOrderPayload } from "../expire-order-job.ts";
 import {
@@ -42,9 +43,12 @@ export function startExpireOrderWorker(
           const msgId = `expired:${orderId}`;
 
           const startMs = yield* Clock.currentTimeMillis;
-          const { ack } = yield* Effect.tryPromise(() =>
-            publisher.publish(ORDER_EXPIRED_V1, { orderId, expiredAt }, { msgId }),
-          ).pipe(Effect.withSpan("expiration.publish.order_expired"));
+          const { ack } = yield* withTimeout(
+            "expiration.publish.order_expired",
+            Effect.tryPromise(() =>
+              publisher.publish(ORDER_EXPIRED_V1, { orderId, expiredAt }, { msgId }),
+            ),
+          );
           const endMs = yield* Clock.currentTimeMillis;
 
           yield* Metric.increment(expirationsProcessedTotal);

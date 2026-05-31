@@ -6,6 +6,7 @@ import { ORDER_CREATED_V1 } from "@tix/contracts/subjects";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withTimeout } from "@tix/observability/resilience";
 
 import { expirationInbox } from "../expiration-schema.ts";
 import {
@@ -60,13 +61,16 @@ export async function startExpirationConsumer(
             ...(traceparent === undefined ? {} : { traceparent }),
           };
 
-          const result = yield* Effect.tryPromise(() =>
-            db.db.transaction((tx) =>
-              withInboxDedupe(tx, expirationInbox, { eventId, subject }, () =>
-                scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, job, delayMs, payload.orderId),
+          const result = yield* withTimeout(
+            "expiration.db.schedule_expiry",
+            Effect.tryPromise(() =>
+              db.db.transaction((tx) =>
+                withInboxDedupe(tx, expirationInbox, { eventId, subject }, () =>
+                  scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, job, delayMs, payload.orderId),
+                ),
               ),
             ),
-          ).pipe(Effect.withSpan("expiration.db.schedule_expiry"));
+          );
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate order.created.v1").pipe(

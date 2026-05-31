@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import { extractTraceparent } from "@tix/observability/otel-http";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withTimeout } from "@tix/observability/resilience";
 
 import { instrumentAuth } from "./auth-metrics.ts";
 import type { AuthRuntime } from "./auth-runtime.ts";
@@ -38,7 +39,10 @@ export function createAuthApp(deps: CreateAuthAppDeps): Hono {
     const program = Effect.gen(function* () {
       const auth = yield* Auth;
 
-      return yield* Effect.promise(() => auth.handler(c.req.raw));
+      return yield* withTimeout(
+        "auth.handler.dispatch",
+        Effect.promise(() => auth.handler(c.req.raw)),
+      );
     }).pipe(
       Effect.withSpan("auth.handler", { parent: externalParent(otelParent) }),
       instrumentAuth("native"),

@@ -35,9 +35,40 @@ export type Publisher = {
   ) => Promise<{ ack: PubAck }>;
 };
 
-export function createPublisher(natsConnection: NatsConnection): Publisher {
+// JetStream's `publish` awaits a server ack; without a bound it can hang indefinitely if the
+// broker stalls. The relay runs this outside Effect (a vanilla poll loop), so resilience here
+// is a plain timeout — a rejected publish leaves the outbox row unsent for the next poll to
+// retry, which is the relay's existing retry mechanism (ADR-0008, #132).
+const DEFAULT_PUBLISH_TIMEOUT_MS = 5_000;
+
+export function withPublishTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  subject: string,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`nats publish timed out after ${timeoutMs}ms: ${subject}`)),
+      timeoutMs,
+    );
+  });
+
+  return Promise.race([operation, timeout]).finally(() => clearTimeout(timer));
+}
+
+export type PublisherOptions = {
+  publishTimeoutMs?: number;
+};
+
+export function createPublisher(
+  natsConnection: NatsConnection,
+  options: PublisherOptions = {},
+): Publisher {
   const js = jetstream(natsConnection);
   const encoder = new TextEncoder();
+  const publishTimeoutMs = options.publishTimeoutMs ?? DEFAULT_PUBLISH_TIMEOUT_MS;
 
   return {
     publish: async (subject, payload, opts) => {
@@ -48,7 +79,11 @@ export function createPublisher(natsConnection: NatsConnection): Publisher {
           ? {}
           : { headers: injectTraceContext(opts.traceContext) }),
       };
-      const ack = await js.publish(subject, data, pubOpts);
+      const ack = await withPublishTimeout(
+        js.publish(subject, data, pubOpts),
+        publishTimeoutMs,
+        subject,
+      );
 
       return { ack };
     },

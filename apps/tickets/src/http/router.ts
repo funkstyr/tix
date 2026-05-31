@@ -16,6 +16,7 @@ import {
 } from "@tix/contracts/tickets";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withResilience } from "@tix/observability/resilience";
 
 import { tickets } from "../domain/schema.ts";
 import type { TicketsRuntime } from "../runtime/runtime.ts";
@@ -98,8 +99,9 @@ export function createTicketsRouter(runtime: TicketsRuntime) {
           Effect.gen(function* () {
             const db = yield* Database;
 
-            const [row] = yield* tryOrpc(() =>
-              db.db.select().from(tickets).where(eq(tickets.id, input.ticketId)),
+            const [row] = yield* withResilience(
+              "tickets.db.select_ticket",
+              tryOrpc(() => db.db.select().from(tickets).where(eq(tickets.id, input.ticketId))),
             );
             if (!row) return null;
 
@@ -125,12 +127,15 @@ export function createTicketsRouter(runtime: TicketsRuntime) {
             // Secondary `desc(id)` is the tie-break when two rows share a millisecond on
             // createdAt — uuidv7 is monotonic per source, so id-desc preserves insert order
             // without depending on clock resolution.
-            const rows = yield* tryOrpc(() =>
-              db.db
-                .select()
-                .from(tickets)
-                .orderBy(desc(tickets.createdAt), desc(tickets.id))
-                .limit(limit),
+            const rows = yield* withResilience(
+              "tickets.db.list_tickets",
+              tryOrpc(() =>
+                db.db
+                  .select()
+                  .from(tickets)
+                  .orderBy(desc(tickets.createdAt), desc(tickets.id))
+                  .limit(limit),
+              ),
             );
 
             return { items: rows.map(toTicketRecord) };
@@ -151,17 +156,23 @@ export function createTicketsRouter(runtime: TicketsRuntime) {
             const authClient = yield* AuthClient;
             const db = yield* Database;
 
-            const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+            const session = yield* withResilience(
+              "tickets.auth.require_session",
+              tryOrpc(() => requireSession(authClient, input.token)),
+            );
 
             const limit = input.limit ?? DEFAULT_LIST_LIMIT;
 
-            const rows = yield* tryOrpc(() =>
-              db.db
-                .select()
-                .from(tickets)
-                .where(eq(tickets.sellerId, session.user.id))
-                .orderBy(desc(tickets.createdAt), desc(tickets.id))
-                .limit(limit),
+            const rows = yield* withResilience(
+              "tickets.db.list_mine",
+              tryOrpc(() =>
+                db.db
+                  .select()
+                  .from(tickets)
+                  .where(eq(tickets.sellerId, session.user.id))
+                  .orderBy(desc(tickets.createdAt), desc(tickets.id))
+                  .limit(limit),
+              ),
             );
 
             return { items: rows.map(toTicketRecord) };

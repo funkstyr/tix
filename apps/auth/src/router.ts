@@ -11,6 +11,7 @@ import {
   tokenInput,
 } from "@tix/contracts/auth";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withResilience, withTimeout } from "@tix/observability/resilience";
 
 import { makeRunHandler, tryAuth } from "./auth-boundary.ts";
 import { type AuthOp, instrumentAuth, recordSessionValidation } from "./auth-metrics.ts";
@@ -60,7 +61,10 @@ export function createAuthRouter(runtime: AuthRuntime) {
           context,
           Effect.gen(function* () {
             const auth = yield* Auth;
-            const result = yield* tryAuth(() => auth.api.signUpEmail({ body: input }));
+            const result = yield* withTimeout(
+              "auth.handler.sign_up",
+              tryAuth(() => auth.api.signUpEmail({ body: input })),
+            );
             if (result.token === null) {
               return yield* Effect.fail(
                 new ORPCError("INTERNAL_SERVER_ERROR", {
@@ -85,7 +89,10 @@ export function createAuthRouter(runtime: AuthRuntime) {
           context,
           Effect.gen(function* () {
             const auth = yield* Auth;
-            const result = yield* tryAuth(() => auth.api.signInEmail({ body: input }));
+            const result = yield* withTimeout(
+              "auth.handler.sign_in",
+              tryAuth(() => auth.api.signInEmail({ body: input })),
+            );
 
             return { userId: result.user.id, email: result.user.email, token: result.token };
           }),
@@ -103,7 +110,10 @@ export function createAuthRouter(runtime: AuthRuntime) {
           context,
           Effect.gen(function* () {
             const auth = yield* Auth;
-            yield* tryAuth(() => auth.api.signOut({ headers: bearerHeaders(input.token) }));
+            yield* withTimeout(
+              "auth.handler.sign_out",
+              tryAuth(() => auth.api.signOut({ headers: bearerHeaders(input.token) })),
+            );
 
             return { ok: true };
           }),
@@ -121,8 +131,9 @@ export function createAuthRouter(runtime: AuthRuntime) {
           context,
           Effect.gen(function* () {
             const auth = yield* Auth;
-            const result = yield* tryAuth(() =>
-              auth.api.getSession({ headers: bearerHeaders(input.token) }),
+            const result = yield* withResilience(
+              "auth.db.get_session",
+              tryAuth(() => auth.api.getSession({ headers: bearerHeaders(input.token) })),
             );
 
             yield* recordSessionValidation(result !== null);

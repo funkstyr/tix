@@ -7,6 +7,7 @@ import { AUTH_PROXY_PREFIX } from "@tix/contracts/auth";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import { extractTraceparent } from "@tix/observability/otel-http";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withTimeout } from "@tix/observability/resilience";
 
 import { createAuthProxy } from "./auth-proxy.ts";
 import { instrumentEdge } from "./gateway-metrics.ts";
@@ -49,9 +50,10 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
     const otelParent = extractTraceparent(c.req.raw.headers);
 
     const proxyProgram: Effect.Effect<Response> = instrumentEdge("auth")(
-      Effect.promise(() => authProxy(c.req.raw)).pipe(
-        Effect.withSpan("gateway.proxy.auth", { parent: externalParent(otelParent) }),
-      ),
+      withTimeout(
+        "gateway.proxy.auth",
+        Effect.promise(() => authProxy(c.req.raw)),
+      ).pipe(Effect.withSpan("gateway.proxy.auth.ingress", { parent: externalParent(otelParent) })),
     );
 
     return deps.runtime.runPromise(proxyProgram);
