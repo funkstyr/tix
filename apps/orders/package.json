@@ -6,11 +6,13 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./app": "./src/orders-app.ts",
-    "./consumer": "./src/orders-consumer.ts",
-    "./payment-consumer": "./src/orders-payment-consumer.ts",
-    "./router": "./src/router.ts",
-    "./schema": "./src/orders-schema.ts",
+    "./app": "./src/http/app.ts",
+    "./consumer": "./src/consumers/order-expired.consumer.ts",
+    "./payment-consumer": "./src/consumers/payment-created.consumer.ts",
+    "./router": "./src/http/router.ts",
+    "./runtime": "./src/runtime/runtime.ts",
+    "./schema": "./src/domain/schema.ts",
+    "./test-runtime": "./src/runtime/test-runtime.ts",
     "./tickets-client": "./src/tickets-client.ts"
   },
   "scripts": {
@@ -23,6 +25,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "@hono/node-server": "catalog:",
     "@nats-io/transport-node": "catalog:",
     "@orpc/client": "catalog:",
@@ -33,12 +36,14 @@
     "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
     "postgres": "catalog:",
     "uuid": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@nats-io/jetstream": "catalog:",
     "@tix/config": "workspace:*",
     "@tix/test-helpers": "workspace:*",

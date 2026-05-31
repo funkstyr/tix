@@ -17,15 +17,16 @@ import { requireValue } from "@tix/test-helpers/require-value";
 import { sleep } from "@tix/test-helpers/sleep";
 import { waitFor } from "@tix/test-helpers/wait-for";
 
-import { startOrdersPaymentCreatedConsumer } from "./orders-payment-consumer.ts";
 import {
   orders as ordersTable,
   ordersInbox as ordersInboxTable,
   ordersOutbox as ordersOutboxTable,
   ordersTables,
-} from "./orders-schema.ts";
+} from "../domain/schema.ts";
+import { createOrdersTestRuntime } from "../runtime/test-runtime.ts";
+import { startOrdersPaymentCreatedConsumer } from "./payment-created.consumer.ts";
 
-const ordersMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+const ordersMigrations = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 type OrdersDbClient = DbClient<typeof ordersTables>;
 
@@ -89,8 +90,9 @@ beforeEach(async () => {
     duplicate_window: 0,
   });
 
+  const runtime = createOrdersTestRuntime({ db: dbRef, nats: nc });
   consumer = await startOrdersPaymentCreatedConsumer({
-    db: dbRef,
+    runtime,
     nats: nc,
     stream: streamName,
   });

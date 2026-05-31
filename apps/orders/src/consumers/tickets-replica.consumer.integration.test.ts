@@ -14,13 +14,14 @@ import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
 import { waitFor } from "@tix/test-helpers/wait-for";
 
-import { ticketsReplica, ordersTables } from "./orders-schema.ts";
+import { ticketsReplica, ordersTables } from "../domain/schema.ts";
+import { createOrdersTestRuntime } from "../runtime/test-runtime.ts";
 import {
   startTicketsCreatedConsumer,
   startTicketsUpdatedConsumer,
-} from "./tickets-replica-consumer.ts";
+} from "./tickets-replica.consumer.ts";
 
-const ordersMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+const ordersMigrations = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 type OrdersDbClient = DbClient<typeof ordersTables>;
 
@@ -83,8 +84,9 @@ beforeEach(async () => {
     duplicate_window: 0,
   });
 
-  createdConsumer = await startTicketsCreatedConsumer({ db: dbRef, nats: nc, stream: streamName });
-  updatedConsumer = await startTicketsUpdatedConsumer({ db: dbRef, nats: nc, stream: streamName });
+  const runtime = createOrdersTestRuntime({ db: dbRef, nats: nc });
+  createdConsumer = await startTicketsCreatedConsumer({ runtime, nats: nc, stream: streamName });
+  updatedConsumer = await startTicketsUpdatedConsumer({ runtime, nats: nc, stream: streamName });
 });
 
 afterEach(async () => {
