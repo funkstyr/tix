@@ -65,6 +65,12 @@ function run<A, E, R>(
 
     // One bounded attempt: the effect interrupted at `timeout`, with a timeout surfacing as
     // the internal `ResilienceTimeout` signal so the schedule and the final die can see it.
+    //
+    // Caveat: `timeoutFail` interrupts the *fiber*, not the underlying work. An
+    // `Effect.tryPromise` wrapping a DB or network call keeps running after a timeout, so a
+    // timed-out operation may still commit. Outbox/inbox-guarded writes reconcile on the next
+    // delivery or via their unique constraints; callers that compensate on failure must account
+    // for that in-flight commit (see the create_order path in orders' router.ts).
     const attempt = effect.pipe(
       Effect.timeoutFail({
         duration: timeout,

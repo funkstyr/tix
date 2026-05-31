@@ -158,8 +158,15 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
         }),
       ),
     ).pipe(
-      // The insert (or its outbox enqueue) failed after the seats were reserved.
-      // Compensate first, then re-raise the original failure.
+      // A *typed* failure here — the insert or its outbox enqueue erroring — happened after the
+      // seats were reserved, so compensate (release the reservation) before re-raising.
+      //
+      // A *timeout* is deliberately NOT compensated: `withTimeout` surfaces it as a defect (see
+      // resilience.ts), which `catchAll` does not catch, so it propagates uncompensated. The
+      // reason is the in-flight commit: `Effect.tryPromise` can't abort the transaction, so a
+      // timed-out insert may still land. Releasing the reservation for an order that then commits
+      // would oversell the ticket; leaving seats held for an order that rolled back only
+      // undersells, which an operator can reconcile. Undersell is the safer default of the two.
       Effect.catchAll((err) =>
         compensateReserve(db, {
           orderId,
