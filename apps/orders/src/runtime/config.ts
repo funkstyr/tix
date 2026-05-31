@@ -6,9 +6,6 @@ const DEFAULT_PORT = 4003;
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
 
-// The log severities accepted via `LOG_LEVEL` (kept in sync with `envSchema` below).
-type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
-
 const envSchema = type({
   "ORDERS_HTTP_PORT?": "string.numeric.parse",
   DATABASE_URL: "string > 0",
@@ -21,7 +18,6 @@ const envSchema = type({
   "TICKETS_STREAM?": "string > 0",
   "RESERVATION_TTL_MS?": "string.numeric.parse",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
-  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
 
 export type OrdersEnv = {
@@ -36,7 +32,6 @@ export type OrdersEnv = {
   ticketsStream: string;
   reservationTtlMs: number;
   otelEndpoint: string;
-  logLevel: LogLevel;
 };
 
 export function parseEnv(): OrdersEnv {
@@ -67,6 +62,5 @@ export function parseEnv(): OrdersEnv {
     ticketsStream: parsed.TICKETS_STREAM ?? TICKETS_STREAM,
     reservationTtlMs,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
-    logLevel: parsed.LOG_LEVEL ?? "info",
   };
 }

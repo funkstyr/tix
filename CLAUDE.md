@@ -20,7 +20,7 @@ tix/
 │   ├── contracts/         # arktype schemas + oRPC routers (tickets, orders, subjects)
 │   ├── db-core/           # drizzle + postgres client (per-service schema; ADR-0003)
 │   ├── messaging/         # NATS JetStream + BullMQ wrappers, outbox/inbox helpers
-│   ├── observability/     # pino logger + oRPC request-logger middleware
+│   ├── observability/     # Effect Logger + OpenTelemetry/OTLP wiring (ADR-0009)
 │   ├── test-helpers/      # shared test utils (wait-for, sleep, docker-available, require-value)
 │   ├── auth-test-fixture/ # boots a real auth issuer for integration tests
 │   └── config/            # Shared tsconfig.base, vitest, tsdown configs

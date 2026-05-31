@@ -86,7 +86,6 @@ function makeTestEnv(reservationTtlMs: number): OrdersEnv {
     ticketsStream: "TICKETS",
     reservationTtlMs,
     otelEndpoint: "http://otel.test:4318",
-    logLevel: "fatal",
   };
 }
 

@@ -82,7 +82,6 @@ function makeTestEnv(): PaymentsEnv {
     stripeKey: "sk_test",
     stream: "PAYMENTS",
     otelEndpoint: "http://otel.test:4318",
-    logLevel: "fatal",
   };
 }
 

@@ -74,7 +74,6 @@ function makeTestEnv(serviceToken: string | undefined): TicketsEnv {
     serviceToken: serviceToken ?? TEST_SERVICE_TOKEN,
     ordersStream: "ORDERS",
     otelEndpoint: "http://otel.test:4318",
-    logLevel: "fatal",
   };
 }
 

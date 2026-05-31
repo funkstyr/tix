@@ -3,16 +3,12 @@ import { ArkErrors, type } from "arktype";
 const DEFAULT_PORT = 4001;
 const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
 
-// The log severities accepted via `LOG_LEVEL` (kept in sync with `envSchema` below).
-type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
-
 const envSchema = type({
   "AUTH_HTTP_PORT?": "string.numeric.parse",
   DATABASE_URL: "string > 0",
   BETTER_AUTH_SECRET: "string > 0",
   "AUTH_BASE_URL?": "string > 0",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
-  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
 
 export type AuthEnv = {
@@ -21,7 +17,6 @@ export type AuthEnv = {
   secret: string;
   baseURL: string;
   otelEndpoint: string;
-  logLevel: LogLevel;
 };
 
 export function parseEnv(env: Record<string, string | undefined>): AuthEnv {
@@ -41,6 +36,5 @@ export function parseEnv(env: Record<string, string | undefined>): AuthEnv {
     secret: parsed.BETTER_AUTH_SECRET,
     baseURL: parsed.AUTH_BASE_URL ?? `http://localhost:${port}`,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
-    logLevel: parsed.LOG_LEVEL ?? "info",
   };
 }
