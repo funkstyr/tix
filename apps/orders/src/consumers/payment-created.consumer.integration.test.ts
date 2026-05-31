@@ -7,28 +7,26 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  type OrderRecord,
-  orderReservationReleasedV1,
-  type OrderReservationReleasedV1,
-} from "@tix/contracts/orders";
-import { ORDER_EXPIRED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
+import { type OrderCompletedV1, orderCompletedV1 } from "@tix/contracts/orders";
+import { type PaymentCreatedV1 } from "@tix/contracts/payments";
+import { ORDER_COMPLETED_V1, PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
 import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
+import { sleep } from "@tix/test-helpers/sleep";
 import { waitFor } from "@tix/test-helpers/wait-for";
 
-import { startOrdersExpiredConsumer } from "./orders-consumer.ts";
 import {
   orders as ordersTable,
   ordersInbox as ordersInboxTable,
   ordersOutbox as ordersOutboxTable,
   ordersTables,
-} from "./orders-schema.ts";
-import { createOrdersTestRuntime } from "./test-runtime.ts";
+} from "../domain/schema.ts";
+import { createOrdersTestRuntime } from "../runtime/test-runtime.ts";
+import { startOrdersPaymentCreatedConsumer } from "./payment-created.consumer.ts";
 
-const ordersMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+const ordersMigrations = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 type OrdersDbClient = DbClient<typeof ordersTables>;
 
@@ -46,7 +44,7 @@ beforeAll(async () => {
     .withEnvironment({
       POSTGRES_USER: "postgres",
       POSTGRES_PASSWORD: "postgres",
-      POSTGRES_DB: "orders_expired_e2e",
+      POSTGRES_DB: "orders_payment_e2e",
     })
     .withExposedPorts(5432)
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
@@ -58,7 +56,7 @@ beforeAll(async () => {
     .withExposedPorts(4222)
     .start();
 
-  const pgUrl = `postgres://postgres:postgres@${pgContainer.getHost()}:${pgContainer.getMappedPort(5432)}/orders_expired_e2e`;
+  const pgUrl = `postgres://postgres:postgres@${pgContainer.getHost()}:${pgContainer.getMappedPort(5432)}/orders_payment_e2e`;
   ordersDb = createDbClient("orders", pgUrl, { schema: ordersTables });
   await migrate(ordersDb.db, { migrationsFolder: ordersMigrations });
 
@@ -84,16 +82,16 @@ beforeEach(async () => {
   const manager = await jetstreamManager(nc);
   await manager.streams.add({
     name: streamName,
-    subjects: [ORDER_EXPIRED_V1, ORDER_RESERVATION_RELEASED_V1],
+    subjects: [PAYMENT_CREATED_V1],
     retention: RetentionPolicy.Limits,
     storage: StorageType.Memory,
-    // Disable publish-side dedupe so the second publish actually reaches the
+    // Disable publish-side dedupe so a second publish actually reaches the
     // consumer — that's what exercises the inbox-dedupe code path in handler.
     duplicate_window: 0,
   });
 
   const runtime = createOrdersTestRuntime({ db: dbRef, nats: nc });
-  consumer = await startOrdersExpiredConsumer({
+  consumer = await startOrdersPaymentCreatedConsumer({
     runtime,
     nats: nc,
     stream: streamName,
@@ -116,106 +114,124 @@ afterEach(async () => {
   streamName = undefined;
 });
 
-type SeedOrderArgs = { quantity?: number; status?: OrderRecord["status"] };
-
-async function seedOrder(args: SeedOrderArgs = {}): Promise<{
-  id: string;
-  ticketId: string;
-  quantity: number;
-}> {
+async function seedOrder(status: "created" | "expired" = "created"): Promise<{ id: string }> {
   const dbRef = requireValue(ordersDb, "ordersDb");
   const id = randomUUID();
-  const ticketId = randomUUID();
-  const quantity = args.quantity ?? 2;
 
   await dbRef.db.insert(ordersTable).values({
     id,
     buyerId: `buyer-${randomUUID()}`,
-    ticketId,
-    quantity,
+    ticketId: randomUUID(),
+    quantity: 1,
     priceCents: 5_000,
-    status: args.status ?? "created",
-    expiresAt: new Date(Date.now() - 1_000),
+    status,
+    expiresAt: new Date(Date.now() + 60_000),
   });
 
-  return { id, ticketId, quantity };
+  return { id };
 }
 
-async function publishExpired(args: { orderId: string; eventId: string }): Promise<void> {
+async function publishPaymentCreated(args: { orderId: string; eventId: string }): Promise<void> {
   const publisher = createPublisher(requireValue(nats, "nats"));
-  await publisher.publish(
-    ORDER_EXPIRED_V1,
-    { orderId: args.orderId, expiredAt: new Date().toISOString() },
-    { msgId: args.eventId },
-  );
+  const payload: PaymentCreatedV1 = {
+    id: randomUUID(),
+    orderId: args.orderId,
+    stripeId: "pi_test123abc",
+    amountCents: 4_500,
+    currency: "usd",
+    userId: `buyer-${randomUUID()}`,
+    version: 1,
+    createdAt: new Date().toISOString(),
+  };
+  await publisher.publish(PAYMENT_CREATED_V1, payload, { msgId: args.eventId });
 }
 
-async function readReleasedFromOutbox(
-  orderId: string,
-): Promise<OrderReservationReleasedV1 | undefined> {
+async function readOrder(orderId: string) {
+  const dbRef = requireValue(ordersDb, "ordersDb");
+  const [row] = await dbRef.db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+
+  return row;
+}
+
+async function readCompletedFromOutbox(orderId: string): Promise<OrderCompletedV1 | undefined> {
   const rows = await requireValue(ordersDb, "ordersDb")
     .db.select()
     .from(ordersOutboxTable)
-    .where(eq(ordersOutboxTable.subject, ORDER_RESERVATION_RELEASED_V1));
+    .where(eq(ordersOutboxTable.subject, ORDER_COMPLETED_V1));
 
   for (const row of rows) {
-    const payload = row.payload as OrderReservationReleasedV1;
+    const payload = row.payload as OrderCompletedV1;
     if (payload.orderId === orderId) return payload;
   }
 
   return undefined;
 }
 
-describe.skipIf(!dockerAvailable)("orders consumer for order.expired.v1", () => {
-  it("transitions the Order to expired, bumps version, and enqueues a release event", async () => {
+describe.skipIf(!dockerAvailable)("orders consumer for payment.created.v1", () => {
+  it("transitions a created Order to complete, bumps version, and enqueues order.completed.v1", async () => {
     const seeded = await seedOrder();
 
-    await publishExpired({ orderId: seeded.id, eventId: randomUUID() });
+    await publishPaymentCreated({ orderId: seeded.id, eventId: randomUUID() });
 
-    const released = await waitFor(() => readReleasedFromOutbox(seeded.id), 3_000);
+    const completed = await waitFor(async () => {
+      const row = await readOrder(seeded.id);
 
-    expect(released).toMatchObject({
-      orderId: seeded.id,
-      ticketId: seeded.ticketId,
-      quantity: seeded.quantity,
-    });
-    expect(() => orderReservationReleasedV1.assert(released)).not.toThrow();
+      return row?.status === "complete" ? row : undefined;
+    }, 3_000);
 
-    const [row] = await requireValue(ordersDb, "ordersDb")
-      .db.select()
-      .from(ordersTable)
-      .where(eq(ordersTable.id, seeded.id));
-    expect(row?.status).toBe("expired");
-    expect(row?.version).toBe(2);
+    expect(completed.status).toBe("complete");
+    expect(completed.version).toBe(2);
+
+    const event = await waitFor(() => readCompletedFromOutbox(seeded.id), 3_000);
+    expect(event).toMatchObject({ orderId: seeded.id, version: 2 });
+    expect(() => orderCompletedV1.assert(event)).not.toThrow();
   }, 30_000);
 
-  it("dedupes a redelivered order.expired.v1: order unchanged, no second release", async () => {
+  it("dedupes a redelivered payment.created.v1: order unchanged on second receipt", async () => {
     const seeded = await seedOrder();
     const eventId = randomUUID();
 
-    await publishExpired({ orderId: seeded.id, eventId });
-    await waitFor(() => readReleasedFromOutbox(seeded.id), 3_000);
+    await publishPaymentCreated({ orderId: seeded.id, eventId });
+    await waitFor(async () => {
+      const row = await readOrder(seeded.id);
 
-    await publishExpired({ orderId: seeded.id, eventId });
-    // Let the consumer have a chance to (mis)process the redelivery.
-    await new Promise((r) => setTimeout(r, 500));
+      return row?.status === "complete" ? row : undefined;
+    }, 3_000);
+
+    await publishPaymentCreated({ orderId: seeded.id, eventId });
+    // Give the consumer a chance to (mis)process the redelivery.
+    await sleep(500);
+
+    const row = await readOrder(seeded.id);
+    expect(row?.status).toBe("complete");
+    expect(row?.version).toBe(2);
 
     const dbRef = requireValue(ordersDb, "ordersDb");
-
-    const releaseRows = await dbRef.db
-      .select()
-      .from(ordersOutboxTable)
-      .where(eq(ordersOutboxTable.subject, ORDER_RESERVATION_RELEASED_V1));
-    expect(releaseRows).toHaveLength(1);
-
     const inboxRows = await dbRef.db
       .select()
       .from(ordersInboxTable)
       .where(eq(ordersInboxTable.eventId, eventId));
     expect(inboxRows).toHaveLength(1);
 
-    const [row] = await dbRef.db.select().from(ordersTable).where(eq(ordersTable.id, seeded.id));
+    const completedRows = await dbRef.db
+      .select()
+      .from(ordersOutboxTable)
+      .where(eq(ordersOutboxTable.subject, ORDER_COMPLETED_V1));
+    expect(completedRows).toHaveLength(1);
+  }, 30_000);
+
+  it("ignores payment.created.v1 for an Order already in a terminal state", async () => {
+    const seeded = await seedOrder("expired");
+
+    await publishPaymentCreated({ orderId: seeded.id, eventId: randomUUID() });
+    // Let the consumer have a chance to (mis)process the event.
+    await sleep(500);
+
+    const row = await readOrder(seeded.id);
     expect(row?.status).toBe("expired");
-    expect(row?.version).toBe(2);
+    expect(row?.version).toBe(1);
+
+    const event = await readCompletedFromOutbox(seeded.id);
+    expect(event).toBeUndefined();
   }, 30_000);
 });

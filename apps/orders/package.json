@@ -6,13 +6,13 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./app": "./src/orders-app.ts",
-    "./consumer": "./src/orders-consumer.ts",
-    "./payment-consumer": "./src/orders-payment-consumer.ts",
-    "./router": "./src/router.ts",
-    "./runtime": "./src/runtime.ts",
-    "./schema": "./src/orders-schema.ts",
-    "./test-runtime": "./src/test-runtime.ts",
+    "./app": "./src/http/app.ts",
+    "./consumer": "./src/consumers/order-expired.consumer.ts",
+    "./payment-consumer": "./src/consumers/payment-created.consumer.ts",
+    "./router": "./src/http/router.ts",
+    "./runtime": "./src/runtime/runtime.ts",
+    "./schema": "./src/domain/schema.ts",
+    "./test-runtime": "./src/runtime/test-runtime.ts",
     "./tickets-client": "./src/tickets-client.ts"
   },
   "scripts": {

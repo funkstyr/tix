@@ -27,18 +27,18 @@ import {
   orders as ordersTable,
   ordersOutbox as ordersOutboxTable,
   ordersTables,
-} from "./orders-schema.ts";
+} from "../domain/schema.ts";
+import { createOrdersTestRuntime } from "../runtime/test-runtime.ts";
+import { createInProcessTicketsClient, type TicketsClient } from "../tickets-client.ts";
 import { createOrdersRouter } from "./router.ts";
-import { createOrdersTestRuntime } from "./test-runtime.ts";
-import { createInProcessTicketsClient, type TicketsClient } from "./tickets-client.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_BASE_URL = "http://localhost:4001";
 const TEST_SERVICE_TOKEN = "test-service-token";
 
-const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
-const ticketsMigrations = fileURLToPath(new URL("../../tickets/drizzle", import.meta.url));
-const ordersMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+const authMigrations = fileURLToPath(new URL("../../../auth/drizzle", import.meta.url));
+const ticketsMigrations = fileURLToPath(new URL("../../../tickets/drizzle", import.meta.url));
+const ordersMigrations = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 const dockerAvailable = ((): boolean => {
   if (process.env["DOCKER_HOST"]) return true;

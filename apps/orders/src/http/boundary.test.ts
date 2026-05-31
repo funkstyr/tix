@@ -2,14 +2,14 @@ import { ORPCError } from "@orpc/server";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { makeRunHandler, toORPCError } from "./boundary.ts";
 import {
   BuyerIsSeller,
   OrderNotFound,
   ReservationConflict,
   SoldOut,
   TicketNotFound,
-} from "./errors.ts";
+} from "../domain/errors.ts";
+import { makeRunHandler, toORPCError } from "./boundary.ts";
 
 describe("toORPCError", () => {
   it("maps TicketNotFound to NOT_FOUND 'ticket not found'", () => {

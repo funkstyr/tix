@@ -4,9 +4,9 @@ import { Hono } from "hono";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
 import { requestLogger } from "@tix/observability/request-logger";
 
+import type { OrdersRuntime } from "../runtime/runtime.ts";
+import { InfraLogger } from "../runtime/services.ts";
 import { createOrdersRouter } from "./router.ts";
-import type { OrdersRuntime } from "./runtime.ts";
-import { InfraLogger } from "./services.ts";
 
 export function createOrdersApp(runtime: OrdersRuntime): Hono {
   const router = createOrdersRouter(runtime);

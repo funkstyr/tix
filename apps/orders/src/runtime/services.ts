@@ -7,9 +7,9 @@ import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
+import { ordersTables } from "../domain/schema.ts";
+import { createHttpTicketsClient, type TicketsClient } from "../tickets-client.ts";
 import type { OrdersEnv } from "./config.ts";
-import { ordersTables } from "./orders-schema.ts";
-import { createHttpTicketsClient, type TicketsClient } from "./tickets-client.ts";
 
 export type OrdersDb = DbClient<typeof ordersTables>;
 

@@ -1,7 +1,7 @@
 import { ORPCError } from "@orpc/server";
 import { Cause, Effect, Exit, type ManagedRuntime, Option } from "effect";
 
-import type { OrderError } from "./errors.ts";
+import type { OrderError } from "../domain/errors.ts";
 
 // The single oRPC seam translator (ADR-0008). Each domain tag maps to the exact
 // `ORPCError` code / status / message / data the orders endpoints return today,

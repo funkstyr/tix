@@ -7,9 +7,9 @@ import { ticketCreatedV1, ticketUpdatedV1 } from "@tix/contracts/tickets";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 
-import { ordersInbox, ticketsReplica } from "./orders-schema.ts";
-import type { OrdersRuntime } from "./runtime.ts";
-import { Database, InfraLogger } from "./services.ts";
+import { ordersInbox, ticketsReplica } from "../domain/schema.ts";
+import type { OrdersRuntime } from "../runtime/runtime.ts";
+import { Database, InfraLogger } from "../runtime/services.ts";
 
 export const TICKETS_REPLICA_CREATED_GROUP = "orders-tickets-replica-created";
 export const TICKETS_REPLICA_UPDATED_GROUP = "orders-tickets-replica-updated";

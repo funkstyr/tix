@@ -5,10 +5,10 @@ import type { AuthSession } from "@tix/contracts/auth";
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import type { ReserveTicketOutput } from "@tix/contracts/tickets-reserve";
 
+import type { OrdersDb } from "../runtime/services.ts";
+import { createOrdersTestLayer } from "../runtime/test-runtime.ts";
+import type { TicketsClient, TicketSnapshot } from "../tickets-client.ts";
 import { createOrderProgram } from "./router.ts";
-import type { OrdersDb } from "./services.ts";
-import { createOrdersTestLayer } from "./test-runtime.ts";
-import type { TicketsClient, TicketSnapshot } from "./tickets-client.ts";
 
 const RESERVATION_TTL_MS = 15 * 60 * 1000;
 

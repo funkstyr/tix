@@ -5,6 +5,7 @@ import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { createPublisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
+import type { TicketsClient } from "../tickets-client.ts";
 import type { OrdersEnv } from "./config.ts";
 import type { OrdersRuntime } from "./runtime.ts";
 import {
@@ -17,7 +18,6 @@ import {
   OrdersConfig,
   Tickets,
 } from "./services.ts";
-import type { TicketsClient } from "./tickets-client.ts";
 
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
 

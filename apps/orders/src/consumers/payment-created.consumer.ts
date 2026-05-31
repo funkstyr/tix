@@ -10,10 +10,10 @@ import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 
-import { orders, ordersInbox, ordersOutbox } from "./orders-schema.ts";
-import type { OrdersRuntime } from "./runtime.ts";
-import { Database, InfraLogger } from "./services.ts";
-import { transition } from "./state-machine.ts";
+import { orders, ordersInbox, ordersOutbox } from "../domain/schema.ts";
+import { transition } from "../domain/state-machine.ts";
+import type { OrdersRuntime } from "../runtime/runtime.ts";
+import { Database, InfraLogger } from "../runtime/services.ts";
 
 export const ORDERS_PAYMENT_CREATED_CONSUMER_GROUP = "orders-payment-created";
 

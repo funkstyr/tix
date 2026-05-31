@@ -22,18 +22,18 @@ import {
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 
-import { makeRunHandler, tryOrpc } from "./boundary.ts";
 import {
   BuyerIsSeller,
   OrderNotFound,
   ReservationConflict,
   SoldOut,
   TicketNotFound,
-} from "./errors.ts";
-import { orders, ordersOutbox } from "./orders-schema.ts";
-import type { OrdersRuntime } from "./runtime.ts";
-import { AuthClient, Database, type OrdersDb, OrdersConfig, Tickets } from "./services.ts";
-import { transition } from "./state-machine.ts";
+} from "../domain/errors.ts";
+import { orders, ordersOutbox } from "../domain/schema.ts";
+import { transition } from "../domain/state-machine.ts";
+import type { OrdersRuntime } from "../runtime/runtime.ts";
+import { AuthClient, Database, type OrdersDb, OrdersConfig, Tickets } from "../runtime/services.ts";
+import { makeRunHandler, tryOrpc } from "./boundary.ts";
 
 const DEFAULT_LIST_LIMIT = 50;
 

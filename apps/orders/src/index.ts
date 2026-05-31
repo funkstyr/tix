@@ -4,17 +4,17 @@ import { Cause, Effect, Exit, Fiber } from "effect";
 import { startOutboxRelay } from "@tix/db-core/outbox";
 import { createLogger } from "@tix/observability/logger";
 
-import { parseEnv } from "./config.ts";
-import { createOrdersApp } from "./orders-app.ts";
-import { startOrdersExpiredConsumer } from "./orders-consumer.ts";
-import { startOrdersPaymentCreatedConsumer } from "./orders-payment-consumer.ts";
-import { ordersOutbox } from "./orders-schema.ts";
-import { makeOrdersRuntime } from "./runtime.ts";
-import { Database, EventPublisher, InfraLogger, Nats } from "./services.ts";
+import { startOrdersExpiredConsumer } from "./consumers/order-expired.consumer.ts";
+import { startOrdersPaymentCreatedConsumer } from "./consumers/payment-created.consumer.ts";
 import {
   startTicketsCreatedConsumer,
   startTicketsUpdatedConsumer,
-} from "./tickets-replica-consumer.ts";
+} from "./consumers/tickets-replica.consumer.ts";
+import { ordersOutbox } from "./domain/schema.ts";
+import { createOrdersApp } from "./http/app.ts";
+import { parseEnv } from "./runtime/config.ts";
+import { makeOrdersRuntime } from "./runtime/runtime.ts";
+import { Database, EventPublisher, InfraLogger, Nats } from "./runtime/services.ts";
 
 // Last-resort logger for boot/shutdown failures outside the runtime's lifecycle.
 const fallbackLogger = createLogger({ name: "orders" });
