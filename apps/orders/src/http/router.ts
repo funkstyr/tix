@@ -23,6 +23,7 @@ import {
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withResilience, withTimeout } from "@tix/observability/resilience";
 
 import {
   BuyerIsSeller,
@@ -58,9 +59,15 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
     const db = yield* Database;
     const env = yield* OrdersConfig;
 
-    const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+    const session = yield* withResilience(
+      "orders.auth.require_session",
+      tryOrpc(() => requireSession(authClient, input.token)),
+    );
 
-    const ticket = yield* tryOrpc(() => ticketsClient.getById({ ticketId: input.ticketId }));
+    const ticket = yield* withResilience(
+      "orders.tickets.get_by_id",
+      tryOrpc(() => ticketsClient.getById({ ticketId: input.ticketId })),
+    );
     if (!ticket) {
       return yield* Effect.fail(new TicketNotFound({ ticketId: input.ticketId }));
     }
@@ -73,8 +80,9 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
       return yield* Effect.fail(new SoldOut({ ticketId: input.ticketId }));
     }
 
-    const reserveResult = yield* tryOrpc(() =>
-      ticketsClient.reserve({ ticketId: input.ticketId, quantity: input.quantity }),
+    const reserveResult = yield* withTimeout(
+      "orders.tickets.reserve",
+      tryOrpc(() => ticketsClient.reserve({ ticketId: input.ticketId, quantity: input.quantity })),
     ).pipe(
       Effect.catchAll(
         (
@@ -108,48 +116,57 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
     const createdAt = new Date(nowMs);
     const expiresAt = new Date(nowMs + env.reservationTtlMs);
 
-    const row = yield* tryOrpc(() =>
-      db.db.transaction(async (tx) => {
-        const [inserted] = await tx
-          .insert(orders)
-          .values({
-            id: orderId,
-            buyerId: session.user.id,
-            ticketId: input.ticketId,
-            quantity: input.quantity,
-            priceCents,
-            status: "created",
-            expiresAt,
-            createdAt,
-          })
-          .returning();
+    const row = yield* withTimeout(
+      "orders.db.create_order",
+      tryOrpc(() =>
+        db.db.transaction(async (tx) => {
+          const [inserted] = await tx
+            .insert(orders)
+            .values({
+              id: orderId,
+              buyerId: session.user.id,
+              ticketId: input.ticketId,
+              quantity: input.quantity,
+              priceCents,
+              status: "created",
+              expiresAt,
+              createdAt,
+            })
+            .returning();
 
-        if (!inserted) {
-          throw new ORPCError("INTERNAL_SERVER_ERROR", {
-            message: "order insert returned no row",
+          if (!inserted) {
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
+              message: "order insert returned no row",
+            });
+          }
+
+          await enqueueEvent(tx, ordersOutbox, {
+            subject: ORDER_CREATED_V1,
+            eventId: uuidv7(),
+            payload: {
+              orderId: inserted.id,
+              ticketId: inserted.ticketId,
+              buyerId: inserted.buyerId,
+              quantity: inserted.quantity,
+              priceCents,
+              expiresAt: inserted.expiresAt.toISOString(),
+              createdAt: inserted.createdAt.toISOString(),
+            },
           });
-        }
 
-        await enqueueEvent(tx, ordersOutbox, {
-          subject: ORDER_CREATED_V1,
-          eventId: uuidv7(),
-          payload: {
-            orderId: inserted.id,
-            ticketId: inserted.ticketId,
-            buyerId: inserted.buyerId,
-            quantity: inserted.quantity,
-            priceCents,
-            expiresAt: inserted.expiresAt.toISOString(),
-            createdAt: inserted.createdAt.toISOString(),
-          },
-        });
-
-        return inserted;
-      }),
+          return inserted;
+        }),
+      ),
     ).pipe(
-      Effect.withSpan("orders.db.create_order"),
-      // The insert (or its outbox enqueue) failed after the seats were reserved.
-      // Compensate first, then re-raise the original failure.
+      // A *typed* failure here — the insert or its outbox enqueue erroring — happened after the
+      // seats were reserved, so compensate (release the reservation) before re-raising.
+      //
+      // A *timeout* is deliberately NOT compensated: `withTimeout` surfaces it as a defect (see
+      // resilience.ts), which `catchAll` does not catch, so it propagates uncompensated. The
+      // reason is the in-flight commit: `Effect.tryPromise` can't abort the transaction, so a
+      // timed-out insert may still land. Releasing the reservation for an order that then commits
+      // would oversell the ticket; leaving seats held for an order that rolled back only
+      // undersells, which an operator can reconcile. Undersell is the safer default of the two.
       Effect.catchAll((err) =>
         compensateReserve(db, {
           orderId,
@@ -203,10 +220,14 @@ export function createOrdersRouter(runtime: OrdersRuntime) {
             const authClient = yield* AuthClient;
             const db = yield* Database;
 
-            const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+            const session = yield* withResilience(
+              "orders.auth.require_session",
+              tryOrpc(() => requireSession(authClient, input.token)),
+            );
 
-            const [row] = yield* tryOrpc(() =>
-              db.db.select().from(orders).where(eq(orders.id, input.orderId)),
+            const [row] = yield* withResilience(
+              "orders.db.get_order",
+              tryOrpc(() => db.db.select().from(orders).where(eq(orders.id, input.orderId))),
             );
             if (!row) return null;
 
@@ -231,7 +252,10 @@ export function createOrdersRouter(runtime: OrdersRuntime) {
             const authClient = yield* AuthClient;
             const db = yield* Database;
 
-            const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+            const session = yield* withResilience(
+              "orders.auth.require_session",
+              tryOrpc(() => requireSession(authClient, input.token)),
+            );
 
             const limit = input.limit ?? DEFAULT_LIST_LIMIT;
 
@@ -239,13 +263,16 @@ export function createOrdersRouter(runtime: OrdersRuntime) {
             // createdAt. Holds because every insert goes through `create` above with
             // an explicit uuidv7 (monotonic per source) — see the note on
             // `orders.id` in orders-schema.ts.
-            const rows = yield* tryOrpc(() =>
-              db.db
-                .select()
-                .from(orders)
-                .where(eq(orders.buyerId, session.user.id))
-                .orderBy(desc(orders.createdAt), desc(orders.id))
-                .limit(limit),
+            const rows = yield* withResilience(
+              "orders.db.list_orders",
+              tryOrpc(() =>
+                db.db
+                  .select()
+                  .from(orders)
+                  .where(eq(orders.buyerId, session.user.id))
+                  .orderBy(desc(orders.createdAt), desc(orders.id))
+                  .limit(limit),
+              ),
             );
 
             return { items: rows.map(toOrderRecord) };
@@ -266,69 +293,78 @@ export function createOrdersRouter(runtime: OrdersRuntime) {
             const authClient = yield* AuthClient;
             const db = yield* Database;
 
-            const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+            const session = yield* withResilience(
+              "orders.auth.require_session",
+              tryOrpc(() => requireSession(authClient, input.token)),
+            );
 
             const nowMs = yield* Clock.currentTimeMillis;
             const now = new Date(nowMs).toISOString();
 
             // The transaction returns a discriminated result so the not-found case
             // can be raised as a tagged failure outside the non-Effect island.
-            const result = yield* tryOrpc(() =>
-              db.db.transaction(async (tx): Promise<CancelResult> => {
-                const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId));
+            const result = yield* withTimeout(
+              "orders.db.cancel_order",
+              tryOrpc(() =>
+                db.db.transaction(async (tx): Promise<CancelResult> => {
+                  const [order] = await tx
+                    .select()
+                    .from(orders)
+                    .where(eq(orders.id, input.orderId));
 
-                // Treat non-existent and non-owned identically to `getById`:
-                // existence isn't a side channel an attacker could probe with a
-                // guessed orderId.
-                if (!order || order.buyerId !== session.user.id) {
-                  return { kind: "not_found" };
-                }
+                  // Treat non-existent and non-owned identically to `getById`:
+                  // existence isn't a side channel an attacker could probe with a
+                  // guessed orderId.
+                  if (!order || order.buyerId !== session.user.id) {
+                    return { kind: "not_found" };
+                  }
 
-                const next = transition(order.status, { kind: "buyer_cancels" });
-                if (!next.ok) {
-                  // Already terminal (`cancelled`/`complete`/`expired`) — cancel is
-                  // a no-op. Return the order unchanged so the call stays idempotent.
-                  return { kind: "ok", row: order };
-                }
+                  const next = transition(order.status, { kind: "buyer_cancels" });
+                  if (!next.ok) {
+                    // Already terminal (`cancelled`/`complete`/`expired`) — cancel is
+                    // a no-op. Return the order unchanged so the call stays idempotent.
+                    return { kind: "ok", row: order };
+                  }
 
-                const nextVersion = order.version + 1;
-                const updated = await updateVersioned(
-                  tx,
-                  orders,
-                  { id: order.id, version: order.version },
-                  { status: next.next },
-                );
-                if (updated.rowsAffected === 0) {
-                  // A concurrent transition (expiry/payment) moved the row to a
-                  // terminal state between our read and write. Re-read and return
-                  // it; that writer owns the emitted events.
-                  const [fresh] = await tx.select().from(orders).where(eq(orders.id, order.id));
-                  return { kind: "ok", row: fresh ?? order };
-                }
+                  const nextVersion = order.version + 1;
+                  const updated = await updateVersioned(
+                    tx,
+                    orders,
+                    { id: order.id, version: order.version },
+                    { status: next.next },
+                  );
+                  if (updated.rowsAffected === 0) {
+                    // A concurrent transition (expiry/payment) moved the row to a
+                    // terminal state between our read and write. Re-read and return
+                    // it; that writer owns the emitted events.
+                    const [fresh] = await tx.select().from(orders).where(eq(orders.id, order.id));
+                    return { kind: "ok", row: fresh ?? order };
+                  }
 
-                await enqueueEvent(tx, ordersOutbox, {
-                  subject: ORDER_CANCELLED_V1,
-                  eventId: uuidv7(),
-                  payload: { orderId: order.id, version: nextVersion, cancelledAt: now },
-                });
+                  await enqueueEvent(tx, ordersOutbox, {
+                    subject: ORDER_CANCELLED_V1,
+                    eventId: uuidv7(),
+                    payload: { orderId: order.id, version: nextVersion, cancelledAt: now },
+                  });
 
-                // Cancel must also free the held inventory. Tickets release off
-                // order.reservation_released.v1 (not order.cancelled.v1), mirroring
-                // the expiration path in orders-consumer.
-                await enqueueEvent(tx, ordersOutbox, {
-                  subject: ORDER_RESERVATION_RELEASED_V1,
-                  eventId: uuidv7(),
-                  payload: {
-                    orderId: order.id,
-                    ticketId: order.ticketId,
-                    quantity: order.quantity,
-                    releasedAt: now,
-                  },
-                });
+                  // Cancel must also free the held inventory. Tickets release off
+                  // order.reservation_released.v1 (not order.cancelled.v1), mirroring
+                  // the expiration path in orders-consumer.
+                  await enqueueEvent(tx, ordersOutbox, {
+                    subject: ORDER_RESERVATION_RELEASED_V1,
+                    eventId: uuidv7(),
+                    payload: {
+                      orderId: order.id,
+                      ticketId: order.ticketId,
+                      quantity: order.quantity,
+                      releasedAt: now,
+                    },
+                  });
 
-                return { kind: "ok", row: { ...order, status: next.next, version: nextVersion } };
-              }),
-            ).pipe(Effect.withSpan("orders.db.cancel_order"));
+                  return { kind: "ok", row: { ...order, status: next.next, version: nextVersion } };
+                }),
+              ),
+            );
 
             if (result.kind === "not_found") {
               return yield* Effect.fail(new OrderNotFound({ orderId: input.orderId }));
@@ -376,17 +412,20 @@ function compensateReserve(db: OrdersDb, args: CompensateReserveArgs): Effect.Ef
   return Effect.gen(function* () {
     const nowMs = yield* Clock.currentTimeMillis;
 
-    yield* Effect.tryPromise(() =>
-      enqueueEvent(db.db, ordersOutbox, {
-        subject: ORDER_RESERVATION_RELEASED_V1,
-        eventId: uuidv7(),
-        payload: {
-          orderId: args.orderId,
-          ticketId: args.ticketId,
-          quantity: args.quantity,
-          releasedAt: new Date(nowMs).toISOString(),
-        },
-      }),
+    yield* withTimeout(
+      "orders.db.release_reservation",
+      Effect.tryPromise(() =>
+        enqueueEvent(db.db, ordersOutbox, {
+          subject: ORDER_RESERVATION_RELEASED_V1,
+          eventId: uuidv7(),
+          payload: {
+            orderId: args.orderId,
+            ticketId: args.ticketId,
+            quantity: args.quantity,
+            releasedAt: new Date(nowMs).toISOString(),
+          },
+        }),
+      ),
     ).pipe(
       Effect.catchAll((releaseErr) =>
         // Inventory is now stuck reserved against an unborn Order. Operator must

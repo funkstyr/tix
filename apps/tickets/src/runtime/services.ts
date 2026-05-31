@@ -5,6 +5,7 @@ import { type AuthSessionClient, createHttpAuthSessionClient } from "@tix/contra
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
 import { traceparentHeaders } from "@tix/observability/otel-http";
+import { withResilience } from "@tix/observability/resilience";
 
 import { ticketsTables } from "../domain/schema.ts";
 import type { TicketsEnv } from "./config.ts";
@@ -58,7 +59,14 @@ export const NatsLayer: Layer.Layer<Nats, never, TicketsConfig> = Layer.scoped(
     const env = yield* TicketsConfig;
 
     return yield* Effect.acquireRelease(
-      Effect.promise(() => connect({ servers: env.natsUrl })),
+      withResilience(
+        "tickets.nats.connect",
+        Effect.tryPromise({
+          try: () => connect({ servers: env.natsUrl }),
+          catch: (error) => error,
+        }),
+        { isRetryable: () => true },
+      ).pipe(Effect.orDie),
       (nats) => Effect.promise(() => nats.close()),
     );
   }),

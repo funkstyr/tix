@@ -3,6 +3,7 @@ import { Clock, Effect, Metric } from "effect";
 
 import { requireSession } from "@tix/contracts/auth-client";
 import { paymentCreateInput } from "@tix/contracts/payments";
+import { withResilience, withTimeout } from "@tix/observability/resilience";
 
 import {
   OrderForbidden,
@@ -32,10 +33,16 @@ export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
     const db = yield* Database;
     const paymentIntentClient = yield* PaymentIntents;
 
-    const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+    const session = yield* withResilience(
+      "payments.auth.require_session",
+      tryOrpc(() => requireSession(authClient, input.token)),
+    );
 
-    const [order] = yield* tryOrpc(() =>
-      db.db.select().from(orderReadModel).where(eq(orderReadModel.id, input.orderId)),
+    const [order] = yield* withResilience(
+      "payments.db.select_order",
+      tryOrpc(() =>
+        db.db.select().from(orderReadModel).where(eq(orderReadModel.id, input.orderId)),
+      ),
     );
     if (!order) {
       return yield* Effect.fail(new OrderNotFound({ orderId: input.orderId }));
@@ -58,14 +65,17 @@ export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
     // follows a successful Stripe call but failed DB write recovers cleanly: same
     // PaymentIntent from Stripe, conflict-fallback SELECT returns the row.
     const startMs = yield* Clock.currentTimeMillis;
-    const intent = yield* tryOrpc(() =>
-      paymentIntentClient.createPaymentIntent({
-        orderId: order.id,
-        amountCents: order.priceCents,
-        currency: DEFAULT_CURRENCY,
-        paymentMethodId: input.paymentMethodId,
-      }),
-    ).pipe(Effect.withSpan("payments.stripe.create_payment_intent"));
+    const intent = yield* withResilience(
+      "payments.stripe.create_payment_intent",
+      tryOrpc(() =>
+        paymentIntentClient.createPaymentIntent({
+          orderId: order.id,
+          amountCents: order.priceCents,
+          currency: DEFAULT_CURRENCY,
+          paymentMethodId: input.paymentMethodId,
+        }),
+      ),
+    );
     const endMs = yield* Clock.currentTimeMillis;
 
     yield* Metric.update(paymentChargeLatencyMs, endMs - startMs);
@@ -79,18 +89,21 @@ export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
       return yield* Effect.fail(new PaymentIntentNotSucceeded({ status: intent.status }));
     }
 
-    const recorded = yield* tryOrpc(() =>
-      db.db.transaction((tx) =>
-        recordPayment(tx, {
-          orderId: order.id,
-          userId: session.user.id,
-          stripeId: intent.stripeId,
-          amountCents: order.priceCents,
-          currency: DEFAULT_CURRENCY,
-          status: intent.status,
-        }),
+    const recorded = yield* withTimeout(
+      "payments.db.record_payment",
+      tryOrpc(() =>
+        db.db.transaction((tx) =>
+          recordPayment(tx, {
+            orderId: order.id,
+            userId: session.user.id,
+            stripeId: intent.stripeId,
+            amountCents: order.priceCents,
+            currency: DEFAULT_CURRENCY,
+            status: intent.status,
+          }),
+        ),
       ),
-    ).pipe(Effect.withSpan("payments.db.record_payment"));
+    );
 
     yield* Metric.increment(paymentsSucceededTotal);
 

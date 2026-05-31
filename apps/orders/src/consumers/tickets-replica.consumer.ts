@@ -7,6 +7,7 @@ import { ticketCreatedV1, ticketUpdatedV1 } from "@tix/contracts/tickets";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withTimeout } from "@tix/observability/resilience";
 
 import { ordersInbox, ticketsReplica } from "../domain/schema.ts";
 import type { OrdersRuntime } from "../runtime/runtime.ts";
@@ -43,24 +44,27 @@ export async function startTicketsCreatedConsumer(
         Effect.gen(function* () {
           const db = yield* Database;
 
-          const result = yield* Effect.tryPromise(() =>
-            db.db.transaction((tx) =>
-              withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-                await tx
-                  .insert(ticketsReplica)
-                  .values({
-                    id: payload.ticketId,
-                    sellerId: payload.sellerId,
-                    title: payload.title,
-                    quantityTotal: payload.quantityTotal,
-                    unitPriceCents: payload.unitPriceCents,
-                    version: 1,
-                    createdAt: new Date(payload.createdAt),
-                  })
-                  .onConflictDoNothing();
-              }),
+          const result = yield* withTimeout(
+            "orders.db.replicate_ticket_created",
+            Effect.tryPromise(() =>
+              db.db.transaction((tx) =>
+                withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                  await tx
+                    .insert(ticketsReplica)
+                    .values({
+                      id: payload.ticketId,
+                      sellerId: payload.sellerId,
+                      title: payload.title,
+                      quantityTotal: payload.quantityTotal,
+                      unitPriceCents: payload.unitPriceCents,
+                      version: 1,
+                      createdAt: new Date(payload.createdAt),
+                    })
+                    .onConflictDoNothing();
+                }),
+              ),
             ),
-          ).pipe(Effect.withSpan("orders.db.replicate_ticket_created"));
+          );
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate tickets.created.v1").pipe(
@@ -98,28 +102,31 @@ export async function startTicketsUpdatedConsumer(
         Effect.gen(function* () {
           const db = yield* Database;
 
-          const result = yield* Effect.tryPromise(() =>
-            db.db.transaction((tx) =>
-              withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-                const updated = await tx
-                  .update(ticketsReplica)
-                  .set({
-                    title: payload.title,
-                    unitPriceCents: payload.unitPriceCents,
-                    version: payload.version,
-                  })
-                  .where(
-                    and(
-                      eq(ticketsReplica.id, payload.ticketId),
-                      lt(ticketsReplica.version, payload.version),
-                    ),
-                  )
-                  .returning({ id: ticketsReplica.id });
+          const result = yield* withTimeout(
+            "orders.db.replicate_ticket_updated",
+            Effect.tryPromise(() =>
+              db.db.transaction((tx) =>
+                withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                  const updated = await tx
+                    .update(ticketsReplica)
+                    .set({
+                      title: payload.title,
+                      unitPriceCents: payload.unitPriceCents,
+                      version: payload.version,
+                    })
+                    .where(
+                      and(
+                        eq(ticketsReplica.id, payload.ticketId),
+                        lt(ticketsReplica.version, payload.version),
+                      ),
+                    )
+                    .returning({ id: ticketsReplica.id });
 
-                return { applied: updated.length > 0 };
-              }),
+                  return { applied: updated.length > 0 };
+                }),
+              ),
             ),
-          ).pipe(Effect.withSpan("orders.db.replicate_ticket_updated"));
+          );
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate tickets.updated.v1").pipe(

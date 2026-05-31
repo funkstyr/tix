@@ -24,6 +24,7 @@ import {
   ticketUpdateInput,
 } from "@tix/contracts/tickets";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withTimeout } from "@tix/observability/resilience";
 
 import type { CookieContext, DownstreamClients } from "./downstream-clients.ts";
 import { makeRunHandler, tryOrpc } from "./gateway-boundary.ts";
@@ -76,8 +77,11 @@ export function createGatewayRouter(runtime: GatewayRuntime) {
           Effect.gen(function* () {
             const clients = yield* Downstream;
 
-            return yield* tryOrpc(() =>
-              pick(clients)(input, { context: { cookieHeader: context.cookieHeader } }),
+            return yield* withTimeout(
+              "gateway.downstream.proxy",
+              tryOrpc(() =>
+                pick(clients)(input, { context: { cookieHeader: context.cookieHeader } }),
+              ),
             );
           }),
         ),

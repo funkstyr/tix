@@ -10,6 +10,7 @@ import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
+import { withTimeout } from "@tix/observability/resilience";
 
 import { orders, ordersInbox, ordersOutbox } from "../domain/schema.ts";
 import { transition } from "../domain/state-machine.ts";
@@ -44,53 +45,56 @@ export async function startOrdersExpiredConsumer(
           const db = yield* Database;
           const nowMs = yield* Clock.currentTimeMillis;
 
-          const result = yield* Effect.tryPromise(() =>
-            db.db.transaction((tx) =>
-              withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-                const [order] = await tx
-                  .select()
-                  .from(orders)
-                  .where(eq(orders.id, payload.orderId));
-                if (!order) return { kind: "unknown_order" as const };
+          const result = yield* withTimeout(
+            "orders.db.expire_order",
+            Effect.tryPromise(() =>
+              db.db.transaction((tx) =>
+                withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                  const [order] = await tx
+                    .select()
+                    .from(orders)
+                    .where(eq(orders.id, payload.orderId));
+                  if (!order) return { kind: "unknown_order" as const };
 
-                const next = transition(order.status, { kind: "deadline_passed" });
-                if (!next.ok) {
-                  return {
-                    kind: "fsm_ignored" as const,
-                    status: order.status,
-                    reason: next.reason,
-                  };
-                }
+                  const next = transition(order.status, { kind: "deadline_passed" });
+                  if (!next.ok) {
+                    return {
+                      kind: "fsm_ignored" as const,
+                      status: order.status,
+                      reason: next.reason,
+                    };
+                  }
 
-                const updated = await updateVersioned(
-                  tx,
-                  orders,
-                  { id: order.id, version: order.version },
-                  { status: next.next },
-                );
-                if (updated.rowsAffected === 0) {
-                  // A concurrent writer (buyer cancel, payment) moved the row to a
-                  // terminal state between our read and write, where `order.expired`
-                  // is correctly a no-op. The inbox row commits regardless, so the
-                  // event won't be re-delivered.
-                  return { kind: "version_conflict" as const, version: order.version };
-                }
+                  const updated = await updateVersioned(
+                    tx,
+                    orders,
+                    { id: order.id, version: order.version },
+                    { status: next.next },
+                  );
+                  if (updated.rowsAffected === 0) {
+                    // A concurrent writer (buyer cancel, payment) moved the row to a
+                    // terminal state between our read and write, where `order.expired`
+                    // is correctly a no-op. The inbox row commits regardless, so the
+                    // event won't be re-delivered.
+                    return { kind: "version_conflict" as const, version: order.version };
+                  }
 
-                await enqueueEvent(tx, ordersOutbox, {
-                  subject: ORDER_RESERVATION_RELEASED_V1,
-                  eventId: uuidv7(),
-                  payload: {
-                    orderId: order.id,
-                    ticketId: order.ticketId,
-                    quantity: order.quantity,
-                    releasedAt: new Date(nowMs).toISOString(),
-                  },
-                });
+                  await enqueueEvent(tx, ordersOutbox, {
+                    subject: ORDER_RESERVATION_RELEASED_V1,
+                    eventId: uuidv7(),
+                    payload: {
+                      orderId: order.id,
+                      ticketId: order.ticketId,
+                      quantity: order.quantity,
+                      releasedAt: new Date(nowMs).toISOString(),
+                    },
+                  });
 
-                return { kind: "released" as const };
-              }),
+                  return { kind: "released" as const };
+                }),
+              ),
             ),
-          ).pipe(Effect.withSpan("orders.db.expire_order"));
+          );
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate order.expired.v1").pipe(

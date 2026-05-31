@@ -4,6 +4,7 @@ import { Context, Effect, Layer } from "effect";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
 import { createScheduler, type DelayedScheduler } from "@tix/messaging/jobs";
+import { withResilience } from "@tix/observability/resilience";
 
 import { expirationTables } from "../expiration-schema.ts";
 import {
@@ -64,7 +65,14 @@ export const NatsLayer: Layer.Layer<Nats, never, ExpirationConfig> = Layer.scope
     const env = yield* ExpirationConfig;
 
     return yield* Effect.acquireRelease(
-      Effect.promise(() => connect({ servers: env.natsUrl })),
+      withResilience(
+        "expiration.nats.connect",
+        Effect.tryPromise({
+          try: () => connect({ servers: env.natsUrl }),
+          catch: (error) => error,
+        }),
+        { isRetryable: () => true },
+      ).pipe(Effect.orDie),
       (nats) => Effect.promise(() => nats.close()),
     );
   }),
