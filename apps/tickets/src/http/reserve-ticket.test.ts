@@ -4,7 +4,7 @@ import { Effect, Metric } from "effect";
 import { reservationConflictsTotal, ticketsReservedTotal } from "../runtime/metrics.ts";
 import type { TicketsDb } from "../runtime/services.ts";
 import { createTicketsTestLayer } from "../runtime/test-runtime.ts";
-import { reserveTicketProgram } from "./router.ts";
+import { reserveTicketProgram } from "./reserve-ticket.ts";
 
 const TICKET_ID = "11111111-1111-4111-8111-111111111111";
 
