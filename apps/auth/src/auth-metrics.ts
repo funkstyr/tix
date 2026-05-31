@@ -1,18 +1,23 @@
 import { Duration, Effect, Metric, MetricBoundaries } from "effect";
 
+// The closed set of operations RED metrics are tagged by: the four oRPC handlers plus
+// `native`, the aggregate bucket for the SPA-facing better-auth `/api/auth/*` surface.
+// A union (not a bare string) keeps a typo from silently forking a new metric series.
+export type AuthOp = "signUp" | "signIn" | "signOut" | "getSession" | "native";
+
 // RED metrics for the auth service (ADR-0009). Effect's MetricRegistry is process-global,
 // so these are module constants; the OTLP metrics pipeline (otlpLayer) polls and exports
-// them to Prometheus. `instrumentAuth` tags each with the resolved `op` (signUp, signIn,
-// signOut, getSession) so request rate, error rate, and latency are attributable per
-// operation — sign-in failure rate is just the `signIn` error series.
+// them to Prometheus. `instrumentAuth` tags each with the resolved `op` so request rate,
+// error rate, and latency are attributable per operation — sign-in failure rate is just
+// the `signIn` error series.
 
 export const authRequestsTotal = Metric.counter("auth_requests_total", {
-  description: "Auth oRPC requests handled.",
+  description: "Auth requests handled.",
   incremental: true,
 });
 
 export const authRequestErrorsTotal = Metric.counter("auth_request_errors_total", {
-  description: "Auth oRPC requests that failed.",
+  description: "Auth requests that failed.",
   incremental: true,
 });
 
@@ -21,7 +26,7 @@ export const authRequestErrorsTotal = Metric.counter("auth_request_errors_total"
 export const authRequestDurationMs = Metric.histogram(
   "auth_request_duration_ms",
   MetricBoundaries.exponential({ start: 1, factor: 2, count: 16 }),
-  "Auth oRPC request duration in ms.",
+  "Auth request duration in ms.",
 );
 
 // auth sits on the request path of every authenticated call via `requireSession`, so the
@@ -37,7 +42,7 @@ export const authSessionValidationsTotal = Metric.counter("auth_session_validati
 // regardless of outcome (Effect.timed runs on success or failure), and counts an error
 // when it fails. All three are tagged with `op` so they aggregate per operation. Returns
 // the program's value unchanged on success and re-raises on failure.
-export function instrumentAuth(op: string) {
+export function instrumentAuth(op: AuthOp) {
   const requests = Metric.tagged(authRequestsTotal, "op", op);
   const errors = Metric.tagged(authRequestErrorsTotal, "op", op);
   const duration = Metric.tagged(authRequestDurationMs, "op", op);

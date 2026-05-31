@@ -6,6 +6,7 @@ import { RPC_PREFIX } from "@tix/contracts/rpc";
 import { extractTraceparent } from "@tix/observability/otel-http";
 import { externalParent } from "@tix/observability/otel-trace";
 
+import { instrumentAuth } from "./auth-metrics.ts";
 import type { AuthRuntime } from "./auth-runtime.ts";
 import { Auth } from "./auth-services.ts";
 import { type AuthRequestContext, createAuthRouter } from "./router.ts";
@@ -29,14 +30,19 @@ export function createAuthApp(deps: CreateAuthAppDeps): Hono {
     // The native better-auth endpoints (used by the SPA) run inside a root span on the
     // runtime so their logs are trace-correlated and the global context manager makes the
     // active span visible to any outbound propagation. better-auth resolves `Auth` from
-    // the runtime just like the oRPC handlers.
+    // the runtime just like the oRPC handlers. The whole surface aggregates under the
+    // `native` op so the RED metrics aren't blind to SPA traffic — individual endpoints
+    // aren't broken out because better-auth multiplexes them behind one catch-all route.
     const otelParent = extractTraceparent(c.req.raw.headers);
 
     const program = Effect.gen(function* () {
       const auth = yield* Auth;
 
       return yield* Effect.promise(() => auth.handler(c.req.raw));
-    }).pipe(Effect.withSpan("auth.handler", { parent: externalParent(otelParent) }));
+    }).pipe(
+      Effect.withSpan("auth.handler", { parent: externalParent(otelParent) }),
+      instrumentAuth("native"),
+    );
 
     return deps.runtime.runPromise(program);
   });

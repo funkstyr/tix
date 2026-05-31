@@ -13,7 +13,7 @@ import {
 import { externalParent } from "@tix/observability/otel-trace";
 
 import { makeRunHandler, tryAuth } from "./auth-boundary.ts";
-import { instrumentAuth, recordSessionValidation } from "./auth-metrics.ts";
+import { type AuthOp, instrumentAuth, recordSessionValidation } from "./auth-metrics.ts";
 import type { AuthRuntime } from "./auth-runtime.ts";
 import { Auth } from "./auth-services.ts";
 
@@ -33,7 +33,7 @@ export type AuthRequestContext = {
 // One span per oRPC request, parented onto the inbound trace context when present
 // (otherwise a fresh root), plus per-op RED metrics.
 function withRequest<A, E, R>(
-  op: string,
+  op: AuthOp,
   context: AuthRequestContext,
   program: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> {
