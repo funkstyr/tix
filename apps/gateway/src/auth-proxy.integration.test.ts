@@ -11,7 +11,7 @@ import { dockerAvailable } from "@tix/test-helpers/docker-available";
 
 import { createDownstreamClients } from "./downstream-clients.ts";
 import { createGatewayApp } from "./gateway-app.ts";
-import { createGatewayRouter } from "./gateway-router.ts";
+import { createGatewayTestRuntime } from "./gateway-test-runtime.ts";
 
 const WEB_ORIGIN = "https://app.tix.test";
 const AUTH_BASE_URL = "http://auth.internal";
@@ -80,12 +80,11 @@ function buildGatewayApp(): Hono {
     },
     { fetch: async () => new Response(null, { status: 500 }) },
   );
-  const router = createGatewayRouter({ clients });
+  const runtime = createGatewayTestRuntime({ clients });
 
   return createGatewayApp({
-    logger: createLogger({ name: "gateway-test", level: "silent" }),
+    runtime,
     webOrigin: WEB_ORIGIN,
-    router,
     authBaseUrl: AUTH_BASE_URL,
     fetch: authFetch,
   });

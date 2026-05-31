@@ -1,3 +1,5 @@
+import { traceparentHeaders } from "@tix/observability/otel-http";
+
 const HOP_BY_HOP = new Set([
   "host",
   "content-length",
@@ -40,6 +42,13 @@ export function createAuthProxy(deps: AuthProxyDeps): AuthProxy {
       if (HOP_BY_HOP.has(lower)) continue;
       if (CLIENT_FORWARDED.has(lower)) continue;
       upstreamHeaders.append(key, value);
+    }
+
+    // Continue the trace at the auth service: inject W3C `traceparent` from the active
+    // span. Empty when no span is active (so existing header behaviour is unchanged);
+    // propagation only fires when the proxy runs inside a span on the runtime (app.ts).
+    for (const [key, value] of Object.entries(traceparentHeaders())) {
+      upstreamHeaders.set(key, value);
     }
 
     // `duplex` is required by Node's fetch when streaming a body; libdom omits it.

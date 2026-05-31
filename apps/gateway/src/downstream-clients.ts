@@ -6,6 +6,7 @@ import type { OrdersRouterClient } from "@tix/contracts/orders";
 import type { PaymentsRouterClient } from "@tix/contracts/payments";
 import { joinRpcUrl } from "@tix/contracts/rpc";
 import type { TicketsRouterClient } from "@tix/contracts/tickets";
+import { traceparentHeaders } from "@tix/observability/otel-http";
 
 export type CookieContext = { cookieHeader: string | null };
 
@@ -67,10 +68,15 @@ function makeClient<T>(
   baseUrl: string,
   fetchImpl: typeof globalThis.fetch | undefined,
 ): DownstreamRouterClient<T> {
+  // Resolve headers per request so the trace-context injector sees the active span;
+  // `traceparentHeaders()` is `{}` when no span is active, so the cookie logic is
+  // unchanged in that case.
   const link = new RPCLink<CookieContext>({
     url: joinRpcUrl(baseUrl),
-    headers: ({ context }) =>
-      context.cookieHeader === null ? {} : { cookie: context.cookieHeader },
+    headers: ({ context }) => ({
+      ...traceparentHeaders(),
+      ...(context.cookieHeader === null ? {} : { cookie: context.cookieHeader }),
+    }),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
 

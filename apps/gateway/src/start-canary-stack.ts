@@ -39,7 +39,7 @@ import { createLogger } from "@tix/observability/logger";
 
 import { createDownstreamClients } from "./downstream-clients.ts";
 import { createGatewayApp } from "./gateway-app.ts";
-import { createGatewayRouter } from "./gateway-router.ts";
+import { createGatewayTestRuntime } from "./gateway-test-runtime.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_SERVICE_TOKEN = "canary-service-token";
@@ -224,11 +224,12 @@ export async function startCanaryStack(
     paymentsBaseUrl,
     authBaseUrl,
   });
-  const gatewayRouter = createGatewayRouter({ clients: downstreamClients });
+  // gateway now runs on an Effect runtime (ADR-0008); build one from the canary's
+  // already-constructed downstream clients (no OTLP — pretty logger only).
+  const gatewayRuntime = createGatewayTestRuntime({ clients: downstreamClients });
   const gatewayAppHono = createGatewayApp({
-    logger,
+    runtime: gatewayRuntime,
     webOrigin: options.webOrigin ?? WEB_ORIGIN,
-    router: gatewayRouter,
     authBaseUrl,
   });
   const { server: gatewayServer, baseUrl: gatewayBaseUrl } = await listen(gatewayAppHono);
@@ -269,6 +270,8 @@ export async function startCanaryStack(
           srv.close((err) => (err ? reject(err) : resolve())),
         );
       }
+      // Dispose the gateway runtime after its server is closed (LIFO spirit).
+      await gatewayRuntime.dispose();
       await nats.close();
       await paymentsDb.close();
       await ordersDb.close();

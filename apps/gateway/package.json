@@ -16,16 +16,20 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "@hono/node-server": "catalog:",
+    "@opentelemetry/api": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/observability": "workspace:*",
     "arktype": "catalog:",
+    "effect": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@nats-io/jetstream": "catalog:",
     "@nats-io/transport-node": "catalog:",
     "@tix/auth-test-fixture": "workspace:*",

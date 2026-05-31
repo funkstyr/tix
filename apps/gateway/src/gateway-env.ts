@@ -3,6 +3,7 @@ import type { Level } from "pino";
 
 const DEFAULT_PORT = 4000;
 const DEFAULT_SESSION_COOKIE_NAME = "tix.session";
+const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
 
 const envSchema = type({
   "GATEWAY_HTTP_PORT?": "string.numeric.parse",
@@ -12,6 +13,7 @@ const envSchema = type({
   ORDERS_BASE_URL: "string > 0",
   PAYMENTS_BASE_URL: "string > 0",
   "SESSION_COOKIE_NAME?": "string > 0",
+  "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
   "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
 
@@ -23,6 +25,7 @@ export type GatewayEnv = {
   ordersBaseUrl: string;
   paymentsBaseUrl: string;
   sessionCookieName: string;
+  otelEndpoint: string;
   logLevel: Level;
 };
 
@@ -45,6 +48,7 @@ export function parseEnv(env: Record<string, string | undefined>): GatewayEnv {
     ordersBaseUrl: parsed.ORDERS_BASE_URL,
     paymentsBaseUrl: parsed.PAYMENTS_BASE_URL,
     sessionCookieName: parsed.SESSION_COOKIE_NAME ?? DEFAULT_SESSION_COOKIE_NAME,
+    otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
     logLevel: parsed.LOG_LEVEL ?? "info",
   };
 }
