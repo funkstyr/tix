@@ -1,3 +1,4 @@
+import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { createRouterClient } from "@orpc/server";
 import { createAuth } from "auth/instance";
 import { createAuthRouter } from "auth/router";
@@ -13,16 +14,17 @@ import type { AuthRouterClient } from "@tix/contracts/auth";
 import { createInProcessAuthSessionClient } from "@tix/contracts/auth-client";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 
+import { tickets as ticketsTable, ticketsTables } from "../domain/schema.ts";
+import { createTicketsTestRuntime } from "../runtime/test-runtime.ts";
 import { createTicketsRouter } from "./router.ts";
-import { tickets as ticketsTable, ticketsTables } from "./tickets-schema.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_BASE_URL = "http://localhost:4001";
 const TEST_SERVICE_TOKEN = "test-service-token";
 const INVALID_TOKEN = "definitely-not-a-valid-session-token";
 
-const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
-const ticketsMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+const authMigrations = fileURLToPath(new URL("../../../auth/drizzle", import.meta.url));
+const ticketsMigrations = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 const dockerAvailable = ((): boolean => {
   if (process.env["DOCKER_HOST"]) return true;
@@ -48,17 +50,19 @@ function buildClients(ticketsDb: TicketsDbClient, authDb: AuthDbClient) {
   const authRouter = createAuthRouter({ auth });
   const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
-  const ticketsRouter = createTicketsRouter({
+
+  const ticketsRuntime = createTicketsTestRuntime({
     db: ticketsDb,
     authClient: authSessionClient,
     serviceToken: TEST_SERVICE_TOKEN,
   });
+  const ticketsRouter = createTicketsRouter(ticketsRuntime);
 
   return {
     authClient: authRouterClient,
     ticketsRouter,
     ticketsClient: createRouterClient(ticketsRouter, {
-      context: { serviceToken: TEST_SERVICE_TOKEN },
+      context: { otelParent: ROOT_CONTEXT, serviceToken: TEST_SERVICE_TOKEN },
     }),
   };
 }
@@ -419,7 +423,9 @@ describe.skipIf(!dockerAvailable)("tickets.reserve", () => {
   it("rejects callers that omit the service token with 401", async () => {
     const ticket = await createTicket(3);
 
-    const noTokenClient = createRouterClient(getTicketsRouter(), { context: {} });
+    const noTokenClient = createRouterClient(getTicketsRouter(), {
+      context: { otelParent: ROOT_CONTEXT },
+    });
     const call = noTokenClient.reserve({ ticketId: ticket.id, quantity: 1 });
 
     await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });

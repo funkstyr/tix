@@ -1,107 +1,91 @@
 import { serve } from "@hono/node-server";
-import { connect } from "@nats-io/transport-node";
-import { ArkErrors, type } from "arktype";
-import type { Level } from "pino";
+import { Cause, Effect, Exit, Fiber } from "effect";
 
-import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
-import { ORDERS_STREAM } from "@tix/contracts/subjects";
-import { createDbClient } from "@tix/db-core/client";
 import { startOutboxRelay } from "@tix/db-core/outbox";
-import { createPublisher } from "@tix/messaging/jetstream";
 import { createLogger } from "@tix/observability/logger";
 
-import { createTicketsApp } from "./tickets-app.ts";
-import { startTicketsReleasedConsumer } from "./tickets-consumer.ts";
-import { ticketsOutbox, ticketsTables } from "./tickets-schema.ts";
+import { startTicketsReleasedConsumer } from "./consumers/released.consumer.ts";
+import { ticketsOutbox } from "./domain/schema.ts";
+import { createTicketsApp } from "./http/app.ts";
+import { parseEnv } from "./runtime/config.ts";
+import { makeTicketsRuntime } from "./runtime/runtime.ts";
+import { Database, EventPublisher, Nats } from "./runtime/services.ts";
 
-const DEFAULT_PORT = 4002;
-
-const envSchema = type({
-  "TICKETS_HTTP_PORT?": "string.numeric.parse",
-  DATABASE_URL: "string > 0",
-  AUTH_BASE_URL: "string > 0",
-  NATS_URL: "string > 0",
-  TICKETS_SERVICE_TOKEN: "string > 0",
-  "ORDERS_STREAM?": "string > 0",
-  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
-});
-
-type Env = {
-  port: number;
-  databaseUrl: string;
-  authBaseUrl: string;
-  natsUrl: string;
-  serviceToken: string;
-  ordersStream: string;
-  logLevel: Level;
-};
-
-function parseEnv(): Env {
-  const parsed = envSchema(process.env);
-  if (parsed instanceof ArkErrors) {
-    throw new Error(`invalid environment: ${parsed.summary}`);
-  }
-
-  const port = parsed.TICKETS_HTTP_PORT ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid TICKETS_HTTP_PORT: ${port}`);
-  }
-
-  return {
-    port,
-    databaseUrl: parsed.DATABASE_URL,
-    authBaseUrl: parsed.AUTH_BASE_URL,
-    natsUrl: parsed.NATS_URL,
-    serviceToken: parsed.TICKETS_SERVICE_TOKEN,
-    ordersStream: parsed.ORDERS_STREAM ?? ORDERS_STREAM,
-    logLevel: parsed.LOG_LEVEL ?? "info",
-  };
-}
-
+// Last-resort logger for boot/shutdown failures outside the runtime's lifecycle.
 const fallbackLogger = createLogger({ name: "tickets" });
 
-async function main(): Promise<void> {
-  const env = parseEnv();
-  const logger = createLogger({ name: "tickets", level: env.logLevel });
+const env = parseEnv();
+const runtime = makeTicketsRuntime(env);
 
-  const db = createDbClient("tickets", env.databaseUrl, { schema: ticketsTables });
-  const authClient = createHttpAuthSessionClient(env.authBaseUrl);
-  const app = createTicketsApp({ db, authClient, serviceToken: env.serviceToken, logger });
+// The boot program acquires the relay, the release consumer, and the HTTP server as scoped
+// resources, then parks on `Effect.never`. Interrupting the fiber runs the Scope finalizers
+// LIFO (server → consumer → relay); disposing the runtime then closes the NATS connection
+// and the db pool. This replaces the hand-rolled imperative construction and reverse-order
+// shutdown.
+const program = Effect.gen(function* () {
+  const db = yield* Database;
+  const publisher = yield* EventPublisher;
+  const nats = yield* Nats;
 
-  const nats = await connect({ servers: env.natsUrl });
-  const publisher = createPublisher(nats, { logger });
-  const relay = startOutboxRelay(db.db, ticketsOutbox, publisher.publish, { logger });
-  const releasedConsumer = await startTicketsReleasedConsumer({
-    db,
-    nats,
-    stream: env.ordersStream,
-    logger,
-  });
+  yield* Effect.acquireRelease(
+    Effect.sync(() => startOutboxRelay(db.db, ticketsOutbox, publisher.publish)),
+    (relay) => Effect.promise(() => relay.stop()),
+  );
 
-  const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
-    logger.info({ port: info.port }, "tickets service listening");
-  });
+  yield* Effect.acquireRelease(
+    Effect.promise(() => startTicketsReleasedConsumer({ runtime, nats, stream: env.ordersStream })),
+    (consumer) => Effect.promise(() => consumer.stop()),
+  );
 
-  let shuttingDown = false;
-  const shutdown = async (signal: string): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
+  const app = createTicketsApp(runtime);
 
-    logger.info({ signal }, "shutting down tickets service");
-    await new Promise<void>((resolve, reject) => {
-      server.close((err) => (err ? reject(err) : resolve()));
+  yield* Effect.acquireRelease(
+    Effect.async<ReturnType<typeof serve>>((resume) => {
+      const server = serve({ fetch: app.fetch, port: env.port }, () => {
+        resume(Effect.succeed(server));
+      });
+    }),
+    (server) =>
+      Effect.async<void>((resume) => {
+        server.close((err) => resume(err ? Effect.die(err) : Effect.void));
+      }),
+  );
+
+  yield* Effect.logInfo("tickets service listening").pipe(Effect.annotateLogs({ port: env.port }));
+
+  yield* Effect.never;
+});
+
+// `Effect.scoped` ties the acquired resources to this fiber's lifetime: parking on
+// `Effect.never` keeps them open, and interrupting the fiber closes the scope, running the
+// finalizers LIFO.
+const fiber = runtime.runFork(Effect.scoped(program));
+
+let shuttingDown = false;
+
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  fallbackLogger.info({ signal }, "shutting down tickets service");
+
+  void Effect.runPromise(Fiber.interrupt(fiber))
+    .then(() => runtime.dispose())
+    .then(() => process.exit(0))
+    .catch((err: unknown) => {
+      fallbackLogger.fatal({ err }, "error during tickets shutdown");
+      process.exit(1);
     });
-    await releasedConsumer.stop();
-    await relay.stop();
-    await nats.close();
-    await db.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-main().catch((err: unknown) => {
-  fallbackLogger.fatal({ err }, "tickets service failed to start");
-  process.exit(1);
+// A failure before shutdown (e.g. NATS unreachable at boot) tears the runtime down and exits
+// non-zero, mirroring the old `main().catch`.
+fiber.addObserver((exit) => {
+  if (shuttingDown || Exit.isSuccess(exit)) return;
+
+  fallbackLogger.fatal({ cause: Cause.pretty(exit.cause) }, "tickets service failed");
+  void runtime.dispose().finally(() => process.exit(1));
 });
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

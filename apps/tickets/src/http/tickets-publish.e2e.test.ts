@@ -1,5 +1,6 @@
 import { jetstreamManager, RetentionPolicy, StorageType } from "@nats-io/jetstream";
 import { connect, type NatsConnection } from "@nats-io/transport-node";
+import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { createRouterClient } from "@orpc/server";
 import { ArkErrors } from "arktype";
 import { createAuth } from "auth/instance";
@@ -20,15 +21,16 @@ import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { startOutboxRelay, type RunningOutboxRelay } from "@tix/db-core/outbox";
 import { createConsumer, createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
 
+import { ticketsOutbox, ticketsTables } from "../domain/schema.ts";
+import { createTicketsTestRuntime } from "../runtime/test-runtime.ts";
 import { createTicketsRouter } from "./router.ts";
-import { ticketsOutbox, ticketsTables } from "./tickets-schema.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_BASE_URL = "http://localhost:4001";
 const TEST_SERVICE_TOKEN = "test-service-token";
 
-const authMigrations = fileURLToPath(new URL("../../auth/drizzle", import.meta.url));
-const ticketsMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+const authMigrations = fileURLToPath(new URL("../../../auth/drizzle", import.meta.url));
+const ticketsMigrations = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 const dockerAvailable = ((): boolean => {
   if (process.env["DOCKER_HOST"]) return true;
@@ -60,16 +62,18 @@ function buildClients(ticketsDb_: TicketsDbClient, authDb_: AuthDbClient) {
   const authRouter = createAuthRouter({ auth });
   const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
-  const ticketsRouter = createTicketsRouter({
+
+  const ticketsRuntime = createTicketsTestRuntime({
     db: ticketsDb_,
     authClient: authSessionClient,
     serviceToken: TEST_SERVICE_TOKEN,
   });
+  const ticketsRouter = createTicketsRouter(ticketsRuntime);
 
   return {
     authClient: authRouterClient,
     ticketsClient: createRouterClient(ticketsRouter, {
-      context: { serviceToken: TEST_SERVICE_TOKEN },
+      context: { otelParent: ROOT_CONTEXT, serviceToken: TEST_SERVICE_TOKEN },
     }),
   };
 }
