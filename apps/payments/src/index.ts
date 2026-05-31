@@ -2,7 +2,6 @@ import { serve } from "@hono/node-server";
 import { Cause, Effect, Exit, Fiber } from "effect";
 
 import { startOutboxRelay } from "@tix/db-core/outbox";
-import { createLogger } from "@tix/observability/logger";
 
 import {
   startPaymentsOrderCancelledConsumer,
@@ -13,9 +12,6 @@ import { createPaymentsApp } from "./http/app.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makePaymentsRuntime } from "./runtime/runtime.ts";
 import { Database, EventPublisher, Nats } from "./runtime/services.ts";
-
-// Last-resort logger for boot/shutdown failures outside the runtime's lifecycle.
-const fallbackLogger = createLogger({ name: "payments" });
 
 const env = parseEnv();
 const runtime = makePaymentsRuntime(env);
@@ -77,13 +73,15 @@ function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  fallbackLogger.info({ signal }, "shutting down payments service");
+  // Boot/shutdown runs outside the Effect runtime's lifecycle (it is being torn down here),
+  // so these last-resort diagnostics go to `console` rather than the Effect Logger.
+  console.info("shutting down payments service", { signal });
 
   void Effect.runPromise(Fiber.interrupt(fiber))
     .then(() => runtime.dispose())
     .then(() => process.exit(0))
     .catch((err: unknown) => {
-      fallbackLogger.fatal({ err }, "error during payments shutdown");
+      console.error("error during payments shutdown", { err });
       process.exit(1);
     });
 }
@@ -93,7 +91,7 @@ function shutdown(signal: string): void {
 fiber.addObserver((exit) => {
   if (shuttingDown || Exit.isSuccess(exit)) return;
 
-  fallbackLogger.fatal({ cause: Cause.pretty(exit.cause) }, "payments service failed");
+  console.error("payments service failed", { cause: Cause.pretty(exit.cause) });
   void runtime.dispose().finally(() => process.exit(1));
 });
 

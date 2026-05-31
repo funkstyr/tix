@@ -11,13 +11,10 @@ import type { JsMsg, PubAck } from "@nats-io/jetstream";
 import type { NatsConnection } from "@nats-io/transport-node";
 import type { Context } from "@opentelemetry/api";
 import { ArkErrors, type Type } from "arktype";
-import { pino, type Logger } from "pino";
 
 import { extractTraceContext, injectTraceContext } from "./traceparent";
 
 const MSG_ID_HEADER = "Nats-Msg-Id";
-
-const fallbackLogger: Logger = pino({ level: "warn" });
 
 export type PublishOptions = {
   msgId?: string;
@@ -38,16 +35,8 @@ export type Publisher = {
   ) => Promise<{ ack: PubAck }>;
 };
 
-export type PublisherOptions = {
-  logger?: Logger;
-};
-
-export function createPublisher(
-  natsConnection: NatsConnection,
-  options: PublisherOptions = {},
-): Publisher {
+export function createPublisher(natsConnection: NatsConnection): Publisher {
   const js = jetstream(natsConnection);
-  const log = options.logger ?? fallbackLogger;
   const encoder = new TextEncoder();
 
   return {
@@ -60,11 +49,6 @@ export function createPublisher(
           : { headers: injectTraceContext(opts.traceContext) }),
       };
       const ack = await js.publish(subject, data, pubOpts);
-
-      log.info(
-        { subject, msgId: opts?.msgId, stream: ack.stream, seq: ack.seq, duplicate: ack.duplicate },
-        "event published",
-      );
 
       return { ack };
     },
@@ -92,7 +76,6 @@ export type ConsumerOptions<Payload> = {
   group: string;
   schema: Type<Payload>;
   handler: ConsumerHandler<Payload>;
-  logger?: Logger;
   ackWaitMs?: number;
 };
 
@@ -104,8 +87,11 @@ export async function createConsumer<Payload>(
   natsConnection: NatsConnection,
   options: ConsumerOptions<Payload>,
 ): Promise<RunningConsumer> {
-  const { stream, subjectFilter, group, schema, handler, logger, ackWaitMs } = options;
-  const log = (logger ?? fallbackLogger).child({ stream, group, subjectFilter });
+  const { stream, subjectFilter, group, schema, handler, ackWaitMs } = options;
+  // Wire-level failures here run outside Effect (the handler runs the service runtime
+  // itself), so they go to `console.error` rather than the Effect Logger. This context
+  // is merged into every diagnostic so the line is self-describing.
+  const context = { stream, group, subjectFilter };
 
   const manager = await jetstreamManager(natsConnection);
   await ensureConsumer(manager, { stream, subjectFilter, group, ackWaitMs });
@@ -118,12 +104,12 @@ export async function createConsumer<Payload>(
 
   const loop = (async () => {
     for await (const msg of messages) {
-      await processMessage(msg, { schema, handler, decoder, log });
+      await processMessage(msg, { schema, handler, decoder, context });
     }
   })();
 
   loop.catch((err: unknown) => {
-    log.error({ err }, "consumer loop terminated unexpectedly");
+    console.error("consumer loop terminated unexpectedly", { ...context, err });
   });
 
   return {
@@ -167,22 +153,24 @@ async function ensureConsumer(
   });
 }
 
+type ConsumerContext = { stream: string; group: string; subjectFilter: string };
+
 type ProcessMessageArgs<Payload> = {
   schema: Type<Payload>;
   handler: ConsumerHandler<Payload>;
   decoder: TextDecoder;
-  log: Logger;
+  context: ConsumerContext;
 };
 
 async function processMessage<Payload>(
   msg: JsMsg,
-  { schema, handler, decoder, log }: ProcessMessageArgs<Payload>,
+  { schema, handler, decoder, context }: ProcessMessageArgs<Payload>,
 ): Promise<void> {
   const subject = msg.subject;
   const eventId = msg.headers?.get(MSG_ID_HEADER);
 
   if (!eventId) {
-    log.error({ subject }, `event missing ${MSG_ID_HEADER} header; terminating`);
+    console.error(`event missing ${MSG_ID_HEADER} header; terminating`, { ...context, subject });
     msg.term(`missing ${MSG_ID_HEADER} header`);
     return;
   }
@@ -191,17 +179,24 @@ async function processMessage<Payload>(
   try {
     parsed = JSON.parse(decoder.decode(msg.data));
   } catch (err) {
-    log.error({ eventId, subject, err }, "event payload is not valid JSON; terminating");
+    console.error("event payload is not valid JSON; terminating", {
+      ...context,
+      eventId,
+      subject,
+      err,
+    });
     msg.term("invalid json");
     return;
   }
 
   const validated = schema(parsed);
   if (validated instanceof ArkErrors) {
-    log.error(
-      { eventId, subject, summary: validated.summary },
-      "event payload failed schema validation; terminating",
-    );
+    console.error("event payload failed schema validation; terminating", {
+      ...context,
+      eventId,
+      subject,
+      summary: validated.summary,
+    });
     msg.term("schema validation failed");
     return;
   }
@@ -219,22 +214,27 @@ async function processMessage<Payload>(
     // arktype distills the call result to `finalizeDistillation<Payload, ...>`; cast back to Payload.
     await handler({ subject, payload: validated as Payload, eventId, traceContext, ack });
     ack();
-    log.info({ eventId, subject, redelivered: msg.redelivered }, "event handled");
   } catch (err) {
     if (settled) {
-      log.error(
-        { eventId, subject, err, redelivered: msg.redelivered },
-        "handler threw after acking; not redelivering",
-      );
+      console.error("handler threw after acking; not redelivering", {
+        ...context,
+        eventId,
+        subject,
+        err,
+        redelivered: msg.redelivered,
+      });
       return;
     }
 
     settled = true;
     msg.nak();
-    log.error(
-      { eventId, subject, err, redelivered: msg.redelivered },
-      "handler threw; nak-ing for redelivery",
-    );
+    console.error("handler threw; nak-ing for redelivery", {
+      ...context,
+      eventId,
+      subject,
+      err,
+      redelivered: msg.redelivered,
+    });
   }
 }
 

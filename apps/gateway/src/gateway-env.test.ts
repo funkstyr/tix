@@ -21,12 +21,11 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...baseEnv, GATEWAY_HTTP_PORT: "99999" })).toThrow(/GATEWAY_HTTP_PORT/);
   });
 
-  it("defaults sessionCookieName, port, and logLevel when not provided", () => {
+  it("defaults sessionCookieName and port when not provided", () => {
     const env = parseEnv(baseEnv);
 
     expect(env.sessionCookieName).toBe("tix.session");
     expect(env.port).toBe(4000);
-    expect(env.logLevel).toBe("info");
   });
 
   it("honors a custom SESSION_COOKIE_NAME", () => {

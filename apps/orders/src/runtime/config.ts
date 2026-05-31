@@ -1,5 +1,4 @@
 import { ArkErrors, type } from "arktype";
-import type { Level } from "pino";
 
 import { ORDERS_STREAM, PAYMENTS_STREAM, TICKETS_STREAM } from "@tix/contracts/subjects";
 
@@ -19,7 +18,6 @@ const envSchema = type({
   "TICKETS_STREAM?": "string > 0",
   "RESERVATION_TTL_MS?": "string.numeric.parse",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
-  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
 
 export type OrdersEnv = {
@@ -34,7 +32,6 @@ export type OrdersEnv = {
   ticketsStream: string;
   reservationTtlMs: number;
   otelEndpoint: string;
-  logLevel: Level;
 };
 
 export function parseEnv(): OrdersEnv {
@@ -65,6 +62,5 @@ export function parseEnv(): OrdersEnv {
     ticketsStream: parsed.TICKETS_STREAM ?? TICKETS_STREAM,
     reservationTtlMs,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
-    logLevel: parsed.LOG_LEVEL ?? "info",
   };
 }

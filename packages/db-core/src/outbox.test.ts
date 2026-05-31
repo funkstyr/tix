@@ -3,8 +3,6 @@ import { eq } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { Writable } from "node:stream";
-import { pino } from "pino";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -81,25 +79,6 @@ function getClient(): DbClient<Record<string, never>> {
   return client;
 }
 
-type Captured = { level: number; msg: string; eventId?: string; subject?: string };
-
-function captureLogger(): { logger: ReturnType<typeof pino>; entries: Captured[] } {
-  const entries: Captured[] = [];
-  const dest = new Writable({
-    write(chunk, _enc, cb) {
-      const lines = (chunk.toString() as string).trim().split("\n");
-      for (const line of lines) {
-        if (!line) continue;
-        entries.push(JSON.parse(line) as Captured);
-      }
-      cb();
-    },
-  });
-  const logger = pino({ level: "debug" }, dest);
-
-  return { logger, entries };
-}
-
 async function waitUntil(
   predicate: () => boolean | Promise<boolean>,
   timeoutMs = 5_000,
@@ -112,8 +91,6 @@ async function waitUntil(
     await new Promise((r) => setTimeout(r, 25));
   }
 }
-
-const noopPublish: OutboxPublish = async () => undefined;
 
 const TRACE_ID = "0af7651916cd43dd8448eb211c80319c";
 const SPAN_ID = "b7ad6b7169203331";
@@ -308,39 +285,5 @@ describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
     expect(tracedSpan?.spanId).toBe(SPAN_ID);
 
     expect(seen.get(untracedId)).toBeUndefined();
-  }, 20_000);
-
-  it("logs eventId and subject on publish success", async () => {
-    const { db } = getClient();
-    const eventId = randomUUID();
-
-    await enqueueEvent(db, outboxTable, {
-      subject: SUBJECT,
-      payload: { hello: "world" },
-      eventId,
-    });
-
-    const { logger, entries } = captureLogger();
-
-    const relay = startOutboxRelay(db, outboxTable, noopPublish, {
-      pollIntervalMs: 25,
-      logger,
-    });
-
-    try {
-      await waitUntil(() =>
-        entries.some(
-          (e) => e.msg === "outbox row published" && e.eventId === eventId && e.subject === SUBJECT,
-        ),
-      );
-    } finally {
-      await relay.stop();
-    }
-
-    const matching = entries.filter(
-      (e) => e.msg === "outbox row published" && e.eventId === eventId,
-    );
-    expect(matching).toHaveLength(1);
-    expect(matching[0]?.subject).toBe(SUBJECT);
   }, 20_000);
 });

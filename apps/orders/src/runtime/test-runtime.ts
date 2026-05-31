@@ -3,7 +3,6 @@ import { Layer, Logger, ManagedRuntime } from "effect";
 
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { createPublisher } from "@tix/messaging/jetstream";
-import { createLogger } from "@tix/observability/logger";
 
 import type { TicketsClient } from "../tickets-client.ts";
 import type { OrdersEnv } from "./config.ts";
@@ -35,7 +34,6 @@ export function createOrdersTestLayer(
   deps: OrdersTestDeps,
 ): Layer.Layer<OrdersConfig | Database | AuthClient | Tickets | EventPublisher | Nats> {
   const env = makeTestEnv(deps.reservationTtlMs ?? DEFAULT_RESERVATION_TTL_MS);
-  const logger = createLogger({ name: "orders-test", level: "fatal" });
   const nats = deps.nats;
 
   return Layer.mergeAll(
@@ -44,10 +42,7 @@ export function createOrdersTestLayer(
     Layer.succeed(AuthClient, deps.authClient ?? throwingAuthClient()),
     Layer.succeed(Tickets, deps.ticketsClient ?? throwingTicketsClient()),
     Layer.succeed(Nats, nats ?? throwingNats()),
-    Layer.succeed(
-      EventPublisher,
-      nats === undefined ? throwingPublisher() : createPublisher(nats, { logger }),
-    ),
+    Layer.succeed(EventPublisher, nats === undefined ? throwingPublisher() : createPublisher(nats)),
   );
 }
 
@@ -57,7 +52,6 @@ export function createOrdersTestLayer(
 // is omitted — logs go through Effect's pretty logger.
 export function createOrdersTestRuntime(deps: OrdersTestDeps): OrdersRuntime {
   const env = makeTestEnv(deps.reservationTtlMs ?? DEFAULT_RESERVATION_TTL_MS);
-  const logger = createLogger({ name: "orders-test", level: "fatal" });
 
   const base = Layer.mergeAll(Layer.succeed(OrdersConfig, env), Layer.succeed(Database, deps.db));
 
@@ -72,7 +66,7 @@ export function createOrdersTestRuntime(deps: OrdersTestDeps): OrdersRuntime {
   const publisherLayer =
     nats === undefined
       ? Layer.succeed(EventPublisher, throwingPublisher())
-      : Layer.succeed(EventPublisher, createPublisher(nats, { logger }));
+      : Layer.succeed(EventPublisher, createPublisher(nats));
 
   return ManagedRuntime.make(
     Layer.mergeAll(base, auth, tickets, natsLayer, publisherLayer, Logger.pretty),
@@ -92,7 +86,6 @@ function makeTestEnv(reservationTtlMs: number): OrdersEnv {
     ticketsStream: "TICKETS",
     reservationTtlMs,
     otelEndpoint: "http://otel.test:4318",
-    logLevel: "fatal",
   };
 }
 

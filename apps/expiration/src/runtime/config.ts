@@ -1,5 +1,4 @@
 import { ArkErrors, type } from "arktype";
-import type { Level } from "pino";
 
 import { ORDERS_STREAM } from "@tix/contracts/subjects";
 
@@ -11,7 +10,6 @@ const envSchema = type({
   REDIS_URL: "string > 0",
   "EXPIRATION_STREAM?": "string > 0",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
-  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
 
 export type ExpirationEnv = {
@@ -20,7 +18,6 @@ export type ExpirationEnv = {
   redis: { host: string; port: number };
   stream: string;
   otelEndpoint: string;
-  logLevel: Level;
 };
 
 function parseRedisUrl(raw: string): { host: string; port: number } {
@@ -47,6 +44,5 @@ export function parseEnv(): ExpirationEnv {
     redis: parseRedisUrl(parsed.REDIS_URL),
     stream: parsed.EXPIRATION_STREAM ?? ORDERS_STREAM,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
-    logLevel: parsed.LOG_LEVEL ?? "info",
   };
 }

@@ -1,14 +1,9 @@
 import { serve } from "@hono/node-server";
 import { Cause, Effect, Exit, Fiber } from "effect";
 
-import { createLogger } from "@tix/observability/logger";
-
 import { createGatewayApp } from "./gateway-app.ts";
 import { parseEnv } from "./gateway-env.ts";
 import { makeGatewayRuntime } from "./gateway-runtime.ts";
-
-// Last-resort logger for boot/shutdown failures outside the runtime's lifecycle.
-const fallbackLogger = createLogger({ name: "gateway" });
 
 const env = parseEnv(process.env);
 const runtime = makeGatewayRuntime(env);
@@ -50,13 +45,15 @@ function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  fallbackLogger.info({ signal }, "shutting down gateway service");
+  // Boot/shutdown runs outside the Effect runtime's lifecycle (it is being torn down here),
+  // so these last-resort diagnostics go to `console` rather than the Effect Logger.
+  console.info("shutting down gateway service", { signal });
 
   void Effect.runPromise(Fiber.interrupt(fiber))
     .then(() => runtime.dispose())
     .then(() => process.exit(0))
     .catch((err: unknown) => {
-      fallbackLogger.fatal({ err }, "error during gateway shutdown");
+      console.error("error during gateway shutdown", { err });
       process.exit(1);
     });
 }
@@ -66,7 +63,7 @@ function shutdown(signal: string): void {
 fiber.addObserver((exit) => {
   if (shuttingDown || Exit.isSuccess(exit)) return;
 
-  fallbackLogger.fatal({ cause: Cause.pretty(exit.cause) }, "gateway service failed");
+  console.error("gateway service failed", { cause: Cause.pretty(exit.cause) });
   void runtime.dispose().finally(() => process.exit(1));
 });
 

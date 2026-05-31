@@ -1,5 +1,4 @@
 import { ArkErrors, type } from "arktype";
-import type { Level } from "pino";
 
 import { PAYMENTS_STREAM } from "@tix/contracts/subjects";
 
@@ -14,7 +13,6 @@ const envSchema = type({
   STRIPE_KEY: "string > 0",
   "PAYMENTS_STREAM?": "string > 0",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
-  "LOG_LEVEL?": "'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'",
 });
 
 export type PaymentsEnv = {
@@ -25,7 +23,6 @@ export type PaymentsEnv = {
   stripeKey: string;
   stream: string;
   otelEndpoint: string;
-  logLevel: Level;
 };
 
 export function parseEnv(): PaymentsEnv {
@@ -47,6 +44,5 @@ export function parseEnv(): PaymentsEnv {
     stripeKey: parsed.STRIPE_KEY,
     stream: parsed.PAYMENTS_STREAM ?? PAYMENTS_STREAM,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
-    logLevel: parsed.LOG_LEVEL ?? "info",
   };
 }

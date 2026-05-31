@@ -36,12 +36,8 @@
     "@tix/contracts": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "pino": "catalog:",
     "testcontainers": "catalog:",
     "tsdown": "catalog:",
     "vitest": "catalog:"
-  },
-  "peerDependencies": {
-    "pino": "catalog:"
   }
 }
