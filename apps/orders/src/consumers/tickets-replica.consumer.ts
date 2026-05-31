@@ -6,10 +6,11 @@ import { TICKETS_CREATED_V1, TICKETS_UPDATED_V1 } from "@tix/contracts/subjects"
 import { ticketCreatedV1, ticketUpdatedV1 } from "@tix/contracts/tickets";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { externalParent } from "@tix/observability/otel-trace";
 
 import { ordersInbox, ticketsReplica } from "../domain/schema.ts";
 import type { OrdersRuntime } from "../runtime/runtime.ts";
-import { Database, InfraLogger } from "../runtime/services.ts";
+import { Database } from "../runtime/services.ts";
 
 export const TICKETS_REPLICA_CREATED_GROUP = "orders-tickets-replica-created";
 export const TICKETS_REPLICA_UPDATED_GROUP = "orders-tickets-replica-updated";
@@ -29,7 +30,6 @@ export async function startTicketsCreatedConsumer(
 ): Promise<RunningConsumer> {
   const { runtime, nats, stream, ackWaitMs } = args;
 
-  const logger = runtime.runSync(InfraLogger);
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
   return createConsumer(nats, {
@@ -37,9 +37,8 @@ export async function startTicketsCreatedConsumer(
     subjectFilter: TICKETS_CREATED_V1,
     group: TICKETS_REPLICA_CREATED_GROUP,
     schema: ticketCreatedV1,
-    logger,
     ...ackWaitOpt,
-    handler: ({ eventId, subject, payload }) =>
+    handler: ({ eventId, subject, payload, traceContext }) =>
       runtime.runPromise(
         Effect.gen(function* () {
           const db = yield* Database;
@@ -61,14 +60,18 @@ export async function startTicketsCreatedConsumer(
                   .onConflictDoNothing();
               }),
             ),
-          );
+          ).pipe(Effect.withSpan("orders.db.replicate_ticket_created"));
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate tickets.created.v1").pipe(
               Effect.annotateLogs({ eventId, ticketId: payload.ticketId }),
             );
           }
-        }),
+        }).pipe(
+          Effect.withSpan("orders.consume.tickets_created", {
+            parent: externalParent(traceContext),
+          }),
+        ),
       ),
   });
 }
@@ -82,7 +85,6 @@ export async function startTicketsUpdatedConsumer(
 ): Promise<RunningConsumer> {
   const { runtime, nats, stream, ackWaitMs } = args;
 
-  const logger = runtime.runSync(InfraLogger);
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
   return createConsumer(nats, {
@@ -90,9 +92,8 @@ export async function startTicketsUpdatedConsumer(
     subjectFilter: TICKETS_UPDATED_V1,
     group: TICKETS_REPLICA_UPDATED_GROUP,
     schema: ticketUpdatedV1,
-    logger,
     ...ackWaitOpt,
-    handler: ({ eventId, subject, payload }) =>
+    handler: ({ eventId, subject, payload, traceContext }) =>
       runtime.runPromise(
         Effect.gen(function* () {
           const db = yield* Database;
@@ -115,22 +116,31 @@ export async function startTicketsUpdatedConsumer(
                   )
                   .returning({ id: ticketsReplica.id });
 
-                if (updated.length === 0) {
-                  logger.warn(
-                    { eventId, ticketId: payload.ticketId, version: payload.version },
-                    "tickets.updated.v1 for unknown or newer replica row; skipping",
-                  );
-                }
+                return { applied: updated.length > 0 };
               }),
             ),
-          );
+          ).pipe(Effect.withSpan("orders.db.replicate_ticket_updated"));
 
           if (result.deduped) {
             yield* Effect.logInfo("skipping duplicate tickets.updated.v1").pipe(
               Effect.annotateLogs({ eventId, ticketId: payload.ticketId }),
             );
+          } else if (!result.result.applied) {
+            yield* Effect.logWarning(
+              "tickets.updated.v1 for unknown or newer replica row; skipping",
+            ).pipe(
+              Effect.annotateLogs({
+                eventId,
+                ticketId: payload.ticketId,
+                version: payload.version,
+              }),
+            );
           }
-        }),
+        }).pipe(
+          Effect.withSpan("orders.consume.tickets_updated", {
+            parent: externalParent(traceContext),
+          }),
+        ),
       ),
   });
 }

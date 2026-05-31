@@ -1,5 +1,6 @@
 import { jetstreamManager, RetentionPolicy, StorageType } from "@nats-io/jetstream";
 import { connect, type NatsConnection } from "@nats-io/transport-node";
+import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { createRouterClient } from "@orpc/server";
 import { ArkErrors } from "arktype";
 import { createAuth } from "auth/instance";
@@ -82,7 +83,7 @@ function buildClients(ordersDb: OrdersDbClient, ticketsDb: TicketsDbClient, auth
     });
     const ordersRouter = createOrdersRouter(runtime);
 
-    return createRouterClient(ordersRouter);
+    return createRouterClient(ordersRouter, { context: { otelParent: ROOT_CONTEXT } });
   }
 
   return {

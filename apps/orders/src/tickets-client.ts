@@ -12,13 +12,20 @@ export type TicketsClient = {
   getById: (input: { ticketId: string }) => Promise<TicketSnapshot | null>;
 };
 
+export type TicketsClientOptions = {
+  headers?: () => Record<string, string>;
+};
+
 export function createHttpTicketsClient(
   ticketsBaseUrl: string,
   serviceToken: string,
+  options: TicketsClientOptions = {},
 ): TicketsClient {
+  // Resolve headers per request so the optional trace-context injector sees the active
+  // span; the static service token always rides along (ADR-0009).
   const link = new RPCLink({
     url: `${ticketsBaseUrl.replace(/\/$/, "")}${RPC_PREFIX}`,
-    headers: { "x-service-token": serviceToken },
+    headers: () => ({ "x-service-token": serviceToken, ...options.headers?.() }),
   });
   const client: TicketsClient = createORPCClient(link);
 

@@ -2,31 +2,27 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 
 import { RPC_PREFIX } from "@tix/contracts/rpc";
-import { requestLogger } from "@tix/observability/request-logger";
+import { extractTraceparent } from "@tix/observability/otel-http";
 
 import type { OrdersRuntime } from "../runtime/runtime.ts";
-import { InfraLogger } from "../runtime/services.ts";
-import { createOrdersRouter } from "./router.ts";
+import { createOrdersRouter, type OrdersRequestContext } from "./router.ts";
 
 export function createOrdersApp(runtime: OrdersRuntime): Hono {
   const router = createOrdersRouter(runtime);
   const rpc = new RPCHandler(router);
 
-  // The wire-level request logger stays pino (ADR-0008 keeps pino until the final
-  // cleanup slice); pull it from the runtime so there's a single logger instance.
-  const logger = runtime.runSync(InfraLogger);
-
   const app = new Hono();
 
-  app.use("*", requestLogger(logger));
-
+  // No request-logger middleware: the per-request span (opened in the router handlers)
+  // replaces it, and its logs/timing land in Tempo correlated by trace id (ADR-0009).
   app.get("/health", (c) => c.json({ service: "orders", ok: true }));
 
   app.all(`${RPC_PREFIX}/*`, async (c) => {
-    const { matched, response } = await rpc.handle(c.req.raw, {
-      prefix: RPC_PREFIX,
-      context: {},
-    });
+    // Extract the inbound trace context here, at the wire boundary, and hand it to the
+    // handlers so their span continues the caller's trace when one is present.
+    const context: OrdersRequestContext = { otelParent: extractTraceparent(c.req.raw.headers) };
+
+    const { matched, response } = await rpc.handle(c.req.raw, { prefix: RPC_PREFIX, context });
     if (matched) return response;
 
     return c.notFound();
