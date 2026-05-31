@@ -15,6 +15,7 @@ import { requireValue } from "@tix/test-helpers/require-value";
 import { waitFor } from "@tix/test-helpers/wait-for";
 
 import { ticketsReplica, ordersTables } from "./orders-schema.ts";
+import { createOrdersTestRuntime } from "./test-runtime.ts";
 import {
   startTicketsCreatedConsumer,
   startTicketsUpdatedConsumer,
@@ -83,8 +84,9 @@ beforeEach(async () => {
     duplicate_window: 0,
   });
 
-  createdConsumer = await startTicketsCreatedConsumer({ db: dbRef, nats: nc, stream: streamName });
-  updatedConsumer = await startTicketsUpdatedConsumer({ db: dbRef, nats: nc, stream: streamName });
+  const runtime = createOrdersTestRuntime({ db: dbRef, nats: nc });
+  createdConsumer = await startTicketsCreatedConsumer({ runtime, nats: nc, stream: streamName });
+  updatedConsumer = await startTicketsUpdatedConsumer({ runtime, nats: nc, stream: streamName });
 });
 
 afterEach(async () => {

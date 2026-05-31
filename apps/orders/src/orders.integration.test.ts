@@ -21,6 +21,7 @@ import {
   ordersTables,
 } from "./orders-schema.ts";
 import { createOrdersRouter } from "./router.ts";
+import { createOrdersTestRuntime } from "./test-runtime.ts";
 import { createInProcessTicketsClient, type TicketsClient } from "./tickets-client.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
@@ -69,12 +70,13 @@ function buildClients(ordersDb: OrdersDbClient, ticketsDb: TicketsDbClient, auth
   const ticketsClient = createInProcessTicketsClient(ticketsRouterClient);
 
   function buildOrdersClient(client: TicketsClient = ticketsClient) {
-    const ordersRouter = createOrdersRouter({
+    const runtime = createOrdersTestRuntime({
       db: ordersDb,
       authClient: authSessionClient,
       ticketsClient: client,
       reservationTtlMs: 15 * 60 * 1000,
     });
+    const ordersRouter = createOrdersRouter(runtime);
 
     return createRouterClient(ordersRouter);
   }

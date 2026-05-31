@@ -37,6 +37,115 @@ import { transition } from "./state-machine.ts";
 
 const DEFAULT_LIST_LIMIT = 50;
 
+// Exported as a standalone program (against the service `R` channel) so tests can
+// run it under an ambient `TestClock` — the router just wraps it with `run`, which
+// executes it on the live runtime.
+export function createOrderProgram(input: typeof orderCreateInput.infer) {
+  return Effect.gen(function* () {
+    const authClient = yield* AuthClient;
+    const ticketsClient = yield* Tickets;
+    const db = yield* Database;
+    const env = yield* OrdersConfig;
+
+    const session = yield* tryOrpc(() => requireSession(authClient, input.token));
+
+    const ticket = yield* tryOrpc(() => ticketsClient.getById({ ticketId: input.ticketId }));
+    if (!ticket) {
+      return yield* Effect.fail(new TicketNotFound({ ticketId: input.ticketId }));
+    }
+
+    if (ticket.sellerId === session.user.id) {
+      return yield* Effect.fail(new BuyerIsSeller({ ticketId: input.ticketId }));
+    }
+
+    if (ticket.quantityAvailable < input.quantity) {
+      return yield* Effect.fail(new SoldOut({ ticketId: input.ticketId }));
+    }
+
+    const reserveResult = yield* tryOrpc(() =>
+      ticketsClient.reserve({ ticketId: input.ticketId, quantity: input.quantity }),
+    ).pipe(
+      Effect.catchAll(
+        (
+          error,
+        ): Effect.Effect<never, ReservationConflict | TicketNotFound | ORPCError<string, unknown>> => {
+          // Lost the race: between getById and reserve, another buyer claimed the seats.
+          if (error.code === "CONFLICT") {
+            return Effect.fail(new ReservationConflict({ ticketId: input.ticketId }));
+          }
+
+          if (error.code === "NOT_FOUND") {
+            return Effect.fail(new TicketNotFound({ ticketId: input.ticketId }));
+          }
+
+          return Effect.fail(error);
+        },
+      ),
+    );
+
+    const priceCents = reserveResult.unitPriceCents * input.quantity;
+
+    // Reserve succeeded — from here, any failure must compensate via
+    // order.reservation_released.v1.
+    const orderId = uuidv7();
+    const nowMs = yield* Clock.currentTimeMillis;
+    const createdAt = new Date(nowMs);
+    const expiresAt = new Date(nowMs + env.reservationTtlMs);
+
+    const row = yield* tryOrpc(() =>
+      db.db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(orders)
+          .values({
+            id: orderId,
+            buyerId: session.user.id,
+            ticketId: input.ticketId,
+            quantity: input.quantity,
+            priceCents,
+            status: "created",
+            expiresAt,
+            createdAt,
+          })
+          .returning();
+
+        if (!inserted) {
+          throw new ORPCError("INTERNAL_SERVER_ERROR", {
+            message: "order insert returned no row",
+          });
+        }
+
+        await enqueueEvent(tx, ordersOutbox, {
+          subject: ORDER_CREATED_V1,
+          eventId: uuidv7(),
+          payload: {
+            orderId: inserted.id,
+            ticketId: inserted.ticketId,
+            buyerId: inserted.buyerId,
+            quantity: inserted.quantity,
+            priceCents,
+            expiresAt: inserted.expiresAt.toISOString(),
+            createdAt: inserted.createdAt.toISOString(),
+          },
+        });
+
+        return inserted;
+      }),
+    ).pipe(
+      // The insert (or its outbox enqueue) failed after the seats were reserved.
+      // Compensate first, then re-raise the original failure.
+      Effect.catchAll((err) =>
+        compensateReserve(db, {
+          orderId,
+          ticketId: input.ticketId,
+          quantity: input.quantity,
+        }).pipe(Effect.zipRight(Effect.fail(err))),
+      ),
+    );
+
+    return toOrderRecord(row);
+  });
+}
+
 export function createOrdersRouter(runtime: OrdersRuntime) {
   const run = makeRunHandler(runtime);
 
@@ -45,113 +154,7 @@ export function createOrdersRouter(runtime: OrdersRuntime) {
   const create = base
     .input(orderCreateInput)
     .output(orderRecordOutput)
-    .handler(({ input }) =>
-      run(
-        Effect.gen(function* () {
-          const authClient = yield* AuthClient;
-          const ticketsClient = yield* Tickets;
-          const db = yield* Database;
-          const env = yield* OrdersConfig;
-
-          const session = yield* tryOrpc(() => requireSession(authClient, input.token));
-
-          const ticket = yield* tryOrpc(() => ticketsClient.getById({ ticketId: input.ticketId }));
-          if (!ticket) {
-            return yield* Effect.fail(new TicketNotFound({ ticketId: input.ticketId }));
-          }
-
-          if (ticket.sellerId === session.user.id) {
-            return yield* Effect.fail(new BuyerIsSeller({ ticketId: input.ticketId }));
-          }
-
-          if (ticket.quantityAvailable < input.quantity) {
-            return yield* Effect.fail(new SoldOut({ ticketId: input.ticketId }));
-          }
-
-          const reserveResult = yield* tryOrpc(() =>
-            ticketsClient.reserve({ ticketId: input.ticketId, quantity: input.quantity }),
-          ).pipe(
-            Effect.catchAll(
-              (
-                error,
-              ): Effect.Effect<never, ReservationConflict | TicketNotFound | ORPCError<string, unknown>> => {
-                // Lost the race: between getById and reserve, another buyer claimed the seats.
-                if (error.code === "CONFLICT") {
-                  return Effect.fail(new ReservationConflict({ ticketId: input.ticketId }));
-                }
-
-                if (error.code === "NOT_FOUND") {
-                  return Effect.fail(new TicketNotFound({ ticketId: input.ticketId }));
-                }
-
-                return Effect.fail(error);
-              },
-            ),
-          );
-
-          const priceCents = reserveResult.unitPriceCents * input.quantity;
-
-          // Reserve succeeded — from here, any failure must compensate via
-          // order.reservation_released.v1.
-          const orderId = uuidv7();
-          const nowMs = yield* Clock.currentTimeMillis;
-          const createdAt = new Date(nowMs);
-          const expiresAt = new Date(nowMs + env.reservationTtlMs);
-
-          const row = yield* tryOrpc(() =>
-            db.db.transaction(async (tx) => {
-              const [inserted] = await tx
-                .insert(orders)
-                .values({
-                  id: orderId,
-                  buyerId: session.user.id,
-                  ticketId: input.ticketId,
-                  quantity: input.quantity,
-                  priceCents,
-                  status: "created",
-                  expiresAt,
-                  createdAt,
-                })
-                .returning();
-
-              if (!inserted) {
-                throw new ORPCError("INTERNAL_SERVER_ERROR", {
-                  message: "order insert returned no row",
-                });
-              }
-
-              await enqueueEvent(tx, ordersOutbox, {
-                subject: ORDER_CREATED_V1,
-                eventId: uuidv7(),
-                payload: {
-                  orderId: inserted.id,
-                  ticketId: inserted.ticketId,
-                  buyerId: inserted.buyerId,
-                  quantity: inserted.quantity,
-                  priceCents,
-                  expiresAt: inserted.expiresAt.toISOString(),
-                  createdAt: inserted.createdAt.toISOString(),
-                },
-              });
-
-              return inserted;
-            }),
-          ).pipe(
-            // The insert (or its outbox enqueue) failed after the seats were
-            // reserved. Compensate first, then re-raise the original failure.
-            Effect.catchAll((err) =>
-              compensateReserve(db, {
-                orderId,
-                ticketId: input.ticketId,
-                quantity: input.quantity,
-              }).pipe(Effect.zipRight(Effect.fail(err))),
-            ),
-          );
-
-          return toOrderRecord(row);
-        }),
-      ),
-    );
+    .handler(({ input }) => run(createOrderProgram(input)));
 
   const getById = base
     .input(orderGetByIdInput)

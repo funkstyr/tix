@@ -24,6 +24,7 @@ import {
   ordersOutbox as ordersOutboxTable,
   ordersTables,
 } from "./orders-schema.ts";
+import { createOrdersTestRuntime } from "./test-runtime.ts";
 
 const ordersMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -89,8 +90,9 @@ beforeEach(async () => {
     duplicate_window: 0,
   });
 
+  const runtime = createOrdersTestRuntime({ db: dbRef, nats: nc });
   consumer = await startOrdersPaymentCreatedConsumer({
-    db: dbRef,
+    runtime,
     nats: nc,
     stream: streamName,
   });
