@@ -1,35 +1,56 @@
 import { RPCHandler } from "@orpc/server/fetch";
+import { Effect } from "effect";
 import { Hono } from "hono";
-import type { Logger } from "pino";
 
 import { RPC_PREFIX } from "@tix/contracts/rpc";
-import { requestLogger } from "@tix/observability/request-logger";
+import { extractTraceparent } from "@tix/observability/otel-http";
+import { externalParent } from "@tix/observability/otel-trace";
 
-import type { AuthInstance } from "./auth-instance.ts";
-import { createAuthRouter } from "./router.ts";
+import type { AuthRuntime } from "./auth-runtime.ts";
+import { Auth } from "./auth-services.ts";
+import { type AuthRequestContext, createAuthRouter } from "./router.ts";
 
 export type CreateAuthAppDeps = {
-  auth: AuthInstance;
-  logger: Logger;
+  runtime: AuthRuntime;
 };
 
 export function createAuthApp(deps: CreateAuthAppDeps): Hono {
-  const router = createAuthRouter({ auth: deps.auth });
+  const router = createAuthRouter(deps.runtime);
   const rpc = new RPCHandler(router);
 
   const app = new Hono();
 
-  app.use("*", requestLogger(deps.logger));
-
+  // No request-logger middleware: the per-request span (opened in the router handlers and
+  // around the better-auth handler below) replaces it, and its logs/timing land in Tempo
+  // correlated by trace id (ADR-0009). /health stays untraced.
   app.get("/health", (c) => c.json({ service: "auth", ok: true }));
 
-  app.all("/api/auth/*", (c) => deps.auth.handler(c.req.raw));
+  app.all("/api/auth/*", (c) => {
+    // The native better-auth endpoints (used by the SPA) run inside a root span on the
+    // runtime so their logs are trace-correlated and the global context manager makes the
+    // active span visible to any outbound propagation. better-auth resolves `Auth` from
+    // the runtime just like the oRPC handlers.
+    const otelParent = extractTraceparent(c.req.raw.headers);
+
+    const program = Effect.gen(function* () {
+      const auth = yield* Auth;
+
+      return yield* Effect.promise(() => auth.handler(c.req.raw));
+    }).pipe(Effect.withSpan("auth.handler", { parent: externalParent(otelParent) }));
+
+    return deps.runtime.runPromise(program);
+  });
 
   app.all(`${RPC_PREFIX}/*`, async (c) => {
-    const { matched, response } = await rpc.handle(c.req.raw, {
-      prefix: RPC_PREFIX,
-      context: {},
-    });
+    const req = c.req.raw;
+
+    // Extract the inbound trace context here, at the wire boundary, and hand it to the
+    // handlers so their span continues the caller's trace.
+    const context: AuthRequestContext = {
+      otelParent: extractTraceparent(req.headers),
+    };
+
+    const { matched, response } = await rpc.handle(req, { prefix: RPC_PREFIX, context });
     if (matched) return response;
 
     return c.notFound();

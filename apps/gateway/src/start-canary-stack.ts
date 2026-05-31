@@ -6,6 +6,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import { createAuthApp } from "auth/app";
 import { createAuth } from "auth/instance";
 import { authTables } from "auth/schema";
+import { createAuthTestRuntime } from "auth/test-runtime";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { fileURLToPath } from "node:url";
 import { createOrdersApp } from "orders/app";
@@ -141,7 +142,7 @@ export async function startCanaryStack(
     ...(options.webOrigin === undefined ? {} : { trustedOrigins: [options.webOrigin] }),
   });
   const { server: authServer, baseUrl: authBaseUrl } = await listen(
-    createAuthApp({ auth, logger }),
+    createAuthApp({ runtime: createAuthTestRuntime({ auth }) }),
   );
   const authSessionClient = createHttpAuthSessionClient(authBaseUrl);
 

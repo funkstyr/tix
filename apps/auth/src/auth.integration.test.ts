@@ -10,6 +10,7 @@ import { createDbClient, type DbClient } from "@tix/db-core/client";
 
 import { createAuth } from "./auth-instance.ts";
 import { authTables, user as userTable } from "./auth-schema.ts";
+import { createAuthTestRuntime } from "./auth-test-runtime.ts";
 import { createAuthRouter } from "./router.ts";
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
@@ -36,7 +37,7 @@ type AuthRouterClient = ReturnType<typeof buildRouterClient>;
 
 function buildRouterClient(dbClient: AuthDbClient) {
   const auth = createAuth({ db: dbClient.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
-  const router = createAuthRouter({ auth });
+  const router = createAuthRouter(createAuthTestRuntime({ auth }));
 
   return createRouterClient(router);
 }
