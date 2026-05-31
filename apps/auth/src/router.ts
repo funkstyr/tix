@@ -1,4 +1,6 @@
+import { type Context as OtelContext, ROOT_CONTEXT } from "@opentelemetry/api";
 import { ORPCError, os } from "@orpc/server";
+import { Effect } from "effect";
 
 import {
   credentialsOutput,
@@ -8,81 +10,135 @@ import {
   signUpInput,
   tokenInput,
 } from "@tix/contracts/auth";
+import { externalParent } from "@tix/observability/otel-trace";
 
-import { rethrowAsOrpc } from "./auth-errors.ts";
-import type { AuthInstance } from "./auth-instance.ts";
+import { makeRunHandler, tryAuth } from "./auth-boundary.ts";
+import { type AuthOp, instrumentAuth, recordSessionValidation } from "./auth-metrics.ts";
+import type { AuthRuntime } from "./auth-runtime.ts";
+import { Auth } from "./auth-services.ts";
 
 function bearerHeaders(token: string): Headers {
   return new Headers({ authorization: `Bearer ${token}` });
 }
 
-export type AuthRouterDeps = {
-  auth: AuthInstance;
+// Threaded from the Hono boundary (auth-app.ts): the inbound request's trace context, so
+// each handler's span continues the caller's trace. auth is on the request path of every
+// authenticated call (via `requireSession`), so continuing `traceparent` here closes a
+// common gap. Optional because in-process callers (the test fixtures other services use)
+// drive the router directly with no inbound trace — those spans become fresh roots.
+export type AuthRequestContext = {
+  otelParent?: OtelContext;
 };
 
-export function createAuthRouter(deps: AuthRouterDeps) {
-  const { auth } = deps;
+// One span per oRPC request, parented onto the inbound trace context when present
+// (otherwise a fresh root), plus per-op RED metrics.
+function withRequest<A, E, R>(
+  op: AuthOp,
+  context: AuthRequestContext,
+  program: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> {
+  return program.pipe(
+    Effect.withSpan(`auth.${op}`, {
+      parent: externalParent(context.otelParent ?? ROOT_CONTEXT),
+    }),
+    instrumentAuth(op),
+  );
+}
 
-  const signUp = os
+export function createAuthRouter(runtime: AuthRuntime) {
+  const run = makeRunHandler(runtime);
+
+  const base = os.$context<AuthRequestContext>();
+
+  const signUp = base
     .input(signUpInput)
     .output(credentialsOutput)
-    .handler(async ({ input }) => {
-      try {
-        const result = await auth.api.signUpEmail({ body: input });
-        if (result.token === null) {
-          throw new ORPCError("INTERNAL_SERVER_ERROR", {
-            message: "sign-up did not return a session token",
-          });
-        }
+    .handler(({ input, context }) =>
+      run(
+        withRequest(
+          "signUp",
+          context,
+          Effect.gen(function* () {
+            const auth = yield* Auth;
+            const result = yield* tryAuth(() => auth.api.signUpEmail({ body: input }));
+            if (result.token === null) {
+              return yield* Effect.fail(
+                new ORPCError("INTERNAL_SERVER_ERROR", {
+                  message: "sign-up did not return a session token",
+                }),
+              );
+            }
 
-        return { userId: result.user.id, email: result.user.email, token: result.token };
-      } catch (error) {
-        rethrowAsOrpc(error);
-      }
-    });
+            return { userId: result.user.id, email: result.user.email, token: result.token };
+          }),
+        ),
+      ),
+    );
 
-  const signIn = os
+  const signIn = base
     .input(signInInput)
     .output(credentialsOutput)
-    .handler(async ({ input }) => {
-      try {
-        const result = await auth.api.signInEmail({ body: input });
+    .handler(({ input, context }) =>
+      run(
+        withRequest(
+          "signIn",
+          context,
+          Effect.gen(function* () {
+            const auth = yield* Auth;
+            const result = yield* tryAuth(() => auth.api.signInEmail({ body: input }));
 
-        return { userId: result.user.id, email: result.user.email, token: result.token };
-      } catch (error) {
-        rethrowAsOrpc(error);
-      }
-    });
+            return { userId: result.user.id, email: result.user.email, token: result.token };
+          }),
+        ),
+      ),
+    );
 
-  const signOut = os
+  const signOut = base
     .input(tokenInput)
     .output(okOutput)
-    .handler(async ({ input }) => {
-      try {
-        await auth.api.signOut({ headers: bearerHeaders(input.token) });
+    .handler(({ input, context }) =>
+      run(
+        withRequest(
+          "signOut",
+          context,
+          Effect.gen(function* () {
+            const auth = yield* Auth;
+            yield* tryAuth(() => auth.api.signOut({ headers: bearerHeaders(input.token) }));
 
-        return { ok: true };
-      } catch (error) {
-        rethrowAsOrpc(error);
-      }
-    });
+            return { ok: true };
+          }),
+        ),
+      ),
+    );
 
-  const getSession = os
+  const getSession = base
     .input(tokenInput)
     .output(sessionOutput)
-    .handler(async ({ input }) => {
-      try {
-        const result = await auth.api.getSession({ headers: bearerHeaders(input.token) });
-        if (result === null) return null;
+    .handler(({ input, context }) =>
+      run(
+        withRequest(
+          "getSession",
+          context,
+          Effect.gen(function* () {
+            const auth = yield* Auth;
+            const result = yield* tryAuth(() =>
+              auth.api.getSession({ headers: bearerHeaders(input.token) }),
+            );
 
-        return {
-          user: { id: result.user.id, email: result.user.email, name: result.user.name },
-          session: { id: result.session.id, expiresAt: result.session.expiresAt.toISOString() },
-        };
-      } catch (error) {
-        rethrowAsOrpc(error);
-      }
-    });
+            yield* recordSessionValidation(result !== null);
+            if (result === null) return null;
+
+            return {
+              user: { id: result.user.id, email: result.user.email, name: result.user.name },
+              session: {
+                id: result.session.id,
+                expiresAt: result.session.expiresAt.toISOString(),
+              },
+            };
+          }),
+        ),
+      ),
+    );
 
   return { signUp, signIn, signOut, getSession };
 }

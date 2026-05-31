@@ -6,6 +6,7 @@ import { ArkErrors } from "arktype";
 import { createAuth } from "auth/instance";
 import { createAuthRouter } from "auth/router";
 import { authTables } from "auth/schema";
+import { createAuthTestRuntime } from "auth/test-runtime";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -59,7 +60,7 @@ let streamName: string | undefined;
 
 function buildClients(ticketsDb_: TicketsDbClient, authDb_: AuthDbClient) {
   const auth = createAuth({ db: authDb_.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
-  const authRouter = createAuthRouter({ auth });
+  const authRouter = createAuthRouter(createAuthTestRuntime({ auth }));
   const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
 

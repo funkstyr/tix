@@ -2,6 +2,7 @@ import { createRouterClient } from "@orpc/server";
 import { createAuth } from "auth/instance";
 import { createAuthRouter } from "auth/router";
 import { authTables } from "auth/schema";
+import { createAuthTestRuntime } from "auth/test-runtime";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -53,7 +54,7 @@ export async function startPaymentsTestStack(dbName: string): Promise<PaymentsTe
   await migrate(paymentsDb.db, { migrationsFolder: paymentsMigrationsFolder });
 
   const auth = createAuth({ db: authDb.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
-  const authRouter = createAuthRouter({ auth });
+  const authRouter = createAuthRouter(createAuthTestRuntime({ auth }));
   const authClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authClient);
 

@@ -1,12 +1,12 @@
 import { createAuthApp } from "auth/app";
 import { user as userTable } from "auth/schema";
+import { createAuthTestRuntime } from "auth/test-runtime";
 import { eq } from "drizzle-orm";
 import type { Hono } from "hono";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { type AuthFixture, createAuthFixture } from "@tix/auth-test-fixture/fixture";
-import { createLogger } from "@tix/observability/logger";
 import { dockerAvailable } from "@tix/test-helpers/docker-available";
 
 import { createDownstreamClients } from "./downstream-clients.ts";
@@ -39,10 +39,7 @@ beforeAll(async () => {
   const databaseUrl = `postgres://postgres:postgres@${host}:${port}/gateway_auth_proxy_test`;
 
   fixture = await createAuthFixture({ databaseUrl, baseUrl: AUTH_BASE_URL });
-  authApp = createAuthApp({
-    auth: fixture.auth,
-    logger: createLogger({ name: "auth-test", level: "silent" }),
-  });
+  authApp = createAuthApp({ runtime: createAuthTestRuntime({ auth: fixture.auth }) });
 }, 120_000);
 
 afterAll(async () => {

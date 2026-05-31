@@ -3,6 +3,7 @@ import { type AuthInstance, createAuth } from "auth/instance";
 import { migrationsFolder } from "auth/migrations";
 import { createAuthRouter } from "auth/router";
 import { authTables } from "auth/schema";
+import { createAuthTestRuntime } from "auth/test-runtime";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 
 import type { AuthRouterClient } from "@tix/contracts/auth";
@@ -40,7 +41,7 @@ export async function createAuthFixture(options: AuthFixtureOptions): Promise<Au
     secret: options.secret ?? DEFAULT_TEST_SECRET,
     baseURL: options.baseUrl,
   });
-  const router = createAuthRouter({ auth });
+  const router = createAuthRouter(createAuthTestRuntime({ auth }));
   const authClient: AuthRouterClient = createRouterClient(router);
   const authSessionClient = createInProcessAuthSessionClient(authClient);
 

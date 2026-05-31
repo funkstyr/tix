@@ -10,7 +10,8 @@
     "./instance": "./src/auth-instance.ts",
     "./migrations": "./src/migrations.ts",
     "./router": "./src/router.ts",
-    "./schema": "./src/auth-schema.ts"
+    "./schema": "./src/auth-schema.ts",
+    "./test-runtime": "./src/auth-test-runtime.ts"
   },
   "scripts": {
     "build": "tsdown",
@@ -22,7 +23,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "@hono/node-server": "catalog:",
+    "@opentelemetry/api": "catalog:",
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
@@ -31,11 +34,13 @@
     "arktype": "catalog:",
     "better-auth": "catalog:",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
     "postgres": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",

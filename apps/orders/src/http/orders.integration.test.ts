@@ -3,6 +3,7 @@ import { createRouterClient } from "@orpc/server";
 import { createAuth } from "auth/instance";
 import { createAuthRouter } from "auth/router";
 import { authTables } from "auth/schema";
+import { createAuthTestRuntime } from "auth/test-runtime";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { existsSync } from "node:fs";
@@ -57,7 +58,7 @@ type Harness = ReturnType<typeof buildClients>;
 
 function buildClients(ordersDb: OrdersDbClient, ticketsDb: TicketsDbClient, authDb: AuthDbClient) {
   const auth = createAuth({ db: authDb.db, secret: TEST_SECRET, baseURL: TEST_BASE_URL });
-  const authRouter = createAuthRouter({ auth });
+  const authRouter = createAuthRouter(createAuthTestRuntime({ auth }));
   const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
 
