@@ -7,10 +7,8 @@ import { otlpLayer } from "@tix/observability/otel-layer";
 import type { GatewayEnv } from "./gateway-env.ts";
 import { Downstream, DownstreamLayer, makeGatewayConfigLayer } from "./gateway-services.ts";
 
-// The only service the runtime exposes: handlers resolve `Downstream`; the config
-// is provided internally to build it and isn't surfaced.
-export type GatewayServices = Downstream;
-
+// The only service the runtime exposes is `Downstream`, which handlers resolve; the
+// config is provided internally to build it and isn't surfaced.
 export type GatewayRuntime = ManagedRuntime.ManagedRuntime<Downstream, never>;
 
 // Traces, logs, and metrics export over OTLP with the service name hard-set to "gateway"

@@ -15,8 +15,9 @@ export const gatewayRequestErrorsTotal = Metric.counter("gateway_request_errors_
   incremental: true,
 });
 
-// Edge request duration in ms. Exponential buckets from 1ms doubling 16 times (~65s)
-// cover sub-ms fan-out through slow upstream timeouts without per-route tuning.
+// Edge request duration in ms. Exponential buckets from 1ms doubling up to ~16s (the top
+// finite boundary is 2^14 = 16384ms; `count: 16` yields 15 boundaries plus +Inf) cover
+// sub-ms fan-out through slow upstream timeouts without per-route tuning.
 export const gatewayRequestDurationMs = Metric.histogram(
   "gateway_request_duration_ms",
   MetricBoundaries.exponential({ start: 1, factor: 2, count: 16 }),
