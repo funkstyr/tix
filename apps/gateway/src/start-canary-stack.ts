@@ -21,6 +21,7 @@ import {
 } from "payments/consumer";
 import { paymentsOutbox, paymentsTables } from "payments/schema";
 import type { PaymentIntentClient } from "payments/stripe-payment-intent";
+import { createPaymentsTestRuntime } from "payments/test-runtime";
 import { createTicketsApp } from "tickets/app";
 import { startTicketsReleasedConsumer } from "tickets/consumer";
 import { ticketsOutbox, ticketsTables } from "tickets/schema";
@@ -198,28 +199,29 @@ export async function startCanaryStack(
       status: "succeeded",
     }),
   };
-  const paymentsAppHono = createPaymentsApp({
+  // payments now runs on an Effect runtime (ADR-0008); build one from the canary's
+  // already-constructed collaborators and share it across the app and its consumers.
+  const paymentsRuntime = createPaymentsTestRuntime({
     db: paymentsDb,
     authClient: authSessionClient,
     paymentIntentClient: options.paymentIntentClient ?? stubPaymentIntentClient,
-    logger,
+    nats,
   });
+  const paymentsAppHono = createPaymentsApp(paymentsRuntime);
   const { server: paymentsServer, baseUrl: paymentsBaseUrl } = await listen(paymentsAppHono);
   const paymentsOutboxRelay = startOutboxRelay(paymentsDb.db, paymentsOutbox, publisher.publish, {
     logger,
     pollIntervalMs: 25,
   });
   const paymentsOrderCreatedConsumer = await startPaymentsOrderCreatedConsumer({
-    db: paymentsDb,
+    runtime: paymentsRuntime,
     nats,
     stream: ORDERS_STREAM,
-    logger,
   });
   const paymentsOrderCancelledConsumer = await startPaymentsOrderCancelledConsumer({
-    db: paymentsDb,
+    runtime: paymentsRuntime,
     nats,
     stream: ORDERS_STREAM,
-    logger,
   });
 
   const downstreamClients = createDownstreamClients({

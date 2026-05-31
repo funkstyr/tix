@@ -1,3 +1,4 @@
+import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { createRouterClient } from "@orpc/server";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -7,12 +8,12 @@ import { PAYMENT_INTENT_STATUSES } from "@tix/contracts/payments";
 import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
 
-import { recordPayment } from "./payment-repository.ts";
 import {
   orderReadModel as orderReadModelTable,
   payments as paymentsTable,
   paymentsOutbox as paymentsOutboxTable,
-} from "./payments-schema.ts";
+} from "../domain/schema.ts";
+import { recordPayment } from "../payment-repository.ts";
 import {
   type PaymentsTestStack,
   seedOrder as fixtureSeedOrder,
@@ -20,9 +21,10 @@ import {
   startPaymentsTestStack,
   stopPaymentsTestStack,
   truncatePaymentsTestStack,
-} from "./payments-test-fixtures.ts";
+} from "../payments-test-fixtures.ts";
+import { createPaymentsTestRuntime } from "../runtime/test-runtime.ts";
+import type { PaymentIntentClient } from "../stripe-payment-intent.ts";
 import { createPaymentsRouter } from "./router.ts";
-import type { PaymentIntentClient } from "./stripe-payment-intent.ts";
 
 let stack: PaymentsTestStack | undefined;
 
@@ -45,13 +47,14 @@ afterEach(() => {
 
 function buildClient(paymentIntentClient: PaymentIntentClient) {
   const s = requireValue(stack, "stack");
-  const router = createPaymentsRouter({
+  const runtime = createPaymentsTestRuntime({
     db: s.paymentsDb,
     authClient: s.authSessionClient,
     paymentIntentClient,
   });
+  const router = createPaymentsRouter(runtime);
 
-  return createRouterClient(router);
+  return createRouterClient(router, { context: { otelParent: ROOT_CONTEXT } });
 }
 
 async function signUpBuyer(): Promise<{ userId: string; token: string }> {
