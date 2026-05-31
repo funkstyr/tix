@@ -6,10 +6,12 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./app": "./src/tickets-app.ts",
-    "./consumer": "./src/tickets-consumer.ts",
-    "./router": "./src/router.ts",
-    "./schema": "./src/tickets-schema.ts"
+    "./app": "./src/http/app.ts",
+    "./consumer": "./src/consumers/released.consumer.ts",
+    "./router": "./src/http/router.ts",
+    "./runtime": "./src/runtime/runtime.ts",
+    "./schema": "./src/domain/schema.ts",
+    "./test-runtime": "./src/runtime/test-runtime.ts"
   },
   "scripts": {
     "build": "tsdown",
@@ -21,8 +23,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "@hono/node-server": "catalog:",
     "@nats-io/transport-node": "catalog:",
+    "@opentelemetry/api": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",
@@ -31,12 +35,14 @@
     "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "hono": "catalog:",
     "pino": "catalog:",
     "postgres": "catalog:",
     "uuid": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@nats-io/jetstream": "catalog:",
     "@tix/config": "workspace:*",
     "@tix/test-helpers": "workspace:*",

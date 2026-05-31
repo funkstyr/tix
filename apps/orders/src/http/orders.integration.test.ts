@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { createTicketsRouter } from "tickets/router";
 import { tickets as ticketsTable, ticketsTables } from "tickets/schema";
+import { createTicketsTestRuntime } from "tickets/test-runtime";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthRouterClient } from "@tix/contracts/auth";
@@ -60,13 +61,14 @@ function buildClients(ordersDb: OrdersDbClient, ticketsDb: TicketsDbClient, auth
   const authRouterClient: AuthRouterClient = createRouterClient(authRouter);
   const authSessionClient = createInProcessAuthSessionClient(authRouterClient);
 
-  const ticketsRouter = createTicketsRouter({
+  const ticketsRuntime = createTicketsTestRuntime({
     db: ticketsDb,
     authClient: authSessionClient,
     serviceToken: TEST_SERVICE_TOKEN,
   });
+  const ticketsRouter = createTicketsRouter(ticketsRuntime);
   const ticketsRouterClient = createRouterClient(ticketsRouter, {
-    context: { serviceToken: TEST_SERVICE_TOKEN },
+    context: { otelParent: ROOT_CONTEXT, serviceToken: TEST_SERVICE_TOKEN },
   });
   const ticketsClient = createInProcessTicketsClient(ticketsRouterClient);
 

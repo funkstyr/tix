@@ -14,14 +14,15 @@ import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
 import { waitFor } from "@tix/test-helpers/wait-for";
 
-import { startTicketsReleasedConsumer } from "./tickets-consumer.ts";
 import {
   tickets as ticketsTable,
   ticketsInbox as ticketsInboxTable,
   ticketsTables,
-} from "./tickets-schema.ts";
+} from "../domain/schema.ts";
+import { createTicketsTestRuntime } from "../runtime/test-runtime.ts";
+import { startTicketsReleasedConsumer } from "./released.consumer.ts";
 
-const ticketsMigrations = fileURLToPath(new URL("../drizzle", import.meta.url));
+const ticketsMigrations = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 type TicketsDbClient = DbClient<typeof ticketsTables>;
 
@@ -85,8 +86,9 @@ beforeEach(async () => {
     duplicate_window: 0,
   });
 
+  const runtime = createTicketsTestRuntime({ db: dbRef, nats: nc });
   consumer = await startTicketsReleasedConsumer({
-    db: dbRef,
+    runtime,
     nats: nc,
     stream: streamName,
   });

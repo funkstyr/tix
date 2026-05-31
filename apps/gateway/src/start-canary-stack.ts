@@ -24,6 +24,7 @@ import type { PaymentIntentClient } from "payments/stripe-payment-intent";
 import { createTicketsApp } from "tickets/app";
 import { startTicketsReleasedConsumer } from "tickets/consumer";
 import { ticketsOutbox, ticketsTables } from "tickets/schema";
+import { createTicketsTestRuntime } from "tickets/test-runtime";
 
 import type { AuthRouterClient } from "@tix/contracts/auth";
 import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
@@ -143,22 +144,25 @@ export async function startCanaryStack(
   );
   const authSessionClient = createHttpAuthSessionClient(authBaseUrl);
 
-  const ticketsAppHono = createTicketsApp({
+  // tickets now runs on an Effect runtime (ADR-0008); build one from the canary's
+  // already-constructed collaborators and share it across the app and its consumer. The
+  // service token must match the one orders' tickets client sends so reserve authorizes.
+  const ticketsRuntime = createTicketsTestRuntime({
     db: ticketsDb,
     authClient: authSessionClient,
+    nats,
     serviceToken: TEST_SERVICE_TOKEN,
-    logger,
   });
+  const ticketsAppHono = createTicketsApp(ticketsRuntime);
   const { server: ticketsServer, baseUrl: ticketsBaseUrl } = await listen(ticketsAppHono);
   const ticketsOutboxRelay = startOutboxRelay(ticketsDb.db, ticketsOutbox, publisher.publish, {
     logger,
     pollIntervalMs: 25,
   });
   const ticketsReleasedConsumer = await startTicketsReleasedConsumer({
-    db: ticketsDb,
+    runtime: ticketsRuntime,
     nats,
     stream: ORDERS_STREAM,
-    logger,
   });
 
   const ticketsHttpClient = createHttpTicketsClient(ticketsBaseUrl, TEST_SERVICE_TOKEN);
