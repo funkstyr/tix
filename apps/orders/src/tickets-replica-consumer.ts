@@ -1,6 +1,6 @@
 import { type NatsConnection } from "@nats-io/transport-node";
-import { Effect } from "effect";
 import { and, eq, lt } from "drizzle-orm";
+import { Effect } from "effect";
 
 import { TICKETS_CREATED_V1, TICKETS_UPDATED_V1 } from "@tix/contracts/subjects";
 import { ticketCreatedV1, ticketUpdatedV1 } from "@tix/contracts/tickets";

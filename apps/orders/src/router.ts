@@ -1,6 +1,6 @@
 import { ORPCError, os } from "@orpc/server";
-import { Clock, Effect } from "effect";
 import { desc, eq } from "drizzle-orm";
+import { Clock, Effect } from "effect";
 import { v7 as uuidv7 } from "uuid";
 
 import { requireSession } from "@tix/contracts/auth-client";
@@ -68,7 +68,10 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
       Effect.catchAll(
         (
           error,
-        ): Effect.Effect<never, ReservationConflict | TicketNotFound | ORPCError<string, unknown>> => {
+        ): Effect.Effect<
+          never,
+          ReservationConflict | TicketNotFound | ORPCError<string, unknown>
+        > => {
           // Lost the race: between getById and reserve, another buyer claimed the seats.
           if (error.code === "CONFLICT") {
             return Effect.fail(new ReservationConflict({ ticketId: input.ticketId }));

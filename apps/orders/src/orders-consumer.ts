@@ -1,6 +1,6 @@
 import { type NatsConnection } from "@nats-io/transport-node";
-import { Clock, Effect } from "effect";
 import { eq } from "drizzle-orm";
+import { Clock, Effect } from "effect";
 import { v7 as uuidv7 } from "uuid";
 
 import { orderExpiredV1 } from "@tix/contracts/orders";
@@ -51,7 +51,10 @@ export async function startOrdersExpiredConsumer(
           const result = yield* Effect.tryPromise(() =>
             db.db.transaction((tx) =>
               withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-                const [order] = await tx.select().from(orders).where(eq(orders.id, payload.orderId));
+                const [order] = await tx
+                  .select()
+                  .from(orders)
+                  .where(eq(orders.id, payload.orderId));
                 if (!order) {
                   logger.warn(
                     { eventId, orderId: payload.orderId },

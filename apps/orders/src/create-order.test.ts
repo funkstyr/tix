@@ -1,6 +1,5 @@
-import { it } from "@effect/vitest";
-import { Effect, TestClock } from "effect";
-import { expect } from "vitest";
+import { Effect, TestClock, TestContext } from "effect";
+import { expect, it } from "vitest";
 
 import type { AuthSession } from "@tix/contracts/auth";
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
@@ -24,11 +23,7 @@ function stubAuth(): AuthSessionClient {
 }
 
 function stubTickets(): TicketsClient {
-  const snapshot = {
-    id: TICKET_ID,
-    sellerId: SELLER_ID,
-    quantityAvailable: 5,
-  } as TicketSnapshot;
+  const snapshot = { id: TICKET_ID, sellerId: SELLER_ID, quantityAvailable: 5 } as TicketSnapshot;
   const reserved = { unitPriceCents: 5000 } as ReserveTicketOutput;
 
   return {
@@ -53,31 +48,34 @@ function capturingDb(captured: { createdAt?: Date; expiresAt?: Date }): OrdersDb
       }),
     }),
   };
+  const db = { transaction: (fn: (t: unknown) => Promise<unknown>) => fn(tx) };
 
-  return { db: { transaction: (fn: (t: unknown) => Promise<unknown>) => fn(tx) } } as unknown as OrdersDb;
+  return { db } as unknown as OrdersDb;
 }
 
-it.effect("sets expiresAt to the Clock's now + reservationTtlMs", () =>
-  Effect.gen(function* () {
+it("sets expiresAt to the Clock's now + reservationTtlMs", async () => {
+  const captured: { createdAt?: Date; expiresAt?: Date } = {};
+  const layer = createOrdersTestLayer({
+    db: capturingDb(captured),
+    authClient: stubAuth(),
+    ticketsClient: stubTickets(),
+    reservationTtlMs: RESERVATION_TTL_MS,
+  });
+
+  // TestClock pins "now" so the TTL/expiry derivation is deterministic; the
+  // service layer deliberately omits Clock so this ambient TestClock is in scope.
+  const program = Effect.gen(function* () {
     yield* TestClock.setTime(1_700_000_000_000);
 
-    const captured: { createdAt?: Date; expiresAt?: Date } = {};
-    const layer = createOrdersTestLayer({
-      db: capturingDb(captured),
-      authClient: stubAuth(),
-      ticketsClient: stubTickets(),
-      reservationTtlMs: RESERVATION_TTL_MS,
-    });
+    return yield* createOrderProgram({ token: "t", ticketId: TICKET_ID, quantity: 2 }).pipe(
+      Effect.provide(layer),
+    );
+  }).pipe(Effect.provide(TestContext.TestContext));
 
-    const order = yield* createOrderProgram({
-      token: "t",
-      ticketId: TICKET_ID,
-      quantity: 2,
-    }).pipe(Effect.provide(layer));
+  const order = await Effect.runPromise(program);
 
-    expect(captured.createdAt?.getTime()).toBe(1_700_000_000_000);
-    expect(captured.expiresAt?.getTime()).toBe(1_700_000_000_000 + RESERVATION_TTL_MS);
-    expect(Date.parse(order.expiresAt)).toBe(1_700_000_000_000 + RESERVATION_TTL_MS);
-    expect(order.priceCents).toBe(10_000);
-  }),
-);
+  expect(captured.createdAt?.getTime()).toBe(1_700_000_000_000);
+  expect(captured.expiresAt?.getTime()).toBe(1_700_000_000_000 + RESERVATION_TTL_MS);
+  expect(Date.parse(order.expiresAt)).toBe(1_700_000_000_000 + RESERVATION_TTL_MS);
+  expect(order.priceCents).toBe(10_000);
+});

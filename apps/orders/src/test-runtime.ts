@@ -32,7 +32,9 @@ export type OrdersTestDeps = {
 // The service Layer (no Clock) for in-process tests that run a program directly
 // with `Effect.provide` — leaving the ambient `Clock`/`TestClock` from
 // `@effect/vitest` in scope so TTL/expiry assertions are deterministic.
-export function createOrdersTestLayer(deps: OrdersTestDeps): Layer.Layer<
+export function createOrdersTestLayer(
+  deps: OrdersTestDeps,
+): Layer.Layer<
   OrdersConfig | Database | InfraLogger | AuthClient | Tickets | EventPublisher | Nats
 > {
   const env = makeTestEnv(deps.reservationTtlMs ?? DEFAULT_RESERVATION_TTL_MS);
