@@ -10,7 +10,9 @@
     "./consumer": "./src/orders-consumer.ts",
     "./payment-consumer": "./src/orders-payment-consumer.ts",
     "./router": "./src/router.ts",
+    "./runtime": "./src/runtime.ts",
     "./schema": "./src/orders-schema.ts",
+    "./test-runtime": "./src/test-runtime.ts",
     "./tickets-client": "./src/tickets-client.ts"
   },
   "scripts": {

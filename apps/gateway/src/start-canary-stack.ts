@@ -12,6 +12,7 @@ import { createOrdersApp } from "orders/app";
 import { startOrdersExpiredConsumer } from "orders/consumer";
 import { startOrdersPaymentCreatedConsumer } from "orders/payment-consumer";
 import { ordersOutbox, ordersTables } from "orders/schema";
+import { createOrdersTestRuntime } from "orders/test-runtime";
 import { createHttpTicketsClient } from "orders/tickets-client";
 import { createPaymentsApp } from "payments/app";
 import {
@@ -161,29 +162,30 @@ export async function startCanaryStack(
   });
 
   const ticketsHttpClient = createHttpTicketsClient(ticketsBaseUrl, TEST_SERVICE_TOKEN);
-  const ordersAppHono = createOrdersApp({
+  // orders now runs on an Effect runtime (ADR-0008); build one from the canary's
+  // already-constructed collaborators and share it across the app and consumers.
+  const ordersRuntime = createOrdersTestRuntime({
     db: ordersDb,
     authClient: authSessionClient,
     ticketsClient: ticketsHttpClient,
+    nats,
     reservationTtlMs: options.reservationTtlMs ?? 15 * 60 * 1000,
-    logger,
   });
+  const ordersAppHono = createOrdersApp(ordersRuntime);
   const { server: ordersServer, baseUrl: ordersBaseUrl } = await listen(ordersAppHono);
   const ordersOutboxRelay = startOutboxRelay(ordersDb.db, ordersOutbox, publisher.publish, {
     logger,
     pollIntervalMs: 25,
   });
   const ordersExpiredConsumer = await startOrdersExpiredConsumer({
-    db: ordersDb,
+    runtime: ordersRuntime,
     nats,
     stream: ORDERS_STREAM,
-    logger,
   });
   const ordersPaymentConsumer = await startOrdersPaymentCreatedConsumer({
-    db: ordersDb,
+    runtime: ordersRuntime,
     nats,
     stream: PAYMENTS_STREAM,
-    logger,
   });
 
   const stubPaymentIntentClient: PaymentIntentClient = {
