@@ -62,7 +62,7 @@ export async function recordPayment(
       });
     }
 
-    return { id: existing.id, status: existing.status as PaymentIntentStatus };
+    return { id: existing.id, status: existing.status };
   }
 
   const payload = paymentCreatedV1.assert({

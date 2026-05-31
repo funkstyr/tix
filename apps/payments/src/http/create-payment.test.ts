@@ -11,11 +11,12 @@ import {
   OrderNotPayable,
   PaymentIntentNotSucceeded,
 } from "../domain/errors.ts";
+import type { OrderReadModelStatus } from "../domain/schema.ts";
 import { paymentsFailedTotal, paymentsSucceededTotal } from "../runtime/metrics.ts";
 import type { PaymentsDb } from "../runtime/services.ts";
 import { createPaymentsTestLayer } from "../runtime/test-runtime.ts";
 import type { PaymentIntentClient } from "../stripe-payment-intent.ts";
-import { createPaymentProgram } from "./router.ts";
+import { createPaymentProgram } from "./create-payment.ts";
 
 const BUYER_ID = "buyer-1";
 const ORDER_ID = "11111111-1111-4111-8111-111111111111";
@@ -36,7 +37,7 @@ function stubIntent(result: {
   return { createPaymentIntent: () => Promise.resolve(result) };
 }
 
-type OrderRow = { id: string; userId: string; priceCents: number; status: string };
+type OrderRow = { id: string; userId: string; priceCents: number; status: OrderReadModelStatus };
 
 const CREATED_ORDER: OrderRow = {
   id: ORDER_ID,
