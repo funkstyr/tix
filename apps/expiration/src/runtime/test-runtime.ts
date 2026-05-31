@@ -3,7 +3,6 @@ import { Layer, Logger, ManagedRuntime } from "effect";
 
 import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
 import { type DelayedScheduler } from "@tix/messaging/jobs";
-import { createLogger } from "@tix/observability/logger";
 
 import type { ExpireOrderPayload } from "../expire-order-job.ts";
 import type { ExpirationEnv } from "./config.ts";
@@ -33,8 +32,6 @@ export type ExpirationTestDeps = {
 // logs go through Effect's pretty logger. Any collaborator a given test omits gets a
 // throwing stub so an accidental dependency surfaces loudly.
 export function createExpirationTestRuntime(deps: ExpirationTestDeps): ExpirationRuntime {
-  const logger = createLogger({ name: "expiration-test", level: "fatal" });
-
   const base = Layer.mergeAll(
     Layer.succeed(ExpirationConfig, makeTestEnv()),
     Layer.succeed(Database, deps.db),
@@ -44,8 +41,7 @@ export function createExpirationTestRuntime(deps: ExpirationTestDeps): Expiratio
   const natsLayer = Layer.succeed(Nats, nats ?? throwingNats());
 
   const publisher =
-    deps.publisher ??
-    (nats === undefined ? throwingPublisher() : createPublisher(nats, { logger }));
+    deps.publisher ?? (nats === undefined ? throwingPublisher() : createPublisher(nats));
   const publisherLayer = Layer.succeed(EventPublisher, publisher);
 
   const schedulerLayer = Layer.succeed(Scheduler, deps.scheduler ?? throwingScheduler());

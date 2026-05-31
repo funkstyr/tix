@@ -38,7 +38,6 @@ import type { TicketsRouterClient } from "@tix/contracts/tickets";
 import { createDbClient } from "@tix/db-core/client";
 import { startOutboxRelay, type RunningOutboxRelay } from "@tix/db-core/outbox";
 import { createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
-import { createLogger } from "@tix/observability/logger";
 
 import { createDownstreamClients } from "./downstream-clients.ts";
 import { createGatewayApp } from "./gateway-app.ts";
@@ -93,8 +92,6 @@ export async function startCanaryStack(
   natsUrl: string,
   options: CanaryStackOptions = {},
 ): Promise<CanaryStackResources> {
-  const logger = createLogger({ name: "canary", level: "silent" });
-
   // Each service "owns" its schema (ADR-0003) and its own drizzle migration
   // folder; run sequentially so they don't race on drizzle's
   // __drizzle_migrations metadata.
@@ -131,7 +128,7 @@ export async function startCanaryStack(
     storage: StorageType.Memory,
   });
 
-  const publisher = createPublisher(nats, { logger });
+  const publisher = createPublisher(nats);
 
   const auth = createAuth({
     db: authDb.db,
@@ -158,7 +155,6 @@ export async function startCanaryStack(
   const ticketsAppHono = createTicketsApp(ticketsRuntime);
   const { server: ticketsServer, baseUrl: ticketsBaseUrl } = await listen(ticketsAppHono);
   const ticketsOutboxRelay = startOutboxRelay(ticketsDb.db, ticketsOutbox, publisher.publish, {
-    logger,
     pollIntervalMs: 25,
   });
   const ticketsReleasedConsumer = await startTicketsReleasedConsumer({
@@ -180,7 +176,6 @@ export async function startCanaryStack(
   const ordersAppHono = createOrdersApp(ordersRuntime);
   const { server: ordersServer, baseUrl: ordersBaseUrl } = await listen(ordersAppHono);
   const ordersOutboxRelay = startOutboxRelay(ordersDb.db, ordersOutbox, publisher.publish, {
-    logger,
     pollIntervalMs: 25,
   });
   const ordersExpiredConsumer = await startOrdersExpiredConsumer({
@@ -211,7 +206,6 @@ export async function startCanaryStack(
   const paymentsAppHono = createPaymentsApp(paymentsRuntime);
   const { server: paymentsServer, baseUrl: paymentsBaseUrl } = await listen(paymentsAppHono);
   const paymentsOutboxRelay = startOutboxRelay(paymentsDb.db, paymentsOutbox, publisher.publish, {
-    logger,
     pollIntervalMs: 25,
   });
   const paymentsOrderCreatedConsumer = await startPaymentsOrderCreatedConsumer({

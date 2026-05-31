@@ -1,7 +1,6 @@
 import { type Context } from "@opentelemetry/api";
 import { eq, isNull } from "drizzle-orm";
 import { type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { pino, type Logger } from "pino";
 
 import { type defineOutbox } from "./schema.js";
 import { captureTraceparent, contextFromTraceparent } from "./trace-context.js";
@@ -10,8 +9,6 @@ export type OutboxTable = ReturnType<typeof defineOutbox>;
 
 // `Record<string, unknown>` accepts any per-service schema via structural typing.
 type AnyDb = PostgresJsDatabase<Record<string, unknown>>;
-
-const fallbackLogger: Logger = pino({ level: "warn" });
 
 export type EnqueueEventArgs = {
   subject: string;
@@ -42,7 +39,6 @@ export type OutboxPublish = (
 export type OutboxRelayOptions = {
   pollIntervalMs?: number;
   batchSize?: number;
-  logger?: Logger;
 };
 
 export type RunningOutboxRelay = {
@@ -57,7 +53,6 @@ export function startOutboxRelay(
 ): RunningOutboxRelay {
   const pollIntervalMs = options.pollIntervalMs ?? 200;
   const batchSize = options.batchSize ?? 50;
-  const log = options.logger ?? fallbackLogger;
 
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
@@ -78,15 +73,17 @@ export function startOutboxRelay(
         ...(traceContext === undefined ? {} : { traceContext }),
       });
     } catch (err) {
-      log.error(
-        { eventId: row.eventId, subject: row.subject, err },
-        "outbox publish failed; leaving row for retry",
-      );
+      // The relay runs outside Effect (a bare `setTimeout` poll loop), so failures go to
+      // `console.error` rather than the Effect Logger. The row stays unsent for retry.
+      console.error("outbox publish failed; leaving row for retry", {
+        eventId: row.eventId,
+        subject: row.subject,
+        err,
+      });
       return;
     }
 
     await db.update(table).set({ sentAt: new Date() }).where(eq(table.id, row.id));
-    log.info({ eventId: row.eventId, subject: row.subject }, "outbox row published");
   }
 
   async function pollOnce(): Promise<void> {
@@ -116,7 +113,7 @@ export function startOutboxRelay(
     timer = setTimeout(() => {
       activePoll = pollOnce()
         .catch((err: unknown) => {
-          log.error({ err }, "outbox poll failed");
+          console.error("outbox poll failed", { err });
         })
         .finally(() => {
           if (!stopped) schedule();

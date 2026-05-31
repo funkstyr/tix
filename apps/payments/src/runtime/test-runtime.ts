@@ -3,7 +3,6 @@ import { Layer, Logger, ManagedRuntime } from "effect";
 
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { createPublisher } from "@tix/messaging/jetstream";
-import { createLogger } from "@tix/observability/logger";
 
 import type { PaymentIntentClient } from "../stripe-payment-intent.ts";
 import type { PaymentsEnv } from "./config.ts";
@@ -31,7 +30,6 @@ export type PaymentsTestDeps = {
 export function createPaymentsTestLayer(
   deps: PaymentsTestDeps,
 ): Layer.Layer<PaymentsConfig | Database | AuthClient | PaymentIntents | EventPublisher | Nats> {
-  const logger = createLogger({ name: "payments-test", level: "fatal" });
   const nats = deps.nats;
 
   return Layer.mergeAll(
@@ -40,10 +38,7 @@ export function createPaymentsTestLayer(
     Layer.succeed(AuthClient, deps.authClient ?? throwingAuthClient()),
     Layer.succeed(PaymentIntents, deps.paymentIntentClient ?? throwingPaymentIntents()),
     Layer.succeed(Nats, nats ?? throwingNats()),
-    Layer.succeed(
-      EventPublisher,
-      nats === undefined ? throwingPublisher() : createPublisher(nats, { logger }),
-    ),
+    Layer.succeed(EventPublisher, nats === undefined ? throwingPublisher() : createPublisher(nats)),
   );
 }
 
@@ -52,8 +47,6 @@ export function createPaymentsTestLayer(
 // drive the same Effect programs the router and consumers run in production. OTLP
 // is omitted — logs go through Effect's pretty logger.
 export function createPaymentsTestRuntime(deps: PaymentsTestDeps): PaymentsRuntime {
-  const logger = createLogger({ name: "payments-test", level: "fatal" });
-
   const base = Layer.mergeAll(
     Layer.succeed(PaymentsConfig, makeTestEnv()),
     Layer.succeed(Database, deps.db),
@@ -73,7 +66,7 @@ export function createPaymentsTestRuntime(deps: PaymentsTestDeps): PaymentsRunti
   const publisherLayer =
     nats === undefined
       ? Layer.succeed(EventPublisher, throwingPublisher())
-      : Layer.succeed(EventPublisher, createPublisher(nats, { logger }));
+      : Layer.succeed(EventPublisher, createPublisher(nats));
 
   return ManagedRuntime.make(
     Layer.mergeAll(base, auth, paymentIntents, natsLayer, publisherLayer, Logger.pretty),

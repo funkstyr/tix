@@ -73,9 +73,9 @@ export const NatsLayer: Layer.Layer<Nats, never, PaymentsConfig> = Layer.scoped(
   }),
 );
 
-// The publisher's wire-level logging falls back to the messaging package's internal
-// logger; payments threads no pino logger (ADR-0009). Trace context rides on NATS headers
-// the relay injects from the stored outbox value, not from this layer.
+// The publisher takes no logger (ADR-0009): domain events are logged by the Effect consumer
+// handlers, and the messaging package sends only wire-level failures to `console.error`. Trace
+// context rides on NATS headers the relay injects from the stored outbox value, not this layer.
 export const EventPublisherLayer: Layer.Layer<EventPublisher, never, Nats> = Layer.effect(
   EventPublisher,
   Effect.map(Nats, (nats) => createPublisher(nats)),

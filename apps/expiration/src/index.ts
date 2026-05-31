@@ -1,15 +1,10 @@
 import { Cause, Effect, Exit, Fiber } from "effect";
 
-import { createLogger } from "@tix/observability/logger";
-
 import { startExpirationConsumer } from "./consumers/order-created.consumer.ts";
 import { startExpireOrderWorker } from "./expire/expire-order.worker.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makeExpirationRuntime } from "./runtime/runtime.ts";
 import { Nats } from "./runtime/services.ts";
-
-// Last-resort logger for boot/shutdown failures outside the runtime's lifecycle.
-const fallbackLogger = createLogger({ name: "expiration" });
 
 const env = parseEnv();
 const runtime = makeExpirationRuntime(env);
@@ -51,13 +46,15 @@ function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  fallbackLogger.info({ signal }, "shutting down expiration service");
+  // Boot/shutdown runs outside the Effect runtime's lifecycle (it is being torn down here),
+  // so these last-resort diagnostics go to `console` rather than the Effect Logger.
+  console.info("shutting down expiration service", { signal });
 
   void Effect.runPromise(Fiber.interrupt(fiber))
     .then(() => runtime.dispose())
     .then(() => process.exit(0))
     .catch((err: unknown) => {
-      fallbackLogger.fatal({ err }, "error during expiration shutdown");
+      console.error("error during expiration shutdown", { err });
       process.exit(1);
     });
 }
@@ -67,7 +64,7 @@ function shutdown(signal: string): void {
 fiber.addObserver((exit) => {
   if (shuttingDown || Exit.isSuccess(exit)) return;
 
-  fallbackLogger.fatal({ cause: Cause.pretty(exit.cause) }, "expiration service failed");
+  console.error("expiration service failed", { cause: Cause.pretty(exit.cause) });
   void runtime.dispose().finally(() => process.exit(1));
 });
 

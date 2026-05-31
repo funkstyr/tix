@@ -37,7 +37,6 @@
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:",
-    "pino": "catalog:",
     "postgres": "catalog:",
     "uuid": "catalog:"
   },
