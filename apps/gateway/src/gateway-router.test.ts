@@ -1,8 +1,10 @@
+import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { ORPCError, createRouterClient } from "@orpc/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DownstreamClients } from "./downstream-clients.ts";
-import { createGatewayRouter, type GatewayInitialContext } from "./gateway-router.ts";
+import { createGatewayRouter, type GatewayRequestContext } from "./gateway-router.ts";
+import { createGatewayTestRuntime } from "./gateway-test-runtime.ts";
 
 const TICKET_RECORD = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -55,11 +57,14 @@ function emptyClients(): DownstreamClients {
 function withDownstreamStub<K extends keyof DownstreamClients>(
   name: K,
   partial: Partial<DownstreamClients[K]>,
-  context: GatewayInitialContext = { cookieHeader: null },
+  cookieHeader: string | null = null,
 ) {
   const clients = emptyClients();
   clients[name] = partial as unknown as DownstreamClients[K];
-  const router = createGatewayRouter({ clients });
+  const runtime = createGatewayTestRuntime({ clients });
+  const router = createGatewayRouter(runtime);
+
+  const context: GatewayRequestContext = { cookieHeader, otelParent: ROOT_CONTEXT };
 
   return createRouterClient(router, { context });
 }
@@ -74,7 +79,7 @@ describe("createGatewayRouter", () => {
     const list = vi
       .fn<DownstreamClients["tickets"]["list"]>()
       .mockResolvedValue({ items: [TICKET_RECORD] });
-    const client = withDownstreamStub("tickets", { list }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("tickets", { list }, "tix.session=abc");
 
     const result = await client.tickets.list({ limit: 10 });
 
@@ -123,7 +128,7 @@ describe("createGatewayRouter", () => {
 
   it("delegates to the downstream orders client, forwarding input and cookie header", async () => {
     const create = vi.fn<DownstreamClients["orders"]["create"]>().mockResolvedValue(ORDER_RECORD);
-    const client = withDownstreamStub("orders", { create }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("orders", { create }, "tix.session=abc");
 
     const input = { token: "session-token", ticketId: ORDER_RECORD.ticketId, quantity: 2 };
     const result = await client.orders.create(input);
@@ -136,7 +141,7 @@ describe("createGatewayRouter", () => {
     const create = vi
       .fn<DownstreamClients["payments"]["create"]>()
       .mockResolvedValue({ id: "00000000-0000-4000-8000-0000000000b1", status: "succeeded" });
-    const client = withDownstreamStub("payments", { create }, { cookieHeader: "tix.session=abc" });
+    const client = withDownstreamStub("payments", { create }, "tix.session=abc");
 
     const input = {
       token: "session-token",

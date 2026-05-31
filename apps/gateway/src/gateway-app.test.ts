@@ -1,16 +1,12 @@
-import pino from "pino";
 import { describe, expect, it } from "vitest";
-
-import { createLogger } from "@tix/observability/logger";
 
 import { createDownstreamClients } from "./downstream-clients.ts";
 import { createGatewayApp } from "./gateway-app.ts";
-import { createGatewayRouter } from "./gateway-router.ts";
+import { createGatewayTestRuntime } from "./gateway-test-runtime.ts";
 
 const WEB_ORIGIN = "https://app.tix.test";
 
 function buildApp(authFetch?: typeof globalThis.fetch) {
-  const logger = createLogger({ name: "gateway-test", level: "silent" });
   const clients = createDownstreamClients(
     {
       ticketsBaseUrl: "http://tickets.test",
@@ -20,12 +16,11 @@ function buildApp(authFetch?: typeof globalThis.fetch) {
     },
     { fetch: async () => new Response(null, { status: 500 }) },
   );
-  const router = createGatewayRouter({ clients });
+  const runtime = createGatewayTestRuntime({ clients });
 
   return createGatewayApp({
-    logger,
+    runtime,
     webOrigin: WEB_ORIGIN,
-    router,
     authBaseUrl: "http://auth.test",
     ...(authFetch ? { fetch: authFetch } : {}),
   });
@@ -177,47 +172,6 @@ describe("createGatewayApp", () => {
         "tix.session=fresh; Path=/; HttpOnly; Secure; SameSite=Lax",
       ]);
       expect(await res.json()).toEqual({ userId: "u_1" });
-    });
-  });
-
-  describe("request logging", () => {
-    it("emits one info log per request with method, path, and status", async () => {
-      const entries: Array<{
-        level: number;
-        msg?: string;
-        method?: string;
-        path?: string;
-        status?: number;
-      }> = [];
-      const dest = {
-        write(chunk: string) {
-          entries.push(JSON.parse(chunk));
-        },
-      };
-      const logger = pino({ level: "info" }, dest);
-
-      const clients = createDownstreamClients(
-        {
-          ticketsBaseUrl: "http://tickets.test",
-          ordersBaseUrl: "http://orders.test",
-          paymentsBaseUrl: "http://payments.test",
-          authBaseUrl: "http://auth.test",
-        },
-        { fetch: async () => new Response(null, { status: 500 }) },
-      );
-      const router = createGatewayRouter({ clients });
-      const app = createGatewayApp({
-        logger,
-        webOrigin: WEB_ORIGIN,
-        router,
-        authBaseUrl: "http://auth.test",
-      });
-
-      await app.fetch(new Request("http://gateway.test/health"));
-
-      const requestLogs = entries.filter((e) => e.msg === "request");
-      expect(requestLogs).toHaveLength(1);
-      expect(requestLogs[0]).toMatchObject({ method: "GET", path: "/health", status: 200 });
     });
   });
 });

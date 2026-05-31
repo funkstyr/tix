@@ -1,25 +1,28 @@
 import { RPCHandler } from "@orpc/server/fetch";
+import { Effect } from "effect";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { Logger } from "pino";
 
 import { AUTH_PROXY_PREFIX } from "@tix/contracts/auth";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
-import { requestLogger } from "@tix/observability/request-logger";
+import { extractTraceparent } from "@tix/observability/otel-http";
+import { externalParent } from "@tix/observability/otel-trace";
 
 import { createAuthProxy } from "./auth-proxy.ts";
-import type { GatewayRouter } from "./gateway-router.ts";
+import { instrumentEdge } from "./gateway-metrics.ts";
+import { createGatewayRouter, type GatewayRequestContext } from "./gateway-router.ts";
+import type { GatewayRuntime } from "./gateway-runtime.ts";
 
 export type GatewayAppDeps = {
-  logger: Logger;
+  runtime: GatewayRuntime;
   webOrigin: string;
-  router: GatewayRouter;
   authBaseUrl: string;
   fetch?: typeof globalThis.fetch;
 };
 
 export function createGatewayApp(deps: GatewayAppDeps): Hono {
-  const rpc = new RPCHandler(deps.router);
+  const router = createGatewayRouter(deps.runtime);
+  const rpc = new RPCHandler(router);
   const authProxy = createAuthProxy({
     authBaseUrl: deps.authBaseUrl,
     fetch: deps.fetch ?? globalThis.fetch,
@@ -35,21 +38,36 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
     }),
   );
 
-  app.use("*", requestLogger(deps.logger));
-
+  // No request-logger middleware: the per-request span (opened in the router handlers
+  // and around the auth proxy below) replaces it, and its logs/timing land in Tempo
+  // correlated by trace id (ADR-0009). /health stays untraced.
   app.get("/health", (c) => c.json({ service: "gateway", ok: true }));
 
-  app.all(`${AUTH_PROXY_PREFIX}/*`, (c) => authProxy(c.req.raw));
+  app.all(`${AUTH_PROXY_PREFIX}/*`, (c) => {
+    // Run the reverse proxy inside a root span on the runtime so the global context
+    // manager makes the active span visible to `traceparentHeaders()` in auth-proxy.
+    const otelParent = extractTraceparent(c.req.raw.headers);
+
+    const proxyProgram: Effect.Effect<Response> = instrumentEdge("auth")(
+      Effect.promise(() => authProxy(c.req.raw)).pipe(
+        Effect.withSpan("gateway.proxy.auth", { parent: externalParent(otelParent) }),
+      ),
+    );
+
+    return deps.runtime.runPromise(proxyProgram);
+  });
 
   app.all(`${RPC_PREFIX}/*`, async (c) => {
     const req = c.req.raw;
 
-    const { matched, response } = await rpc.handle(req, {
-      prefix: RPC_PREFIX,
-      context: {
-        cookieHeader: req.headers.get("cookie"),
-      },
-    });
+    // Extract the inbound trace context here, at the wire boundary, and hand it (with
+    // the cookie) to the handlers so their span continues the caller's trace.
+    const context: GatewayRequestContext = {
+      cookieHeader: req.headers.get("cookie"),
+      otelParent: extractTraceparent(req.headers),
+    };
+
+    const { matched, response } = await rpc.handle(req, { prefix: RPC_PREFIX, context });
     if (matched) return response;
 
     return c.notFound();
