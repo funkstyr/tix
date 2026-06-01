@@ -35,6 +35,37 @@ describe("GrafanaBackend", () => {
     expect(yaml).toContain("url: http://prometheus:9090");
   });
 
+  it("wires the Tempo→Loki trace-to-logs link, filtered by trace id", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.datasources.data);
+    const yaml = data?.["datasources.yaml"] ?? "";
+    expect(yaml).toContain("tracesToLogsV2:");
+    expect(yaml).toContain("datasourceUid: loki");
+    expect(yaml).toContain("filterByTraceID: true");
+  });
+
+  it("wires the Loki→Tempo derived field that links a log line back to its trace", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.datasources.data);
+    const yaml = data?.["datasources.yaml"] ?? "";
+    expect(yaml).toContain("derivedFields:");
+    expect(yaml).toContain("matcherRegex: trace_id");
+    expect(yaml).toMatch(/derivedFields:[\s\S]*datasourceUid: tempo/);
+  });
+
+  it("wires the Tempo→Prometheus trace-to-metrics link, mapping service.name/op to labels", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.datasources.data);
+    const yaml = data?.["datasources.yaml"] ?? "";
+    expect(yaml).toContain("tracesToMetrics:");
+    expect(yaml).toContain("datasourceUid: prometheus");
+    expect(yaml).toContain("key: service.name");
+    expect(yaml).toContain("value: service_name");
+  });
+
   it("serves from the /grafana sub-path", async () => {
     const grafana = build();
 
