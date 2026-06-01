@@ -39,3 +39,12 @@ Vanilla OTel on Hono/oRPC would deliver observability without the Effect learnin
 - `OrdersRouterDeps`-style hand-injected `deps` (including `logger`) disappear into the Layer graph.
 - Reversibility is low once the fan-out is underway — hence the phased order and the single pilot.
 - Contributors must learn Effect. This is intended, not incidental.
+- `@tix/db-core` and `@tix/messaging` now depend on `effect`: the outbox relay
+  (`outboxRelay`), the JetStream consumer (`consumer`), and the BullMQ worker callback run
+  inside Effect as `Stream`/`Effect` programs (#133). This is consistent with "Why not
+  @effect/sql" above — that preserved the drizzle **query** layer; these are background
+  loops, not the query path. Errors flow through the typed `E` channel and Effect's
+  `Logger` (no `console.error` for domain failures); time comes from `Clock`; shutdown is
+  `Scope`/fiber interruption. Callers without a service runtime (the gateway canary, the
+  api-e2e/e2e harnesses) run the programs on the default runtime via thin adapters
+  (`runScopedConsumer` + `defaultScopedRunner`, `Effect.runFork` for the relay).
