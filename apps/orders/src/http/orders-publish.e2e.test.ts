@@ -25,7 +25,13 @@ import { orderCreatedV1 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { outboxRelay } from "@tix/db-core/outbox";
-import { createConsumer, createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
+import {
+  consumer,
+  createPublisher,
+  defaultScopedRunner,
+  runScopedConsumer,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
 
 import {
   orders as ordersTable,
@@ -232,15 +238,19 @@ describe.skipIf(!dockerAvailable)("orders.create → order.created.v1 on NATS", 
     });
 
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: ORDER_CREATED_V1,
-      group,
-      schema: orderCreatedV1,
-      handler: ({ eventId, payload }) => {
-        resolveEvent({ eventId, payload });
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: ORDER_CREATED_V1,
+        group,
+        schema: orderCreatedV1,
+        handler: ({ eventId, payload }) =>
+          Effect.sync(() => {
+            resolveEvent({ eventId, payload });
+          }),
+      }),
+    );
 
     let timeoutHandle: NodeJS.Timeout | undefined;
     try {
@@ -272,7 +282,7 @@ describe.skipIf(!dockerAvailable)("orders.create → order.created.v1 on NATS", 
       });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 
@@ -306,15 +316,19 @@ describe.skipIf(!dockerAvailable)("orders.create → order.created.v1 on NATS", 
     // share the stream but use different user IDs.
     let observedEvent = false;
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: ORDER_CREATED_V1,
-      group,
-      schema: orderCreatedV1,
-      handler: ({ payload }) => {
-        if (payload.buyerId === buyer.userId) observedEvent = true;
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: ORDER_CREATED_V1,
+        group,
+        schema: orderCreatedV1,
+        handler: ({ payload }) =>
+          Effect.sync(() => {
+            if (payload.buyerId === buyer.userId) observedEvent = true;
+          }),
+      }),
+    );
 
     try {
       // Force the orders router to call tickets.reserve (skip the early
@@ -351,7 +365,7 @@ describe.skipIf(!dockerAvailable)("orders.create → order.created.v1 on NATS", 
         .where(eq(ticketsTable.id, ticket.id));
       expect(ticketRow?.quantityAvailable).toBe(0);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 

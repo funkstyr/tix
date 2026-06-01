@@ -21,7 +21,13 @@ import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
 import { ticketCreatedV1 } from "@tix/contracts/tickets";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { outboxRelay } from "@tix/db-core/outbox";
-import { createConsumer, createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
+import {
+  consumer,
+  createPublisher,
+  defaultScopedRunner,
+  runScopedConsumer,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
 
 import { ticketsOutbox, ticketsTables } from "../domain/schema.ts";
 import { createTicketsTestRuntime } from "../runtime/test-runtime.ts";
@@ -182,15 +188,19 @@ describe.skipIf(!dockerAvailable)("tickets.create → tickets.created.v1 on NATS
     });
 
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: TICKETS_CREATED_V1,
-      group,
-      schema: ticketCreatedV1,
-      handler: ({ eventId, payload }) => {
-        resolveEvent({ eventId, payload });
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: TICKETS_CREATED_V1,
+        group,
+        schema: ticketCreatedV1,
+        handler: ({ eventId, payload }) =>
+          Effect.sync(() => {
+            resolveEvent({ eventId, payload });
+          }),
+      }),
+    );
 
     let timeoutHandle: NodeJS.Timeout | undefined;
     try {
@@ -223,7 +233,7 @@ describe.skipIf(!dockerAvailable)("tickets.create → tickets.created.v1 on NATS
       });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 });

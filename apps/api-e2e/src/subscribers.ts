@@ -1,4 +1,5 @@
 import type { NatsConnection } from "@nats-io/transport-node";
+import { Effect } from "effect";
 import { randomUUID } from "node:crypto";
 
 import { orderCreatedV1, orderExpiredV1, orderReservationReleasedV1 } from "@tix/contracts/orders";
@@ -11,7 +12,12 @@ import {
   TICKETS_STREAM,
 } from "@tix/contracts/subjects";
 import { ticketCreatedV1 } from "@tix/contracts/tickets";
-import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import {
+  consumer,
+  defaultScopedRunner,
+  runScopedConsumer,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
 
 export type ObservedEvent = {
   subject: string;
@@ -37,34 +43,50 @@ export async function subscribeAll(nc: NatsConnection): Promise<Subscription> {
   const consumers: RunningConsumer[] = [];
 
   consumers.push(
-    await createConsumer(nc, {
-      stream: TICKETS_STREAM,
-      subjectFilter: TICKETS_CREATED_V1,
-      group: `${group}-tickets-created`,
-      schema: ticketCreatedV1,
-      handler: ({ subject, eventId, payload }) => record(subject, eventId, payload),
-    }),
-    await createConsumer(nc, {
-      stream: ORDERS_STREAM,
-      subjectFilter: ORDER_CREATED_V1,
-      group: `${group}-order-created`,
-      schema: orderCreatedV1,
-      handler: ({ subject, eventId, payload }) => record(subject, eventId, payload),
-    }),
-    await createConsumer(nc, {
-      stream: ORDERS_STREAM,
-      subjectFilter: ORDER_EXPIRED_V1,
-      group: `${group}-order-expired`,
-      schema: orderExpiredV1,
-      handler: ({ subject, eventId, payload }) => record(subject, eventId, payload),
-    }),
-    await createConsumer(nc, {
-      stream: ORDERS_STREAM,
-      subjectFilter: ORDER_RESERVATION_RELEASED_V1,
-      group: `${group}-order-released`,
-      schema: orderReservationReleasedV1,
-      handler: ({ subject, eventId, payload }) => record(subject, eventId, payload),
-    }),
+    await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream: TICKETS_STREAM,
+        subjectFilter: TICKETS_CREATED_V1,
+        group: `${group}-tickets-created`,
+        schema: ticketCreatedV1,
+        handler: ({ subject, eventId, payload }) =>
+          Effect.sync(() => record(subject, eventId, payload)),
+      }),
+    ),
+    await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream: ORDERS_STREAM,
+        subjectFilter: ORDER_CREATED_V1,
+        group: `${group}-order-created`,
+        schema: orderCreatedV1,
+        handler: ({ subject, eventId, payload }) =>
+          Effect.sync(() => record(subject, eventId, payload)),
+      }),
+    ),
+    await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream: ORDERS_STREAM,
+        subjectFilter: ORDER_EXPIRED_V1,
+        group: `${group}-order-expired`,
+        schema: orderExpiredV1,
+        handler: ({ subject, eventId, payload }) =>
+          Effect.sync(() => record(subject, eventId, payload)),
+      }),
+    ),
+    await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream: ORDERS_STREAM,
+        subjectFilter: ORDER_RESERVATION_RELEASED_V1,
+        group: `${group}-order-released`,
+        schema: orderReservationReleasedV1,
+        handler: ({ subject, eventId, payload }) =>
+          Effect.sync(() => record(subject, eventId, payload)),
+      }),
+    ),
   );
 
   return {

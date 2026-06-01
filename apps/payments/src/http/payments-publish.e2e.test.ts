@@ -11,7 +11,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { paymentCreatedV1 } from "@tix/contracts/payments";
 import { PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
 import { outboxRelay } from "@tix/db-core/outbox";
-import { createConsumer, createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
+import {
+  consumer,
+  createPublisher,
+  defaultScopedRunner,
+  runScopedConsumer,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
 import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
 
@@ -131,15 +137,19 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
     });
 
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: PAYMENT_CREATED_V1,
-      group,
-      schema: paymentCreatedV1,
-      handler: ({ eventId, payload }) => {
-        if (payload.orderId === orderId) resolveEvent({ eventId, payload });
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: PAYMENT_CREATED_V1,
+        group,
+        schema: paymentCreatedV1,
+        handler: ({ eventId, payload }) =>
+          Effect.sync(() => {
+            if (payload.orderId === orderId) resolveEvent({ eventId, payload });
+          }),
+      }),
+    );
 
     let timeoutHandle: NodeJS.Timeout | undefined;
     try {
@@ -171,7 +181,7 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
       });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 
@@ -194,15 +204,19 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
     // be observed — this is the proof that nothing reaches the broker.
     let observed = false;
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: PAYMENT_CREATED_V1,
-      group,
-      schema: paymentCreatedV1,
-      handler: ({ payload }) => {
-        if (payload.orderId === orderId) observed = true;
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: PAYMENT_CREATED_V1,
+        group,
+        schema: paymentCreatedV1,
+        handler: ({ payload }) =>
+          Effect.sync(() => {
+            if (payload.orderId === orderId) observed = true;
+          }),
+      }),
+    );
 
     try {
       const client = buildClient({ createPaymentIntent });
@@ -232,7 +246,7 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
 
       expect(observed).toBe(false);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 });
