@@ -215,9 +215,6 @@ importers:
 
   apps/auth:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -288,9 +285,6 @@ importers:
 
   apps/expiration:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -358,9 +352,6 @@ importers:
 
   apps/gateway:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -449,9 +440,6 @@ importers:
 
   apps/orders:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -540,9 +528,6 @@ importers:
 
   apps/payments:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -628,9 +613,6 @@ importers:
 
   apps/tickets:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)

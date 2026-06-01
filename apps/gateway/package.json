@@ -16,7 +16,6 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
     "@hono/node-server": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@orpc/client": "catalog:",

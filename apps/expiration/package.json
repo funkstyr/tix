@@ -14,7 +14,6 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
     "@nats-io/transport-node": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@tix/contracts": "workspace:*",
