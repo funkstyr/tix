@@ -1,36 +1,46 @@
 import { ORPCError } from "@orpc/server";
-import { Cause, Effect, Exit, type ManagedRuntime, Option } from "effect";
+import { Cause, Effect, Exit, type ManagedRuntime, Match, Option } from "effect";
 
 import type { OrderError } from "../domain/errors.ts";
 
 // The single oRPC seam translator (ADR-0008). Each domain tag maps to the exact
 // `ORPCError` code / status / message / data the orders endpoints return today,
-// so the wire behavior is unchanged.
+// so the wire behavior is unchanged. `Match.tag` dispatches on the tagged-error
+// `_tag`; `Match.exhaustive` makes a new `OrderError` member fail the build until
+// it has a handler here.
 export function toORPCError(error: OrderError): ORPCError<string, unknown> {
-  switch (error._tag) {
-    case "TicketNotFound":
-      return new ORPCError("NOT_FOUND", { message: "ticket not found" });
+  return Match.value(error).pipe(
+    Match.tag("TicketNotFound", () => new ORPCError("NOT_FOUND", { message: "ticket not found" })),
 
-    case "BuyerIsSeller":
-      return new ORPCError("FORBIDDEN", { message: "buyer cannot purchase their own ticket" });
+    Match.tag(
+      "BuyerIsSeller",
+      () => new ORPCError("FORBIDDEN", { message: "buyer cannot purchase their own ticket" }),
+    ),
 
-    case "SoldOut":
-      return new ORPCError("GONE", {
-        status: 410,
-        message: "ticket is sold out",
-        data: { reason: "sold_out" as const },
-      });
+    Match.tag(
+      "SoldOut",
+      () =>
+        new ORPCError("GONE", {
+          status: 410,
+          message: "ticket is sold out",
+          data: { reason: "sold_out" as const },
+        }),
+    ),
 
-    case "ReservationConflict":
-      return new ORPCError("CONFLICT", {
-        status: 409,
-        message: "reservation conflict",
-        data: { reason: "race_lost" as const },
-      });
+    Match.tag(
+      "ReservationConflict",
+      () =>
+        new ORPCError("CONFLICT", {
+          status: 409,
+          message: "reservation conflict",
+          data: { reason: "race_lost" as const },
+        }),
+    ),
 
-    case "OrderNotFound":
-      return new ORPCError("NOT_FOUND", { message: "order not found" });
-  }
+    Match.tag("OrderNotFound", () => new ORPCError("NOT_FOUND", { message: "order not found" })),
+
+    Match.exhaustive,
+  );
 }
 
 // Runs a promise that may throw an `ORPCError` and lifts it into the typed `E`

@@ -1,6 +1,6 @@
 import { ORPCError } from "@orpc/server";
 import { APIError } from "better-auth/api";
-import { Cause, Effect, Exit, type ManagedRuntime, Option } from "effect";
+import { Cause, Effect, Exit, type ManagedRuntime, Match, Option } from "effect";
 
 // better-auth signals failures as `APIError` with an HTTP status; map that status to
 // the matching oRPC code so callers see the same UNAUTHORIZED / CONFLICT / … contract
@@ -29,12 +29,13 @@ export function toOrpcError(error: APIError): ORPCError<string, unknown> {
 // still surfaces as a 500 exactly as it did before.
 export function tryAuth<A>(thunk: () => Promise<A>): Effect.Effect<A, ORPCError<string, unknown>> {
   return Effect.tryPromise({ try: thunk, catch: (e) => e }).pipe(
-    Effect.catchAll((error) => {
-      if (error instanceof ORPCError) return Effect.fail(error);
-      if (error instanceof APIError) return Effect.fail(toOrpcError(error));
-
-      return Effect.die(error);
-    }),
+    Effect.catchAll((error) =>
+      Match.value(error).pipe(
+        Match.when(Match.instanceOf(ORPCError), (e) => Effect.fail(e)),
+        Match.when(Match.instanceOf(APIError), (e) => Effect.fail(toOrpcError(e))),
+        Match.orElse((e) => Effect.die(e)),
+      ),
+    ),
   );
 }
 
