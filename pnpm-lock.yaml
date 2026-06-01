@@ -15,6 +15,9 @@ catalogs:
     '@effect/vitest':
       specifier: ^0.29.0
       version: 0.29.0
+    '@grafana/grafana-foundation-sdk':
+      specifier: ^0.0.13
+      version: 0.0.13
     '@hono/node-server':
       specifier: ^2.0.3
       version: 2.0.3
@@ -792,6 +795,9 @@ importers:
 
   infra/pulumi:
     dependencies:
+      '@grafana/grafana-foundation-sdk':
+        specifier: 'catalog:'
+        version: 0.0.13
       '@pulumi/kubernetes':
         specifier: ^4.27.0
         version: 4.31.1
@@ -2041,6 +2047,9 @@ packages:
   '@gar/promise-retry@1.0.3':
     resolution: {integrity: sha512-GmzA9ckNokPypTg10pgpeHNQe7ph+iIKKmhKu3Ob9ANkswreCx7R3cKmY781K8QK3AqVL3xVh9A42JvIAbkkSA==}
     engines: {node: ^20.17.0 || >=22.9.0}
+
+  '@grafana/grafana-foundation-sdk@0.0.13':
+    resolution: {integrity: sha512-4hWChwnMGUbJ1WNzvq4X+rd04sSApA5HmJdwXXOg/VIdRHabufgnOwwtGbt7I3E2oOljXpZG2W8Y2q26rIgdug==}
 
   '@grpc/grpc-js@1.14.3':
     resolution: {integrity: sha512-Iq8QQQ/7X3Sac15oB6p0FmUg/klxQvXLeileoqrTRGJYLV+/9tubbr9ipz0GKHjmXVsgFPo/+W+2cA8eNcR+XA==}
@@ -6100,6 +6109,10 @@ snapshots:
       '@noble/hashes': 2.2.0
 
   '@gar/promise-retry@1.0.3': {}
+
+  '@grafana/grafana-foundation-sdk@0.0.13':
+    dependencies:
+      tslib: 2.8.1
 
   '@grpc/grpc-js@1.14.3':
     dependencies:
