@@ -14,6 +14,7 @@
     "pulumi:smoke:teardown": "./scripts/kind-teardown.sh"
   },
   "dependencies": {
+    "@grafana/grafana-foundation-sdk": "catalog:",
     "@pulumi/kubernetes": "^4.27.0",
     "@pulumi/pulumi": "^3.242.0"
   },

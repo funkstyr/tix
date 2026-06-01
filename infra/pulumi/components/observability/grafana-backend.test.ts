@@ -19,6 +19,11 @@ async function envOf(grafana: GrafanaBackend): Promise<Array<{ name: string; val
   return spec.template.spec?.containers[0]?.env ?? [];
 }
 
+async function podSpecOf(grafana: GrafanaBackend) {
+  const spec = await promiseOf(grafana.deployment.spec);
+  return spec.template.spec;
+}
+
 describe("GrafanaBackend", () => {
   it("provisions Tempo, Loki, and Prometheus as datasources", async () => {
     const grafana = build();
@@ -55,5 +60,39 @@ describe("GrafanaBackend", () => {
     const env = await envOf(grafana);
     expect(env.some((e) => e.name === "GF_AUTH_ANONYMOUS_ENABLED")).toBe(false);
     expect(env.some((e) => e.name === "GF_AUTH_ANONYMOUS_ORG_ROLE")).toBe(false);
+  });
+
+  it("provisions the saga-funnel board under a Domain folder", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.dashboards.data);
+    const provider = data?.["dashboards.yaml"] ?? "";
+    expect(provider).toContain("folder: Domain");
+    expect(provider).toContain("path: /etc/grafana/provisioning/dashboards");
+
+    const board = JSON.parse(data?.["saga-funnel.json"] ?? "{}");
+    expect(board.uid).toBe("saga-funnel");
+  });
+
+  it("mounts the dashboards ConfigMap into the provisioning path", async () => {
+    const grafana = build();
+
+    const pod = await podSpecOf(grafana);
+    const mount = pod?.containers[0]?.volumeMounts?.find(
+      (m) => m.mountPath === "/etc/grafana/provisioning/dashboards",
+    );
+    expect(mount).toBeDefined();
+
+    const volume = pod?.volumes?.find((v) => v.name === mount?.name);
+    expect(volume?.configMap?.name).toBe("grafana-dashboards");
+  });
+
+  it("stays stateless — no PersistentVolumeClaim, only ConfigMap volumes", async () => {
+    const grafana = build();
+
+    const pod = await podSpecOf(grafana);
+    expect(pod?.volumes?.length).toBeGreaterThan(0);
+    expect(pod?.volumes?.every((v) => v.configMap !== undefined)).toBe(true);
+    expect(pod?.volumes?.some((v) => v.persistentVolumeClaim !== undefined)).toBe(false);
   });
 });
