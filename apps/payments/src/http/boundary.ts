@@ -1,33 +1,44 @@
 import { ORPCError } from "@orpc/server";
-import { Cause, Effect, Exit, type ManagedRuntime, Option } from "effect";
+import { Cause, Effect, Exit, type ManagedRuntime, Match, Option } from "effect";
 
 import type { PaymentError } from "../domain/errors.ts";
 
 // The single oRPC seam translator (ADR-0008). Each domain tag maps to the exact
 // `ORPCError` code / status / message / data the payments endpoint returns today,
-// so the wire behavior is unchanged.
+// so the wire behavior is unchanged. `Match.tag` dispatches on the tagged-error
+// `_tag`; `Match.exhaustive` makes a new `PaymentError` member fail the build until
+// it has a handler here.
 export function toORPCError(error: PaymentError): ORPCError<string, unknown> {
-  switch (error._tag) {
-    case "OrderNotFound":
-      return new ORPCError("NOT_FOUND", { message: "order not found" });
+  return Match.value(error).pipe(
+    Match.tag("OrderNotFound", () => new ORPCError("NOT_FOUND", { message: "order not found" })),
 
-    case "OrderForbidden":
-      return new ORPCError("FORBIDDEN", { message: "order belongs to another user" });
+    Match.tag(
+      "OrderForbidden",
+      () => new ORPCError("FORBIDDEN", { message: "order belongs to another user" }),
+    ),
 
-    case "OrderNotPayable":
-      return new ORPCError("CONFLICT", {
-        status: 409,
-        message: "order is not payable",
-        data: { reason: "not_payable" as const, status: error.status },
-      });
+    Match.tag(
+      "OrderNotPayable",
+      (e) =>
+        new ORPCError("CONFLICT", {
+          status: 409,
+          message: "order is not payable",
+          data: { reason: "not_payable" as const, status: e.status },
+        }),
+    ),
 
-    case "PaymentIntentNotSucceeded":
-      return new ORPCError("UNPROCESSABLE_CONTENT", {
-        status: 422,
-        message: "payment intent did not succeed",
-        data: { reason: "intent_not_succeeded" as const, status: error.status },
-      });
-  }
+    Match.tag(
+      "PaymentIntentNotSucceeded",
+      (e) =>
+        new ORPCError("UNPROCESSABLE_CONTENT", {
+          status: 422,
+          message: "payment intent did not succeed",
+          data: { reason: "intent_not_succeeded" as const, status: e.status },
+        }),
+    ),
+
+    Match.exhaustive,
+  );
 }
 
 // Runs a promise that may throw an `ORPCError` and lifts it into the typed `E`
