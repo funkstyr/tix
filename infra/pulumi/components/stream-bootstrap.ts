@@ -20,7 +20,7 @@ export type StreamBootstrapArgs = {
 
 // Creates the JetStream streams idempotently on every `pulumi up`. Mirrors
 // `infra/docker/nats-init.sh` so the kind stack matches the compose stack. The
-// messaging consumers (`createConsumer` -> `ensureConsumer`) assume their stream
+// messaging consumers (`consumer` -> `ensureConsumer`) assume their stream
 // already exists and crash with `StreamNotFoundError` otherwise, so every
 // messaging service must `dependsOn` this Job.
 export class StreamBootstrap extends pulumi.ComponentResource {

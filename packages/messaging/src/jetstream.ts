@@ -37,9 +37,10 @@ export type Publisher = {
 };
 
 // JetStream's `publish` awaits a server ack; without a bound it can hang indefinitely if the
-// broker stalls. The relay runs this outside Effect (a vanilla poll loop), so resilience here
-// is a plain timeout — a rejected publish leaves the outbox row unsent for the next poll to
-// retry, which is the relay's existing retry mechanism (ADR-0008, #132).
+// broker stalls. `withPublishTimeout` wraps the underlying Promise directly (the relay calls
+// `publish` through `Effect.tryPromise`, so the timeout lives here, not in the Effect layer) —
+// a rejected publish leaves the outbox row unsent for the next poll to retry, which is the
+// relay's existing retry mechanism (ADR-0008, #132).
 const DEFAULT_PUBLISH_TIMEOUT_MS = 5_000;
 
 export function withPublishTimeout<T>(
