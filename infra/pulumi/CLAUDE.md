@@ -56,12 +56,16 @@ per-backend components under `components/observability/`:
 | `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)           | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver.           |
 | `GrafanaBackend`    | `grafana-backend.ts`    | Deployment + Service `grafana` (3000)                          | UI; Tempo/Loki/Prometheus datasources provisioned.                            |
 
-It is **infra-only** today: no service emits telemetry yet, so nothing
-`dependsOn` it. Apps will later export OTLP to `otel-collector:4317` (gRPC) /
-`:4318` (HTTP); the collector fans out per signal — traces→`tempo:4317`,
-logs→`loki:3100/otlp/v1/logs`, metrics→`prometheus:9090/api/v1/otlp/v1/metrics`.
-Exposed via the `otelCollectorService` / `grafanaService` / `tempoService` /
-`lokiService` / `prometheusService` / `garageService` stack outputs.
+Every backend service now exports all three OTLP signals to
+`otel-collector:4317` (gRPC) / `:4318` (HTTP); the collector fans out per
+signal — traces→`tempo:4317`, logs→`loki:3100/otlp/v1/logs`,
+metrics→`prometheus:9090/api/v1/otlp/v1/metrics`. (The stack itself still has no
+`dependsOn` edge to the apps — OTLP export is async/batched, so a not-yet-ready
+collector degrades the apps rather than blocking them.) Exposed via the
+`otelCollectorService` / `grafanaService` / `tempoService` / `lokiService` /
+`prometheusService` / `garageService` stack outputs. The Grafana _UX layer_ on
+top — dashboards-as-code, provisioned alerting, span-derived metrics, and a k6
+load generator — is ADR-0010.
 
 Grafana is reachable through the ingress at `/grafana` — the container sets
 `GF_SERVER_ROOT_URL` + `GF_SERVER_SERVE_FROM_SUB_PATH=true` so it serves under
