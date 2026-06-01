@@ -46,15 +46,15 @@ injected as env vars — apps never hardcode hostnames.
 alongside `StatefulInfra` (it depends only on the namespace) and composes the
 per-backend components under `components/observability/`:
 
-| Backend             | File                    | Workload                                                       | Notes                                                                         |
-| ------------------- | ----------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `OtelCollector`     | `otel-collector.ts`     | Deployment + Service `otel-collector` (4317/4318)              | Single OTLP ingress; fans out per signal.                                     |
-| `GarageBackend`     | `garage-backend.ts`     | StatefulSet + PVC + Secret + Service `garage` (3900/3901/3903) | S3 object store for Tempo + Loki (`server --single-node`); admin API on 3903. |
-| `GarageBuckets`     | `garage-buckets.ts`     | one-shot Job (`curl` → Garage admin API)                       | Creates the `tempo`/`loki` buckets + imports the S3 key.                      |
-| `TempoBackend`      | `tempo-backend.ts`      | StatefulSet + WAL PVC + Service `tempo` (3200/4317)            | Traces; S3 blocks in Garage.                                                  |
-| `LokiBackend`       | `loki-backend.ts`       | Deployment + Service `loki` (3100)                             | Logs; S3 chunks in Garage; OTLP at `/otlp/v1/logs`.                           |
-| `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)           | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver.           |
-| `GrafanaBackend`    | `grafana-backend.ts`    | Deployment + Service `grafana` (3000)                          | UI; Tempo/Loki/Prometheus datasources + dashboards-as-code provisioned.       |
+| Backend             | File                    | Workload                                                       | Notes                                                                                                                                                                   |
+| ------------------- | ----------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OtelCollector`     | `otel-collector.ts`     | Deployment + Service `otel-collector` (4317/4318)              | Single OTLP ingress; fans out per signal. Contrib distro: `spanmetrics` + `servicegraph` connectors bridge traces→metrics (span-derived RED + service graph, ADR-0010). |
+| `GarageBackend`     | `garage-backend.ts`     | StatefulSet + PVC + Secret + Service `garage` (3900/3901/3903) | S3 object store for Tempo + Loki (`server --single-node`); admin API on 3903.                                                                                           |
+| `GarageBuckets`     | `garage-buckets.ts`     | one-shot Job (`curl` → Garage admin API)                       | Creates the `tempo`/`loki` buckets + imports the S3 key.                                                                                                                |
+| `TempoBackend`      | `tempo-backend.ts`      | StatefulSet + WAL PVC + Service `tempo` (3200/4317)            | Traces; S3 blocks in Garage.                                                                                                                                            |
+| `LokiBackend`       | `loki-backend.ts`       | Deployment + Service `loki` (3100)                             | Logs; S3 chunks in Garage; OTLP at `/otlp/v1/logs`.                                                                                                                     |
+| `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)           | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver.                                                                                                     |
+| `GrafanaBackend`    | `grafana-backend.ts`    | Deployment + Service `grafana` (3000)                          | UI; Tempo/Loki/Prometheus datasources + dashboards-as-code provisioned.                                                                                                 |
 
 Every backend service now exports all three OTLP signals to
 `otel-collector:4317` (gRPC) / `:4318` (HTTP); the collector fans out per

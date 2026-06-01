@@ -18,6 +18,14 @@ describe("PrometheusBackend", () => {
     expect(spec.volumeClaimTemplates).toHaveLength(1);
   });
 
+  it("enables exemplar storage so span-derived histograms can drill to traces", async () => {
+    const prometheus = build();
+
+    const spec = await promiseOf(prometheus.statefulSet.spec);
+    const container = spec.template.spec?.containers[0];
+    expect(container?.args).toContain("--enable-feature=exemplar-storage");
+  });
+
   it("accepts out-of-order OTLP samples", async () => {
     const prometheus = build();
 

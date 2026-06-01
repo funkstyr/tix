@@ -63,6 +63,11 @@ export class PrometheusBackend extends pulumi.ComponentResource {
                     "--storage.tsdb.path=/prometheus",
                     "--web.enable-otlp-receiver",
                     "--web.enable-lifecycle",
+                    // Store exemplars so the span-derived `duration` histograms
+                    // (spanmetrics connector, ADR-0010) can drill to their trace.
+                    // Grafana's Prometheus datasource maps the `trace_id` exemplar
+                    // label to Tempo via `exemplarTraceIdDestinations`.
+                    "--enable-feature=exemplar-storage",
                   ],
                   ports: [{ name: "http", containerPort: HTTP_PORT }],
                   volumeMounts: [
