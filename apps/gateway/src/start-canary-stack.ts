@@ -8,6 +8,7 @@ import { createAuth } from "auth/instance";
 import { authTables } from "auth/schema";
 import { createAuthTestRuntime } from "auth/test-runtime";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { Effect, Fiber } from "effect";
 import { fileURLToPath } from "node:url";
 import { createOrdersApp } from "orders/app";
 import { startOrdersExpiredConsumer } from "orders/consumer";
@@ -36,7 +37,12 @@ import { RPC_PREFIX } from "@tix/contracts/rpc";
 import { ORDERS_STREAM, PAYMENTS_STREAM, TICKETS_STREAM } from "@tix/contracts/subjects";
 import type { TicketsRouterClient } from "@tix/contracts/tickets";
 import { createDbClient } from "@tix/db-core/client";
-import { startOutboxRelay, type RunningOutboxRelay } from "@tix/db-core/outbox";
+import {
+  outboxRelay,
+  type OutboxPublish,
+  type OutboxRelayOptions,
+  type OutboxTable,
+} from "@tix/db-core/outbox";
 import { createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
 
 import { createDownstreamClients } from "./downstream-clients.ts";
@@ -154,7 +160,7 @@ export async function startCanaryStack(
   });
   const ticketsAppHono = createTicketsApp(ticketsRuntime);
   const { server: ticketsServer, baseUrl: ticketsBaseUrl } = await listen(ticketsAppHono);
-  const ticketsOutboxRelay = startOutboxRelay(ticketsDb.db, ticketsOutbox, publisher.publish, {
+  const ticketsOutboxRelay = forkRelay(ticketsDb.db, ticketsOutbox, publisher.publish, {
     pollIntervalMs: 25,
   });
   const ticketsReleasedConsumer = await startTicketsReleasedConsumer({
@@ -175,7 +181,7 @@ export async function startCanaryStack(
   });
   const ordersAppHono = createOrdersApp(ordersRuntime);
   const { server: ordersServer, baseUrl: ordersBaseUrl } = await listen(ordersAppHono);
-  const ordersOutboxRelay = startOutboxRelay(ordersDb.db, ordersOutbox, publisher.publish, {
+  const ordersOutboxRelay = forkRelay(ordersDb.db, ordersOutbox, publisher.publish, {
     pollIntervalMs: 25,
   });
   const ordersExpiredConsumer = await startOrdersExpiredConsumer({
@@ -205,7 +211,7 @@ export async function startCanaryStack(
   });
   const paymentsAppHono = createPaymentsApp(paymentsRuntime);
   const { server: paymentsServer, baseUrl: paymentsBaseUrl } = await listen(paymentsAppHono);
-  const paymentsOutboxRelay = startOutboxRelay(paymentsDb.db, paymentsOutbox, publisher.publish, {
+  const paymentsOutboxRelay = forkRelay(paymentsDb.db, paymentsOutbox, publisher.publish, {
     pollIntervalMs: 25,
   });
   const paymentsOrderCreatedConsumer = await startPaymentsOrderCreatedConsumer({
@@ -249,7 +255,7 @@ export async function startCanaryStack(
     paymentsOrderCreatedConsumer,
     paymentsOrderCancelledConsumer,
   ];
-  const relays: RunningOutboxRelay[] = [ticketsOutboxRelay, ordersOutboxRelay, paymentsOutboxRelay];
+  const relays: RelayHandle[] = [ticketsOutboxRelay, ordersOutboxRelay, paymentsOutboxRelay];
   const servers: ServerType[] = [
     gatewayServer,
     paymentsServer,
@@ -283,6 +289,20 @@ export async function startCanaryStack(
 }
 
 type Listening = { server: ServerType; baseUrl: string };
+
+type RelayHandle = { stop: () => Promise<void> };
+
+// The canary runs on no service runtime, so fork the relay program on the default runtime
+// and stop it by interrupting the fiber (the poll loop ends; unsent rows wait for restart).
+function forkRelay(
+  db: Parameters<typeof outboxRelay>[0],
+  table: OutboxTable,
+  publish: OutboxPublish,
+  options: OutboxRelayOptions,
+): RelayHandle {
+  const fiber = Effect.runFork(outboxRelay(db, table, publish, options));
+  return { stop: () => Effect.runPromise(Fiber.interrupt(fiber)).then(() => undefined) };
+}
 
 function listen(app: {
   fetch: (req: Request) => Response | Promise<Response>;
