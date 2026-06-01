@@ -1,0 +1,36 @@
+{
+  "name": "@tix/service-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "files": ["src", "dist"],
+  "type": "module",
+  "exports": {
+    "./tags": { "types": "./dist/tags.d.ts", "import": "./dist/tags.js" },
+    "./layers": { "types": "./dist/layers.d.ts", "import": "./dist/layers.js" },
+    "./runtime": { "types": "./dist/runtime.d.ts", "import": "./dist/runtime.js" },
+    "./test": { "types": "./dist/test-runtime.d.ts", "import": "./dist/test-runtime.js" }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsgo --build",
+    "dev": "tsdown --watch",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@effect/platform": "catalog:",
+    "@nats-io/transport-node": "catalog:",
+    "@tix/contracts": "workspace:*",
+    "@tix/db-core": "workspace:*",
+    "@tix/messaging": "workspace:*",
+    "@tix/observability": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  }
+}
