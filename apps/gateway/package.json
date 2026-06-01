@@ -23,6 +23,7 @@
     "@orpc/server": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/observability": "workspace:*",
+    "@tix/service-runtime": "workspace:*",
     "arktype": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:"
