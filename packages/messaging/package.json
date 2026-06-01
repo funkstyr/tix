@@ -29,11 +29,13 @@
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/core": "catalog:",
     "arktype": "catalog:",
-    "bullmq": "catalog:"
+    "bullmq": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@tix/config": "workspace:*",
     "@tix/contracts": "workspace:*",
+    "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "testcontainers": "catalog:",
