@@ -1,19 +1,19 @@
 import type { NatsConnection } from "@nats-io/transport-node";
-import { Layer, Logger, ManagedRuntime } from "effect";
+import { Layer } from "effect";
 
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { createPublisher } from "@tix/messaging/jetstream";
+import {
+  makeServiceTestRuntime,
+  throwingAuthClient,
+  throwingNats,
+  throwingPublisher,
+} from "@tix/service-runtime/test";
+import { AuthClient, EventPublisher, Nats } from "@tix/service-runtime/tags";
 
 import type { TicketsEnv } from "./config.ts";
 import type { TicketsRuntime } from "./runtime.ts";
-import {
-  AuthClient,
-  Database,
-  EventPublisher,
-  Nats,
-  type TicketsDb,
-  TicketsConfig,
-} from "./services.ts";
+import { Database, type TicketsDb, TicketsConfig } from "./services.ts";
 
 export type TicketsTestDeps = {
   db: TicketsDb;
@@ -60,7 +60,7 @@ export function createTicketsTestRuntime(deps: TicketsTestDeps): TicketsRuntime 
       ? Layer.succeed(EventPublisher, throwingPublisher())
       : Layer.succeed(EventPublisher, createPublisher(nats));
 
-  return ManagedRuntime.make(Layer.mergeAll(base, auth, natsLayer, publisherLayer, Logger.pretty));
+  return makeServiceTestRuntime(Layer.mergeAll(base, auth, natsLayer, publisherLayer));
 }
 
 const TEST_SERVICE_TOKEN = "test-token";
@@ -74,29 +74,5 @@ function makeTestEnv(serviceToken: string | undefined): TicketsEnv {
     serviceToken: serviceToken ?? TEST_SERVICE_TOKEN,
     ordersStream: "ORDERS",
     otelEndpoint: "http://otel.test:4318",
-  };
-}
-
-function throwingAuthClient(): AuthSessionClient {
-  return {
-    getSession: () => {
-      throw new Error("AuthClient not provided to test runtime");
-    },
-  };
-}
-
-function throwingNats(): NatsConnection {
-  return new Proxy({} as NatsConnection, {
-    get() {
-      throw new Error("Nats not provided to test runtime");
-    },
-  });
-}
-
-function throwingPublisher(): ReturnType<typeof createPublisher> {
-  return {
-    publish: () => {
-      throw new Error("EventPublisher not provided to test runtime");
-    },
   };
 }
