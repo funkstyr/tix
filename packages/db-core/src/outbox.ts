@@ -205,7 +205,10 @@ export function outboxRelay(
           Effect.gen(function* () {
             const now = yield* Clock.currentTimeMillis;
             yield* Effect.tryPromise(() =>
-              db.update(table).set({ sentAt: new Date(now) }).where(eq(table.id, row.id)),
+              db
+                .update(table)
+                .set({ sentAt: new Date(now) })
+                .where(eq(table.id, row.id)),
             );
           }).pipe(
             Effect.catchAllCause((cause) =>
