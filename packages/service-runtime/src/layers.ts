@@ -56,8 +56,11 @@ export const eventPublisherLayer: Layer.Layer<EventPublisher, never, Nats> = Lay
 // `traceparentHeaders` reads the active span (live via the OTel context bridge) on every
 // call, so outbound auth requests carry W3C `traceparent` to continue the trace.
 export function makeAuthClientLayer(opts: { authBaseUrl: string }): Layer.Layer<AuthClient> {
-  return Layer.sync(AuthClient, () =>
-    createHttpAuthSessionClient(opts.authBaseUrl, { headers: traceparentHeaders }),
+  return Layer.effect(
+    AuthClient,
+    Effect.sync(() =>
+      createHttpAuthSessionClient(opts.authBaseUrl, { headers: traceparentHeaders }),
+    ),
   );
 }
 
