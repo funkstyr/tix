@@ -2,6 +2,7 @@ import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
 import { IngressRoutes } from "./components/ingress-routes.ts";
+import { LoadGenerator } from "./components/load-generator.ts";
 import { MigrationJob } from "./components/migration-job.ts";
 import { ObservabilityStack } from "./components/observability-stack.ts";
 import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts";
@@ -58,6 +59,11 @@ const expirationImage = config.get("expirationImage") ?? "tix-expiration:dev";
 const gatewayImage = config.get("gatewayImage") ?? "tix-gateway:dev";
 const webImage = config.get("webImage") ?? "tix-web:dev";
 const imagePullPolicy = config.get("imagePullPolicy") ?? "Never";
+
+// Dev-only in-cluster k6 load generator (ADR-0010). Off by default and absent from
+// `prod` so prod never gets it; `Pulumi.dev.yaml` turns it on. Needs a real Stripe
+// `sk_test_…` key for the pay stage to clear (see infra/pulumi/CLAUDE.md).
+const loadgenEnabled = config.getBoolean("loadgenEnabled") ?? false;
 
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
@@ -428,6 +434,22 @@ const ingress = new IngressRoutes("tix", {
   grafana: { name: observability.grafana.service.metadata.name, port: GRAFANA_PORT },
 });
 
+// Dev-only k6 load generator (ADR-0010), gated by `loadgenEnabled`. Drives the gateway's
+// public surface and pushes its own load metrics to the collector, so it depends on both.
+let loadgenDeploymentName: pulumi.Output<string> | undefined;
+if (loadgenEnabled) {
+  const loadgen = new LoadGenerator(
+    "tix-loadgen",
+    {
+      namespace: namespace.metadata.name,
+      gatewayBaseUrl: `http://gateway:${GATEWAY_PORT}`,
+      otelEndpoint: "otel-collector:4317",
+    },
+    { dependsOn: [gatewayDeployment, observability.collector] },
+  );
+  loadgenDeploymentName = loadgen.deployment.metadata.name;
+}
+
 export const namespaceName = namespace.metadata.name;
 export const postgresService = infra.postgres.metadata.name;
 export const natsService = infra.nats.metadata.name;
@@ -451,3 +473,6 @@ export const prometheusService = observability.prometheus.service.metadata.name;
 export const garageService = observability.garage.service.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;
+// Present only when `loadgenEnabled` (dev); undefined elsewhere, so it simply doesn't
+// surface as a stack output for prod.
+export const loadgenDeployment = loadgenDeploymentName;

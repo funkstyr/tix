@@ -10,6 +10,9 @@ config:
   tix:imagePullPolicy: Never
   tix:webOrigin: http://localhost:4000
   tix:host: localhost
+  # Dev-only k6 load generator (ADR-0010). Off elsewhere; prod never sets it. The pay
+  # stage needs a real Stripe sk_test_ key (`pulumi config set --secret stripeKey …`).
+  tix:loadgenEnabled: "true"
   # Secret-shaped values (postgresPassword, per-service role passwords,
   # betterAuthSecret, ticketsServiceToken, stripeKey, garageRpcSecret,
   # garageAdminToken, garageS3SecretKey) are not committed. (garageS3AccessKey defaults to a valid

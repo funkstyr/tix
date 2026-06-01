@@ -117,10 +117,35 @@ describe("GrafanaBackend", () => {
     const data = await promiseOf(grafana.dashboards.data);
     const provider = data?.["dashboards.yaml"] ?? "";
     expect(provider).toContain("folder: Domain");
-    expect(provider).toContain("path: /etc/grafana/provisioning/dashboards");
+    expect(provider).toContain("path: /etc/grafana/provisioning/dashboards/domain");
 
     const board = JSON.parse(data?.["saga-funnel.json"] ?? "{}");
     expect(board.uid).toBe("saga-funnel");
+  });
+
+  it("provisions the k6 load-profile board under a Platform folder", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.dashboards.data);
+    const provider = data?.["dashboards.yaml"] ?? "";
+    expect(provider).toContain("folder: Platform");
+    expect(provider).toContain("path: /etc/grafana/provisioning/dashboards/platform");
+
+    const board = JSON.parse(data?.["load-profile.json"] ?? "{}");
+    expect(board.uid).toBe("load-profile");
+  });
+
+  it("projects each board into its folder's subdirectory", async () => {
+    const grafana = build();
+
+    const pod = await podSpecOf(grafana);
+    const volume = pod?.volumes?.find((v) => v.name === "dashboards");
+    const items = volume?.configMap?.items ?? [];
+
+    const paths = items.map((i) => i.path);
+    expect(paths).toContain("domain/saga-funnel.json");
+    expect(paths).toContain("platform/load-profile.json");
+    expect(paths).toContain("dashboards.yaml");
   });
 
   it("mounts the dashboards ConfigMap into the provisioning path", async () => {
