@@ -11,6 +11,7 @@ import type { JsMsg, PubAck } from "@nats-io/jetstream";
 import type { NatsConnection } from "@nats-io/transport-node";
 import type { Context } from "@opentelemetry/api";
 import { ArkErrors, type Type } from "arktype";
+import { Cause, Effect, Exit, Scope, Stream } from "effect";
 
 import { extractTraceContext, injectTraceContext } from "./traceparent";
 
@@ -103,14 +104,16 @@ export type ConsumerHandlerArgs<Payload> = {
   ack: () => void;
 };
 
-export type ConsumerHandler<Payload> = (args: ConsumerHandlerArgs<Payload>) => Promise<void> | void;
+export type ConsumerHandler<Payload, E, R> = (
+  args: ConsumerHandlerArgs<Payload>,
+) => Effect.Effect<void, E, R>;
 
-export type ConsumerOptions<Payload> = {
+export type ConsumerOptions<Payload, E, R> = {
   stream: string;
   subjectFilter: string;
   group: string;
   schema: Type<Payload>;
-  handler: ConsumerHandler<Payload>;
+  handler: ConsumerHandler<Payload, E, R>;
   ackWaitMs?: number;
 };
 
@@ -118,47 +121,91 @@ export type RunningConsumer = {
   stop: () => Promise<void>;
 };
 
-export async function createConsumer<Payload>(
+/**
+ * The JetStream consumer as an Effect program. Establishes the durable consumer and the
+ * subscription (failures here are defects → boot fails, as before), then forks a `Stream`
+ * over the message async-iterable into the current `Scope`. The returned Effect completes
+ * once the subscription is established, so callers can rely on readiness. Closing the Scope
+ * runs the finalizer (`messages.close()`), ending the iterable and the forked loop.
+ *
+ * Finalizer ordering: `Effect.forkScoped` registers the fiber-interrupt finalizer first.
+ * `Effect.addFinalizer` for `messages.close()` is called after the fork, so it runs FIRST
+ * in LIFO order — closing the iterator unblocks the stream loop, letting the fiber exit
+ * cleanly before its own finalizer runs.
+ */
+export function consumer<Payload, E, R>(
   natsConnection: NatsConnection,
-  options: ConsumerOptions<Payload>,
-): Promise<RunningConsumer> {
+  options: ConsumerOptions<Payload, E, R>,
+): Effect.Effect<void, never, R | Scope.Scope> {
   const { stream, subjectFilter, group, schema, handler, ackWaitMs } = options;
-  // Wire-level failures here run outside Effect (the handler runs the service runtime
-  // itself), so they go to `console.error` rather than the Effect Logger. This context
-  // is merged into every diagnostic so the line is self-describing.
   const context = { stream, group, subjectFilter };
-
-  const manager = await jetstreamManager(natsConnection);
-  await ensureConsumer(manager, { stream, subjectFilter, group, ackWaitMs });
-
-  const js = jetstream(natsConnection);
-  const consumer = await js.consumers.get(stream, group);
-  const messages = await consumer.consume();
-
   const decoder = new TextDecoder();
 
-  const loop = (async () => {
-    for await (const msg of messages) {
-      await processMessage(msg, { schema, handler, decoder, context });
-    }
-  })();
+  return Effect.gen(function* () {
+    // Acquire the messages iterator without registering a finalizer yet.
+    const messages = yield* Effect.promise(async () => {
+      const manager = await jetstreamManager(natsConnection);
+      await ensureConsumer(manager, { stream, subjectFilter, group, ackWaitMs });
+      const js = jetstream(natsConnection);
+      const c = await js.consumers.get(stream, group);
+      return await c.consume();
+    });
 
-  loop.catch((err: unknown) => {
-    console.error("consumer loop terminated unexpectedly", { ...context, err });
+    // Fork the stream loop into the current scope. The fiber-interrupt finalizer is
+    // registered first (LIFO means it runs second when scope closes).
+    yield* Stream.fromAsyncIterable(messages, (cause) => cause).pipe(
+      Stream.runForEach((msg) => processMessage(msg, { schema, handler, decoder, context })),
+      Effect.catchAllCause((cause) =>
+        Effect.logError("consumer loop terminated").pipe(
+          Effect.annotateLogs({ ...context, cause: Cause.pretty(cause) }),
+        ),
+      ),
+      Effect.forkScoped,
+    );
+
+    // Register messages.close() AFTER forking so it runs FIRST in LIFO order.
+    // Closing the iterator unblocks any pending asyncIterator.next() call, allowing
+    // the forked stream fiber to exit naturally before the fiber-interrupt finalizer runs.
+    yield* Effect.addFinalizer(() => Effect.promise(() => messages.close()));
   });
+}
 
+/**
+ * Lifecycle adapter: runs a `consumer(...)` program on `runtime`, awaiting subscription
+ * readiness, and returns a Promise `{ stop }` handle. `runtime` is a service ManagedRuntime
+ * (provides the handler's `R`) or `defaultScopedRunner` (for `R = never` harness callers).
+ * The held Scope keeps the forked loop alive; `stop` closes it (runs `messages.close()`).
+ */
+export async function runScopedConsumer<R>(
+  runtime: {
+    runPromise: <A, E>(effect: Effect.Effect<A, E, R | Scope.Scope>) => Promise<A>;
+  },
+  program: Effect.Effect<void, never, R | Scope.Scope>,
+): Promise<RunningConsumer> {
+  const scope = await Effect.runPromise(Scope.make());
+  try {
+    await runtime.runPromise(Effect.provideService(program, Scope.Scope, scope));
+  } catch (err) {
+    // Subscription setup failed before the loop was forked; close the (empty) scope so we
+    // don't leak it, then surface the failure to the caller (boot fails, as before).
+    await Effect.runPromise(Scope.close(scope, Exit.void));
+    throw err;
+  }
   return {
-    stop: async () => {
-      await messages.close();
-
-      try {
-        await loop;
-      } catch {
-        // loop errors are already logged above
-      }
-    },
+    stop: () => Effect.runPromise(Scope.close(scope, Exit.void)),
   };
 }
+
+/**
+ * Default-runtime runner for callers with no service runtime (R = never). `runScopedConsumer`
+ * always provides its own managed `Scope` via `provideService`, so this `Effect.scoped` only
+ * discharges the residual `Scope` requirement in the type — the provided scope is the one that
+ * actually hosts the forked consumer loop.
+ */
+export const defaultScopedRunner = {
+  runPromise: <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
+    Effect.runPromise(Effect.scoped(effect)),
+};
 
 type EnsureConsumerArgs = {
   stream: string;
@@ -190,88 +237,95 @@ async function ensureConsumer(
 
 type ConsumerContext = { stream: string; group: string; subjectFilter: string };
 
-type ProcessMessageArgs<Payload> = {
+type ProcessMessageArgs<Payload, E, R> = {
   schema: Type<Payload>;
-  handler: ConsumerHandler<Payload>;
+  handler: ConsumerHandler<Payload, E, R>;
   decoder: TextDecoder;
   context: ConsumerContext;
 };
 
-async function processMessage<Payload>(
+function processMessage<Payload, E, R>(
   msg: JsMsg,
-  { schema, handler, decoder, context }: ProcessMessageArgs<Payload>,
-): Promise<void> {
-  const subject = msg.subject;
-  const eventId = msg.headers?.get(MSG_ID_HEADER);
+  { schema, handler, decoder, context }: ProcessMessageArgs<Payload, E, R>,
+): Effect.Effect<void, never, R> {
+  return Effect.gen(function* () {
+    const subject = msg.subject;
+    const eventId = msg.headers?.get(MSG_ID_HEADER);
 
-  if (!eventId) {
-    console.error(`event missing ${MSG_ID_HEADER} header; terminating`, { ...context, subject });
-    msg.term(`missing ${MSG_ID_HEADER} header`);
-    return;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(decoder.decode(msg.data));
-  } catch (err) {
-    console.error("event payload is not valid JSON; terminating", {
-      ...context,
-      eventId,
-      subject,
-      err,
-    });
-    msg.term("invalid json");
-    return;
-  }
-
-  const validated = schema(parsed);
-  if (validated instanceof ArkErrors) {
-    console.error("event payload failed schema validation; terminating", {
-      ...context,
-      eventId,
-      subject,
-      summary: validated.summary,
-    });
-    msg.term("schema validation failed");
-    return;
-  }
-
-  let settled = false;
-  const ack = (): void => {
-    if (settled) return;
-    settled = true;
-    msg.ack();
-  };
-
-  const traceContext = extractTraceContext(msg.headers);
-
-  try {
-    // arktype distills the call result to `finalizeDistillation<Payload, ...>`; cast back to Payload.
-    await handler({ subject, payload: validated as Payload, eventId, traceContext, ack });
-    ack();
-  } catch (err) {
-    if (settled) {
-      console.error("handler threw after acking; not redelivering", {
-        ...context,
-        eventId,
-        subject,
-        err,
-        redelivered: msg.redelivered,
-      });
+    if (!eventId) {
+      yield* Effect.logWarning(`event missing ${MSG_ID_HEADER} header; terminating`).pipe(
+        Effect.annotateLogs({ ...context, subject }),
+      );
+      msg.term(`missing ${MSG_ID_HEADER} header`);
       return;
     }
 
-    settled = true;
-    msg.nak();
-    console.error("handler threw; nak-ing for redelivery", {
-      ...context,
-      eventId,
-      subject,
-      err,
-      redelivered: msg.redelivered,
-    });
-  }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(decoder.decode(msg.data));
+    } catch (err) {
+      yield* Effect.logWarning("event payload is not valid JSON; terminating").pipe(
+        Effect.annotateLogs({ ...context, eventId, subject, err: String(err) }),
+      );
+      msg.term("invalid json");
+      return;
+    }
+
+    const validated = schema(parsed);
+    if (validated instanceof ArkErrors) {
+      yield* Effect.logWarning("event payload failed schema validation; terminating").pipe(
+        Effect.annotateLogs({ ...context, eventId, subject, summary: validated.summary }),
+      );
+      msg.term("schema validation failed");
+      return;
+    }
+
+    let settled = false;
+    const ack = (): void => {
+      if (settled) return;
+      settled = true;
+      msg.ack();
+    };
+
+    const traceContext = extractTraceContext(msg.headers);
+
+    yield* handler({ subject, payload: validated as Payload, eventId, traceContext, ack }).pipe(
+      Effect.matchCauseEffect({
+        onSuccess: () => Effect.sync(() => ack()),
+        onFailure: (cause) =>
+          settled
+            ? Effect.logError("handler failed after acking; not redelivering").pipe(
+                Effect.annotateLogs({
+                  ...context,
+                  eventId,
+                  subject,
+                  redelivered: msg.redelivered,
+                  cause: Cause.pretty(cause),
+                }),
+              )
+            : Effect.sync(() => {
+                settled = true;
+                msg.nak();
+              }).pipe(
+                Effect.zipRight(
+                  Effect.logError("handler failed; nak-ing for redelivery").pipe(
+                    Effect.annotateLogs({
+                      ...context,
+                      eventId,
+                      subject,
+                      redelivered: msg.redelivered,
+                      cause: Cause.pretty(cause),
+                    }),
+                  ),
+                ),
+              ),
+      }),
+    );
+  });
 }
+
+// Test-only export: the fast unit test fakes a JsMsg and drives this directly.
+export const processMessageForTest = processMessage;
 
 function isConsumerNotFound(err: unknown): boolean {
   return err instanceof JetStreamApiError && err.code === JetStreamApiCodes.ConsumerNotFound;

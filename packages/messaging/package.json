@@ -33,9 +33,9 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@tix/config": "workspace:*",
     "@tix/contracts": "workspace:*",
-    "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "testcontainers": "catalog:",
