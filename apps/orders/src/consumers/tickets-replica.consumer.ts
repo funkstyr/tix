@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { TICKETS_CREATED_V1, TICKETS_UPDATED_V1 } from "@tix/contracts/subjects";
 import { ticketCreatedV1, ticketUpdatedV1 } from "@tix/contracts/tickets";
 import { withInboxDedupe } from "@tix/db-core/inbox";
-import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -33,14 +33,15 @@ export async function startTicketsCreatedConsumer(
 
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
-  return createConsumer(nats, {
-    stream,
-    subjectFilter: TICKETS_CREATED_V1,
-    group: TICKETS_REPLICA_CREATED_GROUP,
-    schema: ticketCreatedV1,
-    ...ackWaitOpt,
-    handler: ({ eventId, subject, payload, traceContext }) =>
-      runtime.runPromise(
+  return runScopedConsumer(
+    runtime,
+    consumer(nats, {
+      stream,
+      subjectFilter: TICKETS_CREATED_V1,
+      group: TICKETS_REPLICA_CREATED_GROUP,
+      schema: ticketCreatedV1,
+      ...ackWaitOpt,
+      handler: ({ eventId, subject, payload, traceContext }) =>
         Effect.gen(function* () {
           const db = yield* Database;
 
@@ -76,8 +77,8 @@ export async function startTicketsCreatedConsumer(
             parent: externalParent(traceContext),
           }),
         ),
-      ),
-  });
+    }),
+  );
 }
 
 // Applies a seller's edit to the read-model. The `version < payload.version`
@@ -91,14 +92,15 @@ export async function startTicketsUpdatedConsumer(
 
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
-  return createConsumer(nats, {
-    stream,
-    subjectFilter: TICKETS_UPDATED_V1,
-    group: TICKETS_REPLICA_UPDATED_GROUP,
-    schema: ticketUpdatedV1,
-    ...ackWaitOpt,
-    handler: ({ eventId, subject, payload, traceContext }) =>
-      runtime.runPromise(
+  return runScopedConsumer(
+    runtime,
+    consumer(nats, {
+      stream,
+      subjectFilter: TICKETS_UPDATED_V1,
+      group: TICKETS_REPLICA_UPDATED_GROUP,
+      schema: ticketUpdatedV1,
+      ...ackWaitOpt,
+      handler: ({ eventId, subject, payload, traceContext }) =>
         Effect.gen(function* () {
           const db = yield* Database;
 
@@ -148,6 +150,6 @@ export async function startTicketsUpdatedConsumer(
             parent: externalParent(traceContext),
           }),
         ),
-      ),
-  });
+    }),
+  );
 }

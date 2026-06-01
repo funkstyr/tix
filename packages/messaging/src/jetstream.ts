@@ -175,10 +175,15 @@ export function consumer<Payload, E, R>(
  * readiness, and returns a Promise `{ stop }` handle. `runtime` is a service ManagedRuntime
  * (provides the handler's `R`) or `defaultScopedRunner` (for `R = never` harness callers).
  * The held Scope keeps the forked loop alive; `stop` closes it (runs `messages.close()`).
+ *
+ * The runtime only needs to run `Effect<A, E, R>` — `Effect.provideService` strips the
+ * `Scope` requirement before handing the effect to the runtime, so `Scope` must NOT appear
+ * in the runtime's `runPromise` constraint (a `ManagedRuntime<Services>` never includes
+ * `Scope` in its service set).
  */
 export async function runScopedConsumer<R>(
   runtime: {
-    runPromise: <A, E>(effect: Effect.Effect<A, E, R | Scope.Scope>) => Promise<A>;
+    runPromise: <A, E>(effect: Effect.Effect<A, E, R>) => Promise<A>;
   },
   program: Effect.Effect<void, never, R | Scope.Scope>,
 ): Promise<RunningConsumer> {

@@ -6,7 +6,7 @@ import { orderReservationReleasedV1 } from "@tix/contracts/orders";
 import { ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
-import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -35,14 +35,15 @@ export async function startTicketsReleasedConsumer(
 
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
-  return createConsumer(nats, {
-    stream,
-    subjectFilter: ORDER_RESERVATION_RELEASED_V1,
-    group: TICKETS_RELEASE_CONSUMER_GROUP,
-    schema: orderReservationReleasedV1,
-    ...ackWaitOpt,
-    handler: ({ eventId, subject, payload, traceContext }) =>
-      runtime.runPromise(
+  return runScopedConsumer(
+    runtime,
+    consumer(nats, {
+      stream,
+      subjectFilter: ORDER_RESERVATION_RELEASED_V1,
+      group: TICKETS_RELEASE_CONSUMER_GROUP,
+      schema: orderReservationReleasedV1,
+      ...ackWaitOpt,
+      handler: ({ eventId, subject, payload, traceContext }) =>
         Effect.gen(function* () {
           const db = yield* Database;
 
@@ -116,6 +117,6 @@ export async function startTicketsReleasedConsumer(
             parent: externalParent(traceContext),
           }),
         ),
-      ),
-  });
+    }),
+  );
 }
