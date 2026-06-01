@@ -6,8 +6,8 @@ import { createHttpAuthSessionClient } from "@tix/contracts/auth-client";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import { createPublisher } from "@tix/messaging/jetstream";
 import { globalContextManagerLayer } from "@tix/observability/otel-context";
-import { otlpLayer } from "@tix/observability/otel-layer";
 import { traceparentHeaders } from "@tix/observability/otel-http";
+import { otlpLayer } from "@tix/observability/otel-layer";
 import { withResilience } from "@tix/observability/resilience";
 
 import { AuthClient, EventPublisher, Nats } from "./tags.js";

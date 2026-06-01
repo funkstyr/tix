@@ -11,7 +11,13 @@ import { AuthClient, EventPublisher, Nats } from "@tix/service-runtime/tags";
 
 import { ordersTables } from "../domain/schema.ts";
 import type { OrdersEnv } from "./config.ts";
-import { Database, makeOrdersConfigLayer, OrdersConfig, Tickets, TicketsLayer } from "./services.ts";
+import {
+  Database,
+  makeOrdersConfigLayer,
+  OrdersConfig,
+  Tickets,
+  TicketsLayer,
+} from "./services.ts";
 
 export type OrdersServices = OrdersConfig | Database | Nats | EventPublisher | AuthClient | Tickets;
 export type OrdersRuntime = ManagedRuntime.ManagedRuntime<OrdersServices, never>;

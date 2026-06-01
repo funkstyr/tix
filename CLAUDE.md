@@ -21,6 +21,7 @@ tix/
 │   ├── db-core/           # drizzle + postgres client (per-service schema; ADR-0003)
 │   ├── messaging/         # NATS JetStream + BullMQ wrappers, outbox/inbox helpers
 │   ├── observability/     # Effect Logger + OpenTelemetry/OTLP wiring (ADR-0009)
+│   ├── service-runtime/   # shared per-service runtime wiring (tags, layers, ManagedRuntime factory)
 │   ├── test-helpers/      # shared test utils (wait-for, sleep, docker-available, require-value)
 │   ├── auth-test-fixture/ # boots a real auth issuer for integration tests
 │   └── config/            # Shared tsconfig.base, vitest, tsdown configs

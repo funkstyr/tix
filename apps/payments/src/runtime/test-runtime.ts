@@ -74,7 +74,9 @@ export function createPaymentsTestRuntime(deps: PaymentsTestDeps): PaymentsRunti
       ? Layer.succeed(EventPublisher, throwingPublisher())
       : Layer.succeed(EventPublisher, createPublisher(nats));
 
-  return makeServiceTestRuntime(Layer.mergeAll(base, auth, paymentIntents, natsLayer, publisherLayer));
+  return makeServiceTestRuntime(
+    Layer.mergeAll(base, auth, paymentIntents, natsLayer, publisherLayer),
+  );
 }
 
 function makeTestEnv(): PaymentsEnv {

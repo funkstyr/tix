@@ -3,13 +3,13 @@ import { Layer } from "effect";
 
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { createPublisher } from "@tix/messaging/jetstream";
+import { AuthClient, EventPublisher, Nats } from "@tix/service-runtime/tags";
 import {
   makeServiceTestRuntime,
   throwingAuthClient,
   throwingNats,
   throwingPublisher,
 } from "@tix/service-runtime/test";
-import { AuthClient, EventPublisher, Nats } from "@tix/service-runtime/tags";
 
 import type { TicketsEnv } from "./config.ts";
 import type { TicketsRuntime } from "./runtime.ts";

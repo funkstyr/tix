@@ -3,18 +3,13 @@ import { Layer } from "effect";
 
 import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
 import { type DelayedScheduler } from "@tix/messaging/jobs";
-import { makeServiceTestRuntime, throwingNats, throwingPublisher } from "@tix/service-runtime/test";
 import { EventPublisher, Nats } from "@tix/service-runtime/tags";
+import { makeServiceTestRuntime, throwingNats, throwingPublisher } from "@tix/service-runtime/test";
 
 import type { ExpireOrderPayload } from "../expire-order-job.ts";
 import type { ExpirationEnv } from "./config.ts";
 import type { ExpirationRuntime } from "./runtime.ts";
-import {
-  Database,
-  ExpirationConfig,
-  type ExpirationDb,
-  Scheduler,
-} from "./services.ts";
+import { Database, ExpirationConfig, type ExpirationDb, Scheduler } from "./services.ts";
 
 export type ExpirationTestDeps = {
   db: ExpirationDb;
