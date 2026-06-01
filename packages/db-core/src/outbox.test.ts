@@ -1,6 +1,7 @@
 import { type Context, ROOT_CONTEXT, trace, TraceFlags } from "@opentelemetry/api";
 import { eq } from "drizzle-orm";
 import { pgSchema, text } from "drizzle-orm/pg-core";
+import { Effect, Fiber } from "effect";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
@@ -8,7 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createDbClient, type DbClient } from "./client.ts";
 import { bootstrapSchema } from "./fixtures.ts";
-import { enqueueEvent, startOutboxRelay, type OutboxPublish } from "./outbox.ts";
+import { enqueueEvent, outboxRelay, type OutboxPublish } from "./outbox.ts";
 import { defineOutbox } from "./schema.ts";
 
 const SCHEMA_NAME = "outbox_test";
@@ -92,6 +93,16 @@ async function waitUntil(
   }
 }
 
+function runRelay(
+  db: Parameters<typeof outboxRelay>[0],
+  table: Parameters<typeof outboxRelay>[1],
+  publish: Parameters<typeof outboxRelay>[2],
+  options: Parameters<typeof outboxRelay>[3],
+): { stop: () => Promise<void> } {
+  const fiber = Effect.runFork(outboxRelay(db, table, publish, options));
+  return { stop: () => Effect.runPromise(Fiber.interrupt(fiber)).then(() => undefined) };
+}
+
 const TRACE_ID = "0af7651916cd43dd8448eb211c80319c";
 const SPAN_ID = "b7ad6b7169203331";
 
@@ -152,7 +163,7 @@ describe.skipIf(!dockerAvailable)("enqueueEvent", () => {
   });
 });
 
-describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
+describe.skipIf(!dockerAvailable)("outboxRelay", () => {
   it("drains all pending outbox rows by calling publish and marking sent_at", async () => {
     const { db } = getClient();
 
@@ -176,7 +187,7 @@ describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
       return undefined;
     };
 
-    const relay = startOutboxRelay(db, outboxTable, publish, { pollIntervalMs: 25, batchSize: 50 });
+    const relay = runRelay(db, outboxTable, publish, { pollIntervalMs: 25, batchSize: 50 });
     try {
       await waitUntil(() => calls.length === 100);
     } finally {
@@ -220,7 +231,7 @@ describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
       return undefined;
     };
 
-    const relay = startOutboxRelay(db, outboxTable, publish, { pollIntervalMs: 25, batchSize: 10 });
+    const relay = runRelay(db, outboxTable, publish, { pollIntervalMs: 25, batchSize: 10 });
 
     try {
       await waitUntil(async () => {
@@ -273,7 +284,7 @@ describe.skipIf(!dockerAvailable)("startOutboxRelay", () => {
       return undefined;
     };
 
-    const relay = startOutboxRelay(db, outboxTable, publish, { pollIntervalMs: 25 });
+    const relay = runRelay(db, outboxTable, publish, { pollIntervalMs: 25 });
     try {
       await waitUntil(() => seen.has(tracedId) && seen.has(untracedId));
     } finally {

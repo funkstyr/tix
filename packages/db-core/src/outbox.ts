@@ -42,97 +42,6 @@ export type OutboxRelayOptions = {
   batchSize?: number;
 };
 
-export type RunningOutboxRelay = {
-  stop: () => Promise<void>;
-};
-
-export function startOutboxRelay(
-  db: AnyDb,
-  table: OutboxTable,
-  publish: OutboxPublish,
-  options: OutboxRelayOptions = {},
-): RunningOutboxRelay {
-  const pollIntervalMs = options.pollIntervalMs ?? 200;
-  const batchSize = options.batchSize ?? 50;
-
-  let stopped = false;
-  let timer: NodeJS.Timeout | undefined;
-  let activePoll: Promise<void> = Promise.resolve();
-
-  async function publishOne(row: {
-    id: string;
-    subject: string;
-    payload: unknown;
-    eventId: string;
-    traceparent: string | null;
-  }): Promise<void> {
-    const traceContext = contextFromTraceparent(row.traceparent);
-
-    try {
-      await publish(row.subject, row.payload, {
-        msgId: row.eventId,
-        ...(traceContext === undefined ? {} : { traceContext }),
-      });
-    } catch (err) {
-      // The relay runs outside Effect (a bare `setTimeout` poll loop), so failures go to
-      // `console.error` rather than the Effect Logger. The row stays unsent for retry.
-      console.error("outbox publish failed; leaving row for retry", {
-        eventId: row.eventId,
-        subject: row.subject,
-        err,
-      });
-      return;
-    }
-
-    await db.update(table).set({ sentAt: new Date() }).where(eq(table.id, row.id));
-  }
-
-  async function pollOnce(): Promise<void> {
-    const rows = await db
-      .select({
-        id: table.id,
-        subject: table.subject,
-        payload: table.payload,
-        eventId: table.eventId,
-        traceparent: table.traceparent,
-      })
-      .from(table)
-      .where(isNull(table.sentAt))
-      .orderBy(table.createdAt)
-      .limit(batchSize);
-
-    for (const row of rows) {
-      if (stopped) return;
-      // Sequential publish keeps per-event ordering intact across the batch.
-      // eslint-disable-next-line no-await-in-loop
-      await publishOne(row);
-    }
-  }
-
-  function schedule(): void {
-    if (stopped) return;
-    timer = setTimeout(() => {
-      activePoll = pollOnce()
-        .catch((err: unknown) => {
-          console.error("outbox poll failed", { err });
-        })
-        .finally(() => {
-          if (!stopped) schedule();
-        });
-    }, pollIntervalMs);
-  }
-
-  schedule();
-
-  return {
-    stop: async () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-      await activePoll;
-    },
-  };
-}
-
 type OutboxRow = {
   id: string;
   subject: string;
@@ -149,8 +58,7 @@ type OutboxRow = {
  * (only `Clock`, a default service), so it runs on any runtime or the default runtime.
  * Callers fork it (`Effect.forkScoped` in services; `Effect.runFork` in harnesses) and
  * interrupt the fiber to stop. The first poll fires immediately (no leading delay); later
- * polls are spaced by `pollIntervalMs` from the end of each poll. (This differs from the
- * old `startOutboxRelay`, which delayed the first poll by one interval.)
+ * polls are spaced by `pollIntervalMs` from the end of each poll.
  */
 export function outboxRelay(
   db: AnyDb,
