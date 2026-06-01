@@ -66,6 +66,24 @@ describe("GrafanaBackend", () => {
     expect(yaml).toContain("value: service_name");
   });
 
+  it("points the Tempo service map at Prometheus so the Service Graph tab renders", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.datasources.data);
+    const yaml = data?.["datasources.yaml"] ?? "";
+    expect(yaml).toMatch(/serviceMap:[\s\S]*datasourceUid: prometheus/);
+  });
+
+  it("maps Prometheus exemplar trace ids back to Tempo for drill-to-trace", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.datasources.data);
+    const yaml = data?.["datasources.yaml"] ?? "";
+    expect(yaml).toContain("exemplarTraceIdDestinations:");
+    expect(yaml).toMatch(/exemplarTraceIdDestinations:[\s\S]*name: trace_id/);
+    expect(yaml).toMatch(/exemplarTraceIdDestinations:[\s\S]*datasourceUid: tempo/);
+  });
+
   it("serves from the /grafana sub-path", async () => {
     const grafana = build();
 

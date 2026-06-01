@@ -27,7 +27,7 @@ describe("OtelCollector", () => {
     expect(config).toContain("endpoint: tempo:4317");
     expect(config).toContain("logs_endpoint: http://loki:3100/otlp/v1/logs");
     expect(config).toContain("metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics");
-    expect(config).toContain("exporters: [otlp/tempo]");
+    expect(config).toContain("exporters: [otlp/tempo, spanmetrics, servicegraph]");
     expect(config).toContain("exporters: [otlphttp/loki]");
     expect(config).toContain("exporters: [otlphttp/prometheus]");
   });
@@ -48,5 +48,37 @@ describe("OtelCollector", () => {
     const spec = await promiseOf(collector.deployment.spec);
     const container = spec.template.spec?.containers[0];
     expect(container?.args).toContain("--config=/etc/otelcol/config.yaml");
+  });
+
+  it("runs the contrib distro (spanmetrics + servicegraph connectors ship there, not in core)", async () => {
+    const collector = build();
+
+    const spec = await promiseOf(collector.deployment.spec);
+    const container = spec.template.spec?.containers[0];
+    expect(container?.image).toContain("opentelemetry-collector-contrib");
+  });
+
+  it("derives span metrics + the service graph and carries trace exemplars on the duration histograms", async () => {
+    const collector = build();
+
+    const data = await promiseOf(collector.config.data);
+    const config = data?.["config.yaml"] ?? "";
+    expect(config).toContain("connectors:");
+    expect(config).toContain("spanmetrics:");
+    expect(config).toContain("servicegraph:");
+    // Exemplars ride the span-derived duration histograms (ADR-0010): the connector
+    // has the trace id because it derives from spans, so this is what drills to a trace.
+    expect(config).toMatch(/spanmetrics:[\s\S]*exemplars:[\s\S]*enabled: true/);
+  });
+
+  it("feeds the connectors from traces and exports their output to Prometheus", async () => {
+    const collector = build();
+
+    const data = await promiseOf(collector.config.data);
+    const config = data?.["config.yaml"] ?? "";
+    // Connectors sit as exporters on the traces pipeline (their input)...
+    expect(config).toMatch(/traces:[\s\S]*exporters: \[otlp\/tempo, spanmetrics, servicegraph\]/);
+    // ...and as receivers on the metrics pipeline (their output), alongside raw OTLP.
+    expect(config).toMatch(/metrics:[\s\S]*receivers: \[otlp, spanmetrics, servicegraph\]/);
   });
 });

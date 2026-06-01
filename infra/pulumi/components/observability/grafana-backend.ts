@@ -208,6 +208,11 @@ datasources:
             query: sum(rate(calls_total{$__tags, status_code="STATUS_CODE_ERROR"}[$__rate_interval]))
           - name: Duration p95
             query: histogram_quantile(0.95, sum(rate(duration_milliseconds_bucket{$__tags}[$__rate_interval])) by (le))
+      # Service Graph: the tab reads the servicegraph connector's edge metrics
+      # (ADR-0010) from Prometheus to draw the microservice topology. Without this
+      # the Tempo datasource has no metrics source and the tab stays empty.
+      serviceMap:
+        datasourceUid: prometheus
   - name: Loki
     type: loki
     uid: loki
@@ -230,6 +235,14 @@ datasources:
     access: proxy
     url: ${prometheusUrl}
     isDefault: true
+    jsonData:
+      # Metric → trace: exemplars on the span-derived duration histograms carry a
+      # trace_id label (spanmetrics connector, ADR-0010); clicking one jumps to the
+      # trace in Tempo. Only the span-derived series bear exemplars — the hand-rolled
+      # Effect histograms cannot, so drill-to-trace lives here, not on those.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
 `;
 }
 
