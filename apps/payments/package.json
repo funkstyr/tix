@@ -33,6 +33,7 @@
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
     "@tix/observability": "workspace:*",
+    "@tix/service-runtime": "workspace:*",
     "arktype": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
