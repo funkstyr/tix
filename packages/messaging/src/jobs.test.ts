@@ -1,10 +1,13 @@
 import type { ConnectionOptions } from "bullmq";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createScheduler, createWorker } from "./jobs.ts";
+
+const runtime = ManagedRuntime.make(Layer.empty);
 
 const dockerAvailable = ((): boolean => {
   if (process.env["DOCKER_HOST"]) return true;
@@ -47,12 +50,14 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
       resolveFired = r;
     });
 
-    const worker = createWorker<{ orderId: string }>(conn, {
+    const worker = createWorker<{ orderId: string }, never, never>(conn, {
       queueName,
-      handler: () => {
-        firedAt = Date.now();
-        resolveFired();
-      },
+      runtime,
+      handler: () =>
+        Effect.sync(() => {
+          firedAt = Date.now();
+          resolveFired();
+        }),
     });
 
     const scheduler = createScheduler<{ orderId: string }>(conn, { queueName });
@@ -78,11 +83,13 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
     const observationWindowMs = 1000;
 
     let invocations = 0;
-    const worker = createWorker<{ orderId: string }>(conn, {
+    const worker = createWorker<{ orderId: string }, never, never>(conn, {
       queueName,
-      handler: () => {
-        invocations++;
-      },
+      runtime,
+      handler: () =>
+        Effect.sync(() => {
+          invocations++;
+        }),
     });
 
     const scheduler = createScheduler<{ orderId: string }>(conn, { queueName });
@@ -103,11 +110,13 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
     const conn = requireConnection();
     const queueName = `fail-${randomUUID()}`;
 
-    const worker = createWorker<{ orderId: string }>(conn, {
+    const worker = createWorker<{ orderId: string }, never, never>(conn, {
       queueName,
-      handler: () => {
-        throw new Error("boom");
-      },
+      runtime,
+      handler: () =>
+        Effect.sync(() => {
+          throw new Error("boom");
+        }),
     });
 
     let resolveFailure!: (err: Error) => void;

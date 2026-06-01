@@ -79,8 +79,9 @@ export const NatsLayer: Layer.Layer<Nats, never, ExpirationConfig> = Layer.scope
 );
 
 // The publisher takes no logger (ADR-0009): domain events are logged by the Effect consumer
-// handlers, and the messaging package sends only wire-level failures to `console.error`. Trace
-// context for the published `order.expired.v1` rides on the BullMQ job, not on this layer.
+// handlers, and the messaging package now routes job/consumer failures through Effect's
+// Logger (the relay, consumer, and worker all run inside Effect). Trace context for the
+// published `order.expired.v1` rides on the BullMQ job, not on this layer.
 export const EventPublisherLayer: Layer.Layer<EventPublisher, never, Nats> = Layer.effect(
   EventPublisher,
   Effect.map(Nats, (nats) => createPublisher(nats)),
