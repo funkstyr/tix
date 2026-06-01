@@ -31,6 +31,7 @@
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
     "@tix/observability": "workspace:*",
+    "@tix/service-runtime": "workspace:*",
     "arktype": "catalog:",
     "better-auth": "catalog:",
     "drizzle-orm": "catalog:",

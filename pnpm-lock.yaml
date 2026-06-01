@@ -239,6 +239,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@tix/service-runtime':
+        specifier: workspace:*
+        version: link:../../packages/service-runtime
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
