@@ -29,9 +29,11 @@
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/core": "catalog:",
     "arktype": "catalog:",
-    "bullmq": "catalog:"
+    "bullmq": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@tix/config": "workspace:*",
     "@tix/contracts": "workspace:*",
     "@types/node": "catalog:",

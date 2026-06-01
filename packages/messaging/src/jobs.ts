@@ -1,6 +1,7 @@
 import { type ConnectionOptions, type JobsOptions, Queue, Worker } from "bullmq";
+import { Cause, Effect, Exit } from "effect";
 
-export type WorkerHandler<Payload> = (payload: Payload) => Promise<void> | void;
+export type WorkerHandler<Payload, E, R> = (payload: Payload) => Effect.Effect<void, E, R>;
 
 export type DelayedScheduler<Payload> = {
   scheduleDelayed: (
@@ -17,9 +18,10 @@ export type SchedulerOptions = {
   defaultJobOptions?: Pick<JobsOptions, "attempts" | "backoff">;
 };
 
-export type WorkerOptions<Payload> = {
+export type WorkerOptions<Payload, E, R> = {
   queueName: string;
-  handler: WorkerHandler<Payload>;
+  runtime: { runPromiseExit: <A>(effect: Effect.Effect<A, E, R>) => Promise<Exit.Exit<A, E>> };
+  handler: WorkerHandler<Payload, E, R>;
 };
 
 export function createScheduler<Payload>(
@@ -43,30 +45,45 @@ export function createScheduler<Payload>(
   };
 }
 
-export function createWorker<Payload>(
+type JobContext = { queueName: string; jobId: string | undefined; jobName: string };
+
+/**
+ * Runs a job handler Effect on `runtime`, logging failures through Effect's Logger and
+ * rethrowing so BullMQ applies its existing retry/backoff. `runPromiseExit` never rejects,
+ * so a failure surfaces as `Exit.Failure`; we squash its cause back to a throwable. Timing
+ * lives inside the handler (Clock), not here. An interruption (e.g. runtime disposed mid-job
+ * on shutdown) is also a failure exit: it logs and rethrows, so BullMQ retries on restart —
+ * matching the prior `runtime.runPromise` behaviour (BullMQ's `close()` drains in-flight jobs
+ * first, so this is a shutdown-race edge, not the normal path).
+ */
+export async function runJob<E, R>(
+  runtime: { runPromiseExit: <A>(effect: Effect.Effect<A, E, R>) => Promise<Exit.Exit<A, E>> },
+  jobContext: JobContext,
+  handler: () => Effect.Effect<void, E, R>,
+): Promise<void> {
+  const program = handler().pipe(
+    Effect.tapErrorCause((cause) =>
+      Effect.logError("job failed").pipe(
+        Effect.annotateLogs({ ...jobContext, cause: Cause.pretty(cause) }),
+      ),
+    ),
+  );
+  const exit = await runtime.runPromiseExit(program);
+  if (Exit.isFailure(exit)) throw Cause.squash(exit.cause);
+}
+
+export function createWorker<Payload, E, R>(
   connection: ConnectionOptions,
-  options: WorkerOptions<Payload>,
+  options: WorkerOptions<Payload, E, R>,
 ): Worker<Payload, void> {
   return new Worker<Payload, void>(
     options.queueName,
-    async (job) => {
-      const start = Date.now();
-
-      try {
-        await options.handler(job.data);
-      } catch (err) {
-        // Outside Effect (BullMQ owns this callback), so failures go to `console.error`.
-        // BullMQ handles retry/backoff on the rethrow.
-        console.error("job failed", {
-          queueName: options.queueName,
-          jobId: job.id,
-          jobName: job.name,
-          durationMs: Date.now() - start,
-          err,
-        });
-        throw err;
-      }
-    },
+    (job) =>
+      runJob(
+        options.runtime,
+        { queueName: options.queueName, jobId: job.id, jobName: job.name },
+        () => options.handler(job.data),
+      ),
     { connection: withWorkerConnectionDefaults(connection) },
   );
 }

@@ -3,14 +3,21 @@ import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { ROOT_CONTEXT } from "@opentelemetry/api";
 import { createRouterClient } from "@orpc/server";
 import { eq } from "drizzle-orm";
+import { Effect, Fiber } from "effect";
 import { randomUUID } from "node:crypto";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { paymentCreatedV1 } from "@tix/contracts/payments";
 import { PAYMENT_CREATED_V1 } from "@tix/contracts/subjects";
-import { startOutboxRelay, type RunningOutboxRelay } from "@tix/db-core/outbox";
-import { createConsumer, createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
+import { outboxRelay } from "@tix/db-core/outbox";
+import {
+  consumer,
+  createPublisher,
+  defaultScopedRunner,
+  runScopedConsumer,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
 import { dockerAvailable } from "@tix/test-helpers/docker-available";
 import { requireValue } from "@tix/test-helpers/require-value";
 
@@ -30,10 +37,20 @@ import { createPaymentsTestRuntime } from "../runtime/test-runtime.ts";
 import type { PaymentIntentClient } from "../stripe-payment-intent.ts";
 import { createPaymentsRouter } from "./router.ts";
 
+function runRelay(
+  db: Parameters<typeof outboxRelay>[0],
+  table: Parameters<typeof outboxRelay>[1],
+  publish: Parameters<typeof outboxRelay>[2],
+  options: Parameters<typeof outboxRelay>[3],
+): { stop: () => Promise<void> } {
+  const fiber = Effect.runFork(outboxRelay(db, table, publish, options));
+  return { stop: () => Effect.runPromise(Fiber.interrupt(fiber)).then(() => undefined) };
+}
+
 let stack: PaymentsTestStack | undefined;
 let natsContainer: StartedTestContainer | undefined;
 let nats: NatsConnection | undefined;
-let relay: RunningOutboxRelay | undefined;
+let relay: { stop: () => Promise<void> } | undefined;
 let streamName: string | undefined;
 
 beforeAll(async () => {
@@ -59,7 +76,7 @@ beforeAll(async () => {
   });
 
   const publisher = createPublisher(nats);
-  relay = startOutboxRelay(stack.paymentsDb.db, paymentsOutboxTable, publisher.publish, {
+  relay = runRelay(stack.paymentsDb.db, paymentsOutboxTable, publisher.publish, {
     pollIntervalMs: 50,
   });
 }, 180_000);
@@ -120,15 +137,19 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
     });
 
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: PAYMENT_CREATED_V1,
-      group,
-      schema: paymentCreatedV1,
-      handler: ({ eventId, payload }) => {
-        if (payload.orderId === orderId) resolveEvent({ eventId, payload });
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: PAYMENT_CREATED_V1,
+        group,
+        schema: paymentCreatedV1,
+        handler: ({ eventId, payload }) =>
+          Effect.sync(() => {
+            if (payload.orderId === orderId) resolveEvent({ eventId, payload });
+          }),
+      }),
+    );
 
     let timeoutHandle: NodeJS.Timeout | undefined;
     try {
@@ -160,7 +181,7 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
       });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 
@@ -183,15 +204,19 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
     // be observed — this is the proof that nothing reaches the broker.
     let observed = false;
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: PAYMENT_CREATED_V1,
-      group,
-      schema: paymentCreatedV1,
-      handler: ({ payload }) => {
-        if (payload.orderId === orderId) observed = true;
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: PAYMENT_CREATED_V1,
+        group,
+        schema: paymentCreatedV1,
+        handler: ({ payload }) =>
+          Effect.sync(() => {
+            if (payload.orderId === orderId) observed = true;
+          }),
+      }),
+    );
 
     try {
       const client = buildClient({ createPaymentIntent });
@@ -221,7 +246,7 @@ describe.skipIf(!dockerAvailable)("payments.create → payment.created.v1 on NAT
 
       expect(observed).toBe(false);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 });

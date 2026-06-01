@@ -43,9 +43,11 @@
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/core": "catalog:",
     "drizzle-orm": "catalog:",
+    "effect": "catalog:",
     "postgres": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "catalog:",
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",

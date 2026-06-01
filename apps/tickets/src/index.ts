@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Cause, Effect, Exit, Fiber } from "effect";
 
-import { startOutboxRelay } from "@tix/db-core/outbox";
+import { outboxRelay } from "@tix/db-core/outbox";
 
 import { startTicketsReleasedConsumer } from "./consumers/released.consumer.ts";
 import { ticketsOutbox } from "./domain/schema.ts";
@@ -23,10 +23,7 @@ const program = Effect.gen(function* () {
   const publisher = yield* EventPublisher;
   const nats = yield* Nats;
 
-  yield* Effect.acquireRelease(
-    Effect.sync(() => startOutboxRelay(db.db, ticketsOutbox, publisher.publish)),
-    (relay) => Effect.promise(() => relay.stop()),
-  );
+  yield* Effect.forkScoped(outboxRelay(db.db, ticketsOutbox, publisher.publish));
 
   yield* Effect.acquireRelease(
     Effect.promise(() => startTicketsReleasedConsumer({ runtime, nats, stream: env.ordersStream })),

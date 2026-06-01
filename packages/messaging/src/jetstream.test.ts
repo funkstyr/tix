@@ -1,6 +1,7 @@
 import { jetstreamManager, RetentionPolicy, StorageType } from "@nats-io/jetstream";
 import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { ROOT_CONTEXT, type SpanContext, trace, TraceFlags } from "@opentelemetry/api";
+import { Effect } from "effect";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
@@ -8,7 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { ticketCreatedV1 } from "@tix/contracts/tickets";
 
-import { createConsumer, createPublisher, type Publisher } from "./jetstream.ts";
+import {
+  consumer,
+  createPublisher,
+  defaultScopedRunner,
+  runScopedConsumer,
+  type Publisher,
+} from "./jetstream.ts";
 
 const dockerAvailable = ((): boolean => {
   if (process.env["DOCKER_HOST"]) return true;
@@ -96,16 +103,20 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
     });
     let invocations = 0;
 
-    const consumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: subject,
-      group,
-      schema: ticketCreatedV1,
-      handler: ({ eventId: id }) => {
-        invocations++;
-        resolveHandled(id);
-      },
-    });
+    const consumerHandle = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: subject,
+        group,
+        schema: ticketCreatedV1,
+        handler: ({ eventId: id }) =>
+          Effect.sync(() => {
+            invocations++;
+            resolveHandled(id);
+          }),
+      }),
+    );
 
     try {
       const { ack } = await publisher.publish(subject, payload, { msgId: eventId });
@@ -117,7 +128,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       await new Promise((r) => setTimeout(r, 200));
       expect(invocations).toBe(1);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
       await nc.close();
     }
   }, 20_000);
@@ -128,16 +139,20 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
     const badPayload = { ticketId: randomUUID() };
 
     let invocations = 0;
-    const consumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: subject,
-      group,
-      schema: ticketCreatedV1,
-      ackWaitMs: 500,
-      handler: () => {
-        invocations++;
-      },
-    });
+    const consumerHandle = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: subject,
+        group,
+        schema: ticketCreatedV1,
+        ackWaitMs: 500,
+        handler: () =>
+          Effect.sync(() => {
+            invocations++;
+          }),
+      }),
+    );
 
     try {
       await publisher.publish(subject, badPayload, { msgId: randomUUID() });
@@ -147,7 +162,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
 
       expect(invocations).toBe(0);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
       await nc.close();
     }
   }, 20_000);
@@ -165,16 +180,20 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
     };
 
     let invocations = 0;
-    const consumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: subject,
-      group,
-      schema: ticketCreatedV1,
-      ackWaitMs: 500,
-      handler: () => {
-        invocations++;
-      },
-    });
+    const consumerHandle = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: subject,
+        group,
+        schema: ticketCreatedV1,
+        ackWaitMs: 500,
+        handler: () =>
+          Effect.sync(() => {
+            invocations++;
+          }),
+      }),
+    );
 
     try {
       await publisher.publish(subject, payload);
@@ -183,7 +202,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
 
       expect(invocations).toBe(0);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
       await nc.close();
     }
   }, 20_000);
@@ -202,18 +221,21 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
     };
 
     let invocations = 0;
-    const consumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: subject,
-      group,
-      schema: ticketCreatedV1,
-      ackWaitMs: 500,
-      handler: ({ ack }) => {
-        invocations++;
-        ack();
-        throw new Error("post-ack failure");
-      },
-    });
+    const consumerHandle = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: subject,
+        group,
+        schema: ticketCreatedV1,
+        ackWaitMs: 500,
+        handler: ({ ack }) =>
+          Effect.sync(() => {
+            invocations++;
+            ack();
+          }).pipe(Effect.zipRight(Effect.fail("post-ack failure"))),
+      }),
+    );
 
     try {
       await publisher.publish(subject, payload, { msgId: eventId });
@@ -222,7 +244,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
 
       expect(invocations).toBe(1);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
       await nc.close();
     }
   }, 20_000);
@@ -246,22 +268,25 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       resolveSecond = r;
     });
 
-    const consumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: subject,
-      group,
-      schema: ticketCreatedV1,
-      ackWaitMs: 500,
-      handler: ({ eventId: id }) => {
-        deliveredIds.push(id);
-
-        if (deliveredIds.length === 1) {
-          throw new Error("simulated crash");
-        }
-
-        resolveSecond();
-      },
-    });
+    const consumerHandle = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: subject,
+        group,
+        schema: ticketCreatedV1,
+        ackWaitMs: 500,
+        handler: ({ eventId: id }) =>
+          Effect.sync(() => {
+            deliveredIds.push(id);
+            return deliveredIds.length;
+          }).pipe(
+            Effect.flatMap((count) =>
+              count === 1 ? Effect.fail("simulated crash") : Effect.sync(() => resolveSecond()),
+            ),
+          ),
+      }),
+    );
 
     try {
       await publisher.publish(subject, payload, { msgId: eventId });
@@ -272,7 +297,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       expect(deliveredIds[0]).toBe(eventId);
       expect(deliveredIds[1]).toBe(eventId);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
       await nc.close();
     }
   }, 20_000);
@@ -301,15 +326,19 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       resolveHandled = r;
     });
 
-    const consumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: subject,
-      group,
-      schema: ticketCreatedV1,
-      handler: ({ traceContext: ctx, payload: received }) => {
-        resolveHandled({ spanContext: trace.getSpanContext(ctx), payload: received });
-      },
-    });
+    const consumerHandle = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: subject,
+        group,
+        schema: ticketCreatedV1,
+        handler: ({ traceContext: ctx, payload: received }) =>
+          Effect.sync(() => {
+            resolveHandled({ spanContext: trace.getSpanContext(ctx), payload: received });
+          }),
+      }),
+    );
 
     try {
       await publisher.publish(subject, payload, { msgId: randomUUID(), traceContext });
@@ -320,7 +349,7 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       // trace context rides in headers only; the payload is untouched.
       expect(observed.payload).toEqual(payload);
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
       await nc.close();
     }
   }, 20_000);
@@ -342,22 +371,26 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jetstream", () => {
       resolveHandled = r;
     });
 
-    const consumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: subject,
-      group,
-      schema: ticketCreatedV1,
-      handler: ({ traceContext: ctx }) => {
-        resolveHandled(trace.getSpanContext(ctx));
-      },
-    });
+    const consumerHandle = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: subject,
+        group,
+        schema: ticketCreatedV1,
+        handler: ({ traceContext: ctx }) =>
+          Effect.sync(() => {
+            resolveHandled(trace.getSpanContext(ctx));
+          }),
+      }),
+    );
 
     try {
       await publisher.publish(subject, payload, { msgId: randomUUID() });
 
       expect(await handled).toBeUndefined();
     } finally {
-      await consumer.stop();
+      await consumerHandle.stop();
       await nc.close();
     }
   }, 20_000);

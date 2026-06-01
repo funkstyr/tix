@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { orderCreatedV1 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1 } from "@tix/contracts/subjects";
 import { withInboxDedupe } from "@tix/db-core/inbox";
-import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -40,14 +40,15 @@ export async function startExpirationConsumer(
 
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
-  return createConsumer(nats, {
-    stream,
-    subjectFilter: ORDER_CREATED_V1,
-    group: EXPIRATION_CONSUMER_GROUP,
-    schema: orderCreatedV1,
-    ...ackWaitOpt,
-    handler: ({ eventId, subject, payload, traceContext }) =>
-      runtime.runPromise(
+  return runScopedConsumer(
+    runtime,
+    consumer(nats, {
+      stream,
+      subjectFilter: ORDER_CREATED_V1,
+      group: EXPIRATION_CONSUMER_GROUP,
+      schema: orderCreatedV1,
+      ...ackWaitOpt,
+      handler: ({ eventId, subject, payload, traceContext }) =>
         Effect.gen(function* () {
           const db = yield* Database;
           const scheduler = yield* Scheduler;
@@ -83,6 +84,6 @@ export async function startExpirationConsumer(
             attributes: { orderId: payload.orderId },
           }),
         ),
-      ),
-  });
+    }),
+  );
 }

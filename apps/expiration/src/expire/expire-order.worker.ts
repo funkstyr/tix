@@ -1,5 +1,6 @@
 import { type ConnectionOptions, type Worker } from "bullmq";
 import { Clock, Effect, Metric } from "effect";
+import type { UnknownException } from "effect/Cause";
 
 import { ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { createWorker } from "@tix/messaging/jobs";
@@ -34,36 +35,35 @@ export function startExpireOrderWorker(
 ): Worker<ExpireOrderPayload, void> {
   const { runtime, redis } = args;
 
-  return createWorker<ExpireOrderPayload>(redis, {
+  return createWorker<ExpireOrderPayload, UnknownException, EventPublisher>(redis, {
     queueName: EXPIRATION_QUEUE,
+    runtime,
     handler: ({ orderId, expiredAt, traceparent }) =>
-      runtime.runPromise(
-        Effect.gen(function* () {
-          const publisher = yield* EventPublisher;
-          const msgId = `expired:${orderId}`;
+      Effect.gen(function* () {
+        const publisher = yield* EventPublisher;
+        const msgId = `expired:${orderId}`;
 
-          const startMs = yield* Clock.currentTimeMillis;
-          const { ack } = yield* withTimeout(
-            "expiration.publish.order_expired",
-            Effect.tryPromise(() =>
-              publisher.publish(ORDER_EXPIRED_V1, { orderId, expiredAt }, { msgId }),
-            ),
-          );
-          const endMs = yield* Clock.currentTimeMillis;
+        const startMs = yield* Clock.currentTimeMillis;
+        const { ack } = yield* withTimeout(
+          "expiration.publish.order_expired",
+          Effect.tryPromise(() =>
+            publisher.publish(ORDER_EXPIRED_V1, { orderId, expiredAt }, { msgId }),
+          ),
+        );
+        const endMs = yield* Clock.currentTimeMillis;
 
-          yield* Metric.increment(expirationsProcessedTotal);
-          yield* Metric.update(expiryJobLatencyMs, endMs - startMs);
-          if (ack.duplicate) yield* Metric.increment(expiryDuplicatePublishTotal);
+        yield* Metric.increment(expirationsProcessedTotal);
+        yield* Metric.update(expiryJobLatencyMs, endMs - startMs);
+        if (ack.duplicate) yield* Metric.increment(expiryDuplicatePublishTotal);
 
-          yield* Effect.logInfo("order.expired.v1 published").pipe(
-            Effect.annotateLogs({ orderId, msgId, duplicate: ack.duplicate }),
-          );
-        }).pipe(
-          Effect.withSpan("expiration.job.expire_order", {
-            parent: externalParent(jobTraceContext(traceparent)),
-            attributes: { orderId },
-          }),
-        ),
+        yield* Effect.logInfo("order.expired.v1 published").pipe(
+          Effect.annotateLogs({ orderId, msgId, duplicate: ack.duplicate }),
+        );
+      }).pipe(
+        Effect.withSpan("expiration.job.expire_order", {
+          parent: externalParent(jobTraceContext(traceparent)),
+          attributes: { orderId },
+        }),
       ),
   });
 }

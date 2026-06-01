@@ -2,6 +2,7 @@ import { jetstreamManager, type PubAck, RetentionPolicy, StorageType } from "@na
 import { connect, type NatsConnection } from "@nats-io/transport-node";
 import { Queue, type ConnectionOptions, type Worker } from "bullmq";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { Effect } from "effect";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -12,10 +13,13 @@ import { orderExpiredV1, type OrderExpiredV1 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1, ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
 import {
-  createConsumer,
+  // aliased: this file already has a module-level `consumer` handle (see below).
+  consumer as consumerProgram,
   createPublisher,
+  defaultScopedRunner,
   type Publisher,
   type RunningConsumer,
+  runScopedConsumer,
 } from "@tix/messaging/jetstream";
 import { createScheduler, type DelayedScheduler } from "@tix/messaging/jobs";
 
@@ -244,17 +248,21 @@ async function awaitExpiredEvent(
     resolveEvent = r;
   });
 
-  const expiredConsumer = await createConsumer(nc, {
-    stream,
-    subjectFilter: ORDER_EXPIRED_V1,
-    group: `test-expired-${randomUUID()}`,
-    schema: orderExpiredV1,
-    handler: ({ payload, eventId }) => {
-      if (payload.orderId === expectedOrderId) {
-        resolveEvent({ payload, eventId });
-      }
-    },
-  });
+  const expiredConsumer: RunningConsumer = await runScopedConsumer(
+    defaultScopedRunner,
+    consumerProgram(nc, {
+      stream,
+      subjectFilter: ORDER_EXPIRED_V1,
+      group: `test-expired-${randomUUID()}`,
+      schema: orderExpiredV1,
+      handler: ({ payload, eventId }) =>
+        Effect.sync(() => {
+          if (payload.orderId === expectedOrderId) {
+            resolveEvent({ payload, eventId });
+          }
+        }),
+    }),
+  );
 
   try {
     return await received;

@@ -8,6 +8,7 @@ import { createAuthRouter } from "auth/router";
 import { authTables } from "auth/schema";
 import { createAuthTestRuntime } from "auth/test-runtime";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { Effect, Fiber } from "effect";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -19,12 +20,28 @@ import { createInProcessAuthSessionClient } from "@tix/contracts/auth-client";
 import { TICKETS_CREATED_V1 } from "@tix/contracts/subjects";
 import { ticketCreatedV1 } from "@tix/contracts/tickets";
 import { createDbClient, type DbClient } from "@tix/db-core/client";
-import { startOutboxRelay, type RunningOutboxRelay } from "@tix/db-core/outbox";
-import { createConsumer, createPublisher, type RunningConsumer } from "@tix/messaging/jetstream";
+import { outboxRelay } from "@tix/db-core/outbox";
+import {
+  consumer,
+  createPublisher,
+  defaultScopedRunner,
+  runScopedConsumer,
+  type RunningConsumer,
+} from "@tix/messaging/jetstream";
 
 import { ticketsOutbox, ticketsTables } from "../domain/schema.ts";
 import { createTicketsTestRuntime } from "../runtime/test-runtime.ts";
 import { createTicketsRouter } from "./router.ts";
+
+function runRelay(
+  db: Parameters<typeof outboxRelay>[0],
+  table: Parameters<typeof outboxRelay>[1],
+  publish: Parameters<typeof outboxRelay>[2],
+  options: Parameters<typeof outboxRelay>[3],
+): { stop: () => Promise<void> } {
+  const fiber = Effect.runFork(outboxRelay(db, table, publish, options));
+  return { stop: () => Effect.runPromise(Fiber.interrupt(fiber)).then(() => undefined) };
+}
 
 const TEST_SECRET = "test-secret-do-not-use-in-prod-test-secret-do-not-use-in-prod";
 const TEST_BASE_URL = "http://localhost:4001";
@@ -55,7 +72,7 @@ let ticketsDb: TicketsDbClient | undefined;
 let authDb: AuthDbClient | undefined;
 let ticketsClient: ReturnType<typeof buildClients>["ticketsClient"] | undefined;
 let authClient: AuthRouterClient | undefined;
-let relay: RunningOutboxRelay | undefined;
+let relay: { stop: () => Promise<void> } | undefined;
 let streamName: string | undefined;
 
 function buildClients(ticketsDb_: TicketsDbClient, authDb_: AuthDbClient) {
@@ -123,7 +140,7 @@ beforeAll(async () => {
   });
 
   const publisher = createPublisher(nats);
-  relay = startOutboxRelay(ticketsDb.db, ticketsOutbox, publisher.publish, {
+  relay = runRelay(ticketsDb.db, ticketsOutbox, publisher.publish, {
     pollIntervalMs: 50,
   });
 }, 180_000);
@@ -171,15 +188,19 @@ describe.skipIf(!dockerAvailable)("tickets.create → tickets.created.v1 on NATS
     });
 
     const group = `g-${randomUUID().replace(/-/g, "")}`;
-    const consumer: RunningConsumer = await createConsumer(nc, {
-      stream,
-      subjectFilter: TICKETS_CREATED_V1,
-      group,
-      schema: ticketCreatedV1,
-      handler: ({ eventId, payload }) => {
-        resolveEvent({ eventId, payload });
-      },
-    });
+    const consumerHandle: RunningConsumer = await runScopedConsumer(
+      defaultScopedRunner,
+      consumer(nc, {
+        stream,
+        subjectFilter: TICKETS_CREATED_V1,
+        group,
+        schema: ticketCreatedV1,
+        handler: ({ eventId, payload }) =>
+          Effect.sync(() => {
+            resolveEvent({ eventId, payload });
+          }),
+      }),
+    );
 
     let timeoutHandle: NodeJS.Timeout | undefined;
     try {
@@ -212,7 +233,7 @@ describe.skipIf(!dockerAvailable)("tickets.create → tickets.created.v1 on NATS
       });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      await consumer.stop();
+      await consumerHandle.stop();
     }
   }, 30_000);
 });

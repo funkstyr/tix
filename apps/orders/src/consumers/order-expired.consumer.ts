@@ -8,7 +8,7 @@ import { ORDER_EXPIRED_V1, ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
-import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -33,14 +33,15 @@ export async function startOrdersExpiredConsumer(
 
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
-  return createConsumer(nats, {
-    stream,
-    subjectFilter: ORDER_EXPIRED_V1,
-    group: ORDERS_EXPIRATION_CONSUMER_GROUP,
-    schema: orderExpiredV1,
-    ...ackWaitOpt,
-    handler: ({ eventId, subject, payload, traceContext }) =>
-      runtime.runPromise(
+  return runScopedConsumer(
+    runtime,
+    consumer(nats, {
+      stream,
+      subjectFilter: ORDER_EXPIRED_V1,
+      group: ORDERS_EXPIRATION_CONSUMER_GROUP,
+      schema: orderExpiredV1,
+      ...ackWaitOpt,
+      handler: ({ eventId, subject, payload, traceContext }) =>
         Effect.gen(function* () {
           const db = yield* Database;
           const nowMs = yield* Clock.currentTimeMillis;
@@ -141,6 +142,6 @@ export async function startOrdersExpiredConsumer(
             parent: externalParent(traceContext),
           }),
         ),
-      ),
-  });
+    }),
+  );
 }

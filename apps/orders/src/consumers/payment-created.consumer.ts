@@ -8,7 +8,7 @@ import { ORDER_COMPLETED_V1, PAYMENT_CREATED_V1 } from "@tix/contracts/subjects"
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
-import { createConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -33,14 +33,15 @@ export async function startOrdersPaymentCreatedConsumer(
 
   const ackWaitOpt = ackWaitMs === undefined ? {} : { ackWaitMs };
 
-  return createConsumer(nats, {
-    stream,
-    subjectFilter: PAYMENT_CREATED_V1,
-    group: ORDERS_PAYMENT_CREATED_CONSUMER_GROUP,
-    schema: paymentCreatedV1,
-    ...ackWaitOpt,
-    handler: ({ eventId, subject, payload, traceContext }) =>
-      runtime.runPromise(
+  return runScopedConsumer(
+    runtime,
+    consumer(nats, {
+      stream,
+      subjectFilter: PAYMENT_CREATED_V1,
+      group: ORDERS_PAYMENT_CREATED_CONSUMER_GROUP,
+      schema: paymentCreatedV1,
+      ...ackWaitOpt,
+      handler: ({ eventId, subject, payload, traceContext }) =>
         Effect.gen(function* () {
           const db = yield* Database;
           const nowMs = yield* Clock.currentTimeMillis;
@@ -144,6 +145,6 @@ export async function startOrdersPaymentCreatedConsumer(
             parent: externalParent(traceContext),
           }),
         ),
-      ),
-  });
+    }),
+  );
 }
