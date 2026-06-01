@@ -1,8 +1,14 @@
 import type { NatsConnection } from "@nats-io/transport-node";
-import { Layer, Logger, ManagedRuntime } from "effect";
+import { Layer } from "effect";
 
 import type { AuthSessionClient } from "@tix/contracts/auth-client";
 import { createPublisher } from "@tix/messaging/jetstream";
+import {
+  makeServiceTestRuntime,
+  throwingAuthClient,
+  throwingNats,
+  throwingPublisher,
+} from "@tix/service-runtime/test";
 
 import type { TicketsClient } from "../tickets-client.ts";
 import type { OrdersEnv } from "./config.ts";
@@ -68,9 +74,7 @@ export function createOrdersTestRuntime(deps: OrdersTestDeps): OrdersRuntime {
       ? Layer.succeed(EventPublisher, throwingPublisher())
       : Layer.succeed(EventPublisher, createPublisher(nats));
 
-  return ManagedRuntime.make(
-    Layer.mergeAll(base, auth, tickets, natsLayer, publisherLayer, Logger.pretty),
-  );
+  return makeServiceTestRuntime(Layer.mergeAll(base, auth, tickets, natsLayer, publisherLayer));
 }
 
 function makeTestEnv(reservationTtlMs: number): OrdersEnv {
@@ -89,14 +93,6 @@ function makeTestEnv(reservationTtlMs: number): OrdersEnv {
   };
 }
 
-function throwingAuthClient(): AuthSessionClient {
-  return {
-    getSession: () => {
-      throw new Error("AuthClient not provided to test runtime");
-    },
-  };
-}
-
 function throwingTicketsClient(): TicketsClient {
   return {
     reserve: () => {
@@ -104,22 +100,6 @@ function throwingTicketsClient(): TicketsClient {
     },
     getById: () => {
       throw new Error("TicketsClient not provided to test runtime");
-    },
-  };
-}
-
-function throwingNats(): NatsConnection {
-  return new Proxy({} as NatsConnection, {
-    get() {
-      throw new Error("Nats not provided to test runtime");
-    },
-  });
-}
-
-function throwingPublisher(): ReturnType<typeof createPublisher> {
-  return {
-    publish: () => {
-      throw new Error("EventPublisher not provided to test runtime");
     },
   };
 }

@@ -215,9 +215,6 @@ importers:
 
   apps/auth:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -239,6 +236,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@tix/service-runtime':
+        specifier: workspace:*
+        version: link:../../packages/service-runtime
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
@@ -285,9 +285,6 @@ importers:
 
   apps/expiration:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -306,6 +303,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@tix/service-runtime':
+        specifier: workspace:*
+        version: link:../../packages/service-runtime
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
@@ -352,9 +352,6 @@ importers:
 
   apps/gateway:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -373,6 +370,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@tix/service-runtime':
+        specifier: workspace:*
+        version: link:../../packages/service-runtime
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
@@ -440,9 +440,6 @@ importers:
 
   apps/orders:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -470,6 +467,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@tix/service-runtime':
+        specifier: workspace:*
+        version: link:../../packages/service-runtime
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
@@ -528,9 +528,6 @@ importers:
 
   apps/payments:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -555,6 +552,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@tix/service-runtime':
+        specifier: workspace:*
+        version: link:../../packages/service-runtime
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
@@ -613,9 +613,6 @@ importers:
 
   apps/tickets:
     dependencies:
-      '@effect/platform':
-        specifier: 'catalog:'
-        version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.0.3(hono@4.12.21)
@@ -643,6 +640,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@tix/service-runtime':
+        specifier: workspace:*
+        version: link:../../packages/service-runtime
       arktype:
         specifier: 'catalog:'
         version: 2.2.0
@@ -1031,6 +1031,49 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 3.21.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/service-runtime:
+    dependencies:
+      '@effect/platform':
+        specifier: 'catalog:'
+        version: 0.96.1(effect@3.21.2)
+      '@nats-io/transport-node':
+        specifier: 'catalog:'
+        version: 3.4.0
+      '@tix/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@tix/db-core':
+        specifier: workspace:*
+        version: link:../db-core
+      '@tix/messaging':
+        specifier: workspace:*
+        version: link:../messaging
+      '@tix/observability':
+        specifier: workspace:*
+        version: link:../observability
+      effect:
+        specifier: 'catalog:'
+        version: 3.21.2
+    devDependencies:
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 0.29.0(effect@3.21.2)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.13(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+      '@tix/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.1
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260515.1
       tsdown:
         specifier: 'catalog:'
         version: 0.22.0(@typescript/native-preview@7.0.0-dev.20260515.1)(tsx@4.22.3)

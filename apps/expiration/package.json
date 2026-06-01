@@ -14,13 +14,13 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@effect/platform": "catalog:",
     "@nats-io/transport-node": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
     "@tix/observability": "workspace:*",
+    "@tix/service-runtime": "workspace:*",
     "arktype": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",

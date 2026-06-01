@@ -1,66 +1,46 @@
-import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
-import { Layer, Logger, ManagedRuntime } from "effect";
+import { Layer, type ManagedRuntime } from "effect";
 
-import { globalContextManagerLayer } from "@tix/observability/otel-context";
-import { otlpLayer } from "@tix/observability/otel-layer";
+import {
+  eventPublisherLayer,
+  makeAuthClientLayer,
+  makeDatabaseLayer,
+  makeNatsLayer,
+} from "@tix/service-runtime/layers";
+import { makeServiceRuntime } from "@tix/service-runtime/runtime";
+import { AuthClient, EventPublisher, Nats } from "@tix/service-runtime/tags";
 
+import { ordersTables } from "../domain/schema.ts";
 import type { OrdersEnv } from "./config.ts";
 import {
-  AuthClient,
-  AuthClientLayer,
   Database,
-  DatabaseLayer,
-  EventPublisher,
-  EventPublisherLayer,
-  Nats,
-  NatsLayer,
   makeOrdersConfigLayer,
   OrdersConfig,
   Tickets,
   TicketsLayer,
 } from "./services.ts";
 
-// Every service the orders runtime exposes. Handlers, consumers, and the relay
-// program against this `R` channel.
 export type OrdersServices = OrdersConfig | Database | Nats | EventPublisher | AuthClient | Tickets;
-
 export type OrdersRuntime = ManagedRuntime.ManagedRuntime<OrdersServices, never>;
 
-// Traces, logs, and metrics export over OTLP with the service name hard-set to "orders"
-// (the endpoint still comes from env, defaulting to the in-cluster collector). Hard-setting
-// the name — rather than reading OTEL_SERVICE_NAME via makeOtelLayer — keeps the error
-// channel `never`, so booting never depends on that env var being present.
-//
-// `globalContextManagerLayer` installs the async context manager that lets the OTLP tracer's
-// span bridge reach the outbox / NATS / outbound-HTTP propagation paths (see otel-context.ts).
-// `Logger.pretty` is local-dev console only; OTLP log export lives inside `otlpLayer`.
-function makeObservabilityLayer(env: OrdersEnv): Layer.Layer<never> {
-  return Layer.mergeAll(
-    otlpLayer({ serviceName: "orders", baseUrl: env.otelEndpoint }).pipe(
-      Layer.provide(FetchHttpClient.layer),
-    ),
-    globalContextManagerLayer,
-    Logger.pretty,
-  );
-}
-
-// Assembles the full Layer graph: config feeds the resource layers; the single
-// Nats connection and infra logger feed the publisher; observability is merged
-// in. `provideMerge` keeps every provided service in the output so the runtime
-// exposes them all while wiring shared dependencies exactly once.
 export function makeOrdersLayer(env: OrdersEnv): Layer.Layer<OrdersServices> {
   const configLayer = makeOrdersConfigLayer(env);
-
-  const resources = Layer.mergeAll(DatabaseLayer, NatsLayer, AuthClientLayer, TicketsLayer);
-
-  const services = EventPublisherLayer.pipe(
-    Layer.provideMerge(resources),
-    Layer.provideMerge(configLayer),
+  const resources = Layer.mergeAll(
+    makeDatabaseLayer(Database, {
+      schemaName: "orders",
+      databaseUrl: env.databaseUrl,
+      schema: ordersTables,
+    }),
+    makeNatsLayer({ serviceName: "orders", natsUrl: env.natsUrl }),
+    makeAuthClientLayer({ authBaseUrl: env.authBaseUrl }),
+    TicketsLayer,
   );
-
-  return Layer.merge(services, makeObservabilityLayer(env));
+  return eventPublisherLayer.pipe(Layer.provideMerge(resources), Layer.provideMerge(configLayer));
 }
 
 export function makeOrdersRuntime(env: OrdersEnv): OrdersRuntime {
-  return ManagedRuntime.make(makeOrdersLayer(env));
+  return makeServiceRuntime({
+    serviceName: "orders",
+    otelEndpoint: env.otelEndpoint,
+    appLayer: makeOrdersLayer(env),
+  });
 }

@@ -1,20 +1,15 @@
 import type { NatsConnection } from "@nats-io/transport-node";
-import { Layer, Logger, ManagedRuntime } from "effect";
+import { Layer } from "effect";
 
 import { createPublisher, type Publisher } from "@tix/messaging/jetstream";
 import { type DelayedScheduler } from "@tix/messaging/jobs";
+import { EventPublisher, Nats } from "@tix/service-runtime/tags";
+import { makeServiceTestRuntime, throwingNats, throwingPublisher } from "@tix/service-runtime/test";
 
 import type { ExpireOrderPayload } from "../expire-order-job.ts";
 import type { ExpirationEnv } from "./config.ts";
 import type { ExpirationRuntime } from "./runtime.ts";
-import {
-  Database,
-  EventPublisher,
-  ExpirationConfig,
-  type ExpirationDb,
-  Nats,
-  Scheduler,
-} from "./services.ts";
+import { Database, ExpirationConfig, type ExpirationDb, Scheduler } from "./services.ts";
 
 export type ExpirationTestDeps = {
   db: ExpirationDb;
@@ -46,9 +41,7 @@ export function createExpirationTestRuntime(deps: ExpirationTestDeps): Expiratio
 
   const schedulerLayer = Layer.succeed(Scheduler, deps.scheduler ?? throwingScheduler());
 
-  return ManagedRuntime.make(
-    Layer.mergeAll(base, natsLayer, publisherLayer, schedulerLayer, Logger.pretty),
-  );
+  return makeServiceTestRuntime(Layer.mergeAll(base, natsLayer, publisherLayer, schedulerLayer));
 }
 
 function makeTestEnv(): ExpirationEnv {
@@ -58,22 +51,6 @@ function makeTestEnv(): ExpirationEnv {
     redis: { host: "localhost", port: 6379 },
     stream: "ORDERS",
     otelEndpoint: "http://otel.test:4318",
-  };
-}
-
-function throwingNats(): NatsConnection {
-  return new Proxy({} as NatsConnection, {
-    get() {
-      throw new Error("Nats not provided to test runtime");
-    },
-  });
-}
-
-function throwingPublisher(): ReturnType<typeof createPublisher> {
-  return {
-    publish: () => {
-      throw new Error("EventPublisher not provided to test runtime");
-    },
   };
 }
 
