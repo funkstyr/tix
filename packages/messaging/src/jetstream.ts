@@ -203,13 +203,12 @@ export async function runScopedConsumer<R>(
 
 /**
  * Default-runtime runner for callers with no service runtime (R = never). `runScopedConsumer`
- * always provides its own managed `Scope` via `provideService`, so this `Effect.scoped` only
- * discharges the residual `Scope` requirement in the type — the provided scope is the one that
- * actually hosts the forked consumer loop.
+ * already provides the Scope via `Effect.provideService` before handing the effect to this
+ * runner, so the effect arriving here has no remaining `Scope` requirement and can be run
+ * directly on the default Effect runtime.
  */
 export const defaultScopedRunner = {
-  runPromise: <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
-    Effect.runPromise(Effect.scoped(effect)),
+  runPromise: <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect),
 };
 
 type EnsureConsumerArgs = {
