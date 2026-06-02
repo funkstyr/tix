@@ -136,11 +136,15 @@ function renderTempoConfig(s3Endpoint: string, bucket: string, blockRetention: s
 server:
   http_listen_port: ${HTTP_PORT}
 
-# Compactor ages trace blocks out of Garage after block_retention; without it the
-# S3 bucket grows without bound. Window is dev-small / prod-larger (ADR-0011 Tier 3).
-compactor:
-  compaction:
-    block_retention: ${blockRetention}
+# Block retention ages trace blocks out of Garage; without it the S3 bucket grows without bound.
+# Window is dev-small / prod-larger (ADR-0011 Tier 3). Tempo 3.0 removed the standalone compactor
+# component — compaction is now run by the backend scheduler/worker, so retention lives under
+# backend_scheduler.provider.compaction.compaction (was compactor.compaction in 2.x).
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        block_retention: ${blockRetention}
 
 distributor:
   receivers:
