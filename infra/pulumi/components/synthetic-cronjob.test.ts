@@ -28,4 +28,10 @@ describe("SyntheticCronJob", () => {
     const container = spec.jobTemplate.spec?.template.spec?.containers[0];
     expect(container?.envFrom?.[0]?.secretRef?.name).toBe("synthetic-credentials");
   });
+
+  it("runs exactly one attempt per tick", async () => {
+    const spec = await promiseOf(cron.cronJob.spec);
+    expect(spec.jobTemplate.spec?.backoffLimit).toBe(0);
+    expect(spec.jobTemplate.spec?.template.spec?.restartPolicy).toBe("Never");
+  });
 });
