@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { promiseOf } from "../pulumi-mocks.ts";
-import {
-  KUBE_STATE_METRICS_CLUSTER_ROLE_RULES,
-  KubeStateMetrics,
-} from "./kube-state-metrics.ts";
+import { KUBE_STATE_METRICS_CLUSTER_ROLE_RULES, KubeStateMetrics } from "./kube-state-metrics.ts";
 
 function build(): KubeStateMetrics {
   return new KubeStateMetrics("test", { namespace: "tix" });
@@ -37,7 +34,7 @@ describe("KubeStateMetrics RBAC (least privilege)", () => {
     expect(resources).not.toContain("configmaps");
 
     const verbs = new Set(KUBE_STATE_METRICS_CLUSTER_ROLE_RULES.flatMap((r) => r.verbs));
-    expect([...verbs].sort()).toEqual(["list", "watch"]);
+    expect([...verbs].toSorted()).toEqual(["list", "watch"]);
   });
 
   it("binds the ClusterRole to its own ServiceAccount", async () => {

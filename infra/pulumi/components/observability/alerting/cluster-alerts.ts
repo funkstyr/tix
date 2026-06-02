@@ -20,7 +20,8 @@ function oomKilled(): Record<string, unknown> {
     condition: "gt",
     pending: "1m",
     severity: "page",
-    summary: "A tix container was OOMKilled ({{ $labels.pod }}) — it hit its memory limit and died.",
+    summary:
+      "A tix container was OOMKilled ({{ $labels.pod }}) — it hit its memory limit and died.",
     runbookUrl: runbook("pod-oomkilled.md"),
     dashboardUid: "cluster-use",
   });
@@ -54,7 +55,8 @@ function pvcNearlyFull(): Record<string, unknown> {
     condition: "gt",
     pending: "10m",
     severity: "ticket",
-    summary: "A PVC ({{ $labels.persistentvolumeclaim }}) is >85% full — expand or prune before it wedges.",
+    summary:
+      "A PVC ({{ $labels.persistentvolumeclaim }}) is >85% full — expand or prune before it wedges.",
     runbookUrl: runbook("pvc-nearly-full.md"),
     dashboardUid: "cluster-use",
   });
@@ -71,7 +73,8 @@ function nodeMemoryPressure(): Record<string, unknown> {
     condition: "gt",
     pending: "5m",
     severity: "page",
-    summary: "Node {{ $labels.node }} reports MemoryPressure — the kubelet will start evicting pods.",
+    summary:
+      "Node {{ $labels.node }} reports MemoryPressure — the kubelet will start evicting pods.",
     runbookUrl: runbook("node-memory-pressure.md"),
     dashboardUid: "cluster-use",
   });

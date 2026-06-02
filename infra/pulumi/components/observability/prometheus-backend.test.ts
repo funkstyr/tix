@@ -116,7 +116,7 @@ describe("PrometheusBackend RBAC (least privilege)", () => {
     expect(resources).not.toContain("secrets");
 
     const verbs = new Set(PROMETHEUS_CLUSTER_ROLE_RULES.flatMap((r) => r.verbs));
-    expect([...verbs].sort()).toEqual(["get", "list", "watch"]);
+    expect([...verbs].toSorted()).toEqual(["get", "list", "watch"]);
   });
 });
 

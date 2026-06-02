@@ -52,13 +52,7 @@ export class NatsExporter extends pulumi.ComponentResource {
                   image: NATS_EXPORTER_IMAGE,
                   // `-jsz=all` is what pulls the JetStream stream/consumer series (the whole point
                   // of this exporter); `-varz`/`-connz` add server + connection health alongside.
-                  args: [
-                    `-port=${HTTP_PORT}`,
-                    "-varz",
-                    "-connz",
-                    "-jsz=all",
-                    args.natsMonitorUrl,
-                  ],
+                  args: [`-port=${HTTP_PORT}`, "-varz", "-connz", "-jsz=all", args.natsMonitorUrl],
                   ports: [{ name: "http", containerPort: HTTP_PORT }],
                   readinessProbe: {
                     httpGet: { path: "/metrics", port: HTTP_PORT },

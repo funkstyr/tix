@@ -22,16 +22,21 @@ export function clusterUseDashboardJson(): string {
     .refresh("30s");
 
   for (const panel of [
-    tsPanel("Node utilization (CPU / memory / filesystem)", "percentunit", {
-      h: 8,
-      w: 12,
-      x: 0,
-      y: 0,
-    }, [
-      { expr: "node:cpu_utilization:ratio", legend: "cpu {{node}}" },
-      { expr: "node:memory_utilization:ratio", legend: "mem {{node}}" },
-      { expr: "node:filesystem_utilization:ratio", legend: "fs {{node}}" },
-    ]),
+    tsPanel(
+      "Node utilization (CPU / memory / filesystem)",
+      "percentunit",
+      {
+        h: 8,
+        w: 12,
+        x: 0,
+        y: 0,
+      },
+      [
+        { expr: "node:cpu_utilization:ratio", legend: "cpu {{node}}" },
+        { expr: "node:memory_utilization:ratio", legend: "mem {{node}}" },
+        { expr: "node:filesystem_utilization:ratio", legend: "fs {{node}}" },
+      ],
+    ),
     tsPanel("PVC utilization", "percentunit", { h: 8, w: 12, x: 12, y: 0 }, [
       {
         expr: "kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes",

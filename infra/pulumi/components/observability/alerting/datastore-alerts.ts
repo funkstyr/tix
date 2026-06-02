@@ -32,7 +32,8 @@ function pgPoolExhaustion(): Record<string, unknown> {
     condition: "gt",
     pending: "5m",
     severity: "page",
-    summary: "Postgres connections are >90% of max_connections — new connections will start failing.",
+    summary:
+      "Postgres connections are >90% of max_connections — new connections will start failing.",
     runbookUrl: runbook("pg-pool-exhaustion.md"),
     dashboardUid: "datastore-health",
   });

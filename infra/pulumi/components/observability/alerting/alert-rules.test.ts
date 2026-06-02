@@ -196,7 +196,9 @@ describe("alertRulesJson", () => {
     expect(ruleByUid("jetstream-lost-messages").labels.severity).toBe("page");
     expect(ruleByUid("jetstream-consumer-lag").labels.severity).toBe("ticket");
 
-    expect(queryExpr(ruleByUid("jetstream-consumer-lag"))).toContain("jetstream_consumer_num_pending");
+    expect(queryExpr(ruleByUid("jetstream-consumer-lag"))).toContain(
+      "jetstream_consumer_num_pending",
+    );
     expect(queryExpr(ruleByUid("redis-eviction"))).toContain("redis_evicted_keys_total");
   });
 

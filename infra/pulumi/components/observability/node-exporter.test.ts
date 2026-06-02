@@ -33,9 +33,7 @@ describe("NodeExporter", () => {
 
     const spec = await promiseOf(exporter.daemonSet.spec);
     const mounts = (spec.template.spec?.containers[0]?.volumeMounts ?? []).map((m) => m.mountPath);
-    expect(mounts).toEqual(
-      expect.arrayContaining(["/host/proc", "/host/sys", "/host/root"]),
-    );
+    expect(mounts).toEqual(expect.arrayContaining(["/host/proc", "/host/sys", "/host/root"]));
   });
 
   it("exposes a headless Service for endpoints-role discovery", async () => {
