@@ -133,6 +133,7 @@ jobs:
             ordersPassword=ci_orders \
             paymentsPassword=ci_payments \
             expirationPassword=ci_expiration \
+            prometheusExporterPassword=ci_prometheus_exporter \
             betterAuthSecret=ci_better_auth_secret \
             ticketsServiceToken=ci_tickets_service_token \
             stripeKey=sk_test_ci_placeholder \
