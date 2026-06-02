@@ -106,6 +106,26 @@ describe.skipIf(!dockerAvailable)("@tix/messaging/jobs", () => {
     }
   }, 10_000);
 
+  it("surfaces queue job counts via counts()", async () => {
+    const conn = requireConnection();
+    const queueName = `counts-${randomUUID()}`;
+
+    // No worker is started, so a delayed job stays in the queue and counts() can observe it.
+    const scheduler = createScheduler<{ orderId: string }>(conn, { queueName });
+
+    try {
+      await scheduler.scheduleDelayed("expire-order", { orderId: "o4" }, 60_000, "o4");
+
+      const counts = await scheduler.counts();
+
+      expect(counts.delayed).toBe(1);
+      expect(counts.waiting).toBe(0);
+      expect(counts.active).toBe(0);
+    } finally {
+      await scheduler.close();
+    }
+  }, 10_000);
+
   it("surfaces handler errors via the BullMQ failed event", async () => {
     const conn = requireConnection();
     const queueName = `fail-${randomUUID()}`;

@@ -10,6 +10,7 @@ export type DelayedScheduler<Payload> = {
     delayMs: number,
     jobId: string,
   ) => Promise<void>;
+  counts: () => Promise<{ waiting: number; delayed: number; active: number }>;
   close: () => Promise<void>;
 };
 
@@ -38,6 +39,10 @@ export function createScheduler<Payload>(
   return {
     scheduleDelayed: async (jobName, payload, delayMs, jobId) => {
       await queue.add(jobName, payload, { delay: delayMs, jobId });
+    },
+    counts: async () => {
+      const c = await queue.getJobCounts("waiting", "delayed", "active");
+      return { waiting: c["waiting"] ?? 0, delayed: c["delayed"] ?? 0, active: c["active"] ?? 0 };
     },
     close: async () => {
       await queue.close();

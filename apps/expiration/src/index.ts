@@ -1,7 +1,9 @@
+import { serve } from "@hono/node-server";
 import { Cause, Effect, Exit, Fiber } from "effect";
 
 import { startExpirationConsumer } from "./consumers/order-created.consumer.ts";
 import { startExpireOrderWorker } from "./expire/expire-order.worker.ts";
+import { createExpirationHealthApp } from "./health-app.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makeExpirationRuntime } from "./runtime/runtime.ts";
 import { Nats } from "./runtime/services.ts";
@@ -11,10 +13,10 @@ const runtime = makeExpirationRuntime(env);
 
 // The boot program acquires the worker and the order.created consumer as scoped resources,
 // then parks on `Effect.never`. Interrupting the fiber runs the Scope finalizers LIFO
-// (consumer → worker drain); disposing the runtime then closes the scheduler queue, the
-// NATS connection, and the db pool. This replaces the hand-rolled imperative construction
-// and reverse-order shutdown. The service has no HTTP server — it's a BullMQ delayed-job
-// worker — so there is nothing to listen on.
+// (server → consumer → worker drain); disposing the runtime then closes the scheduler
+// queue, the NATS connection, and the db pool. This replaces the hand-rolled imperative
+// construction and reverse-order shutdown. Though headless (a BullMQ delayed-job worker),
+// it serves a minimal health surface (ADR-0011 Tier 1) so Kubernetes can probe it.
 const program = Effect.gen(function* () {
   const nats = yield* Nats;
 
@@ -26,6 +28,24 @@ const program = Effect.gen(function* () {
   yield* Effect.acquireRelease(
     Effect.promise(() => startExpirationConsumer({ runtime, nats, stream: env.stream })),
     (consumer) => Effect.promise(() => consumer.stop()),
+  );
+
+  const app = createExpirationHealthApp(runtime);
+
+  yield* Effect.acquireRelease(
+    Effect.async<ReturnType<typeof serve>>((resume) => {
+      const server = serve({ fetch: app.fetch, port: env.port }, () => {
+        resume(Effect.succeed(server));
+      });
+    }),
+    (server) =>
+      Effect.async<void>((resume) => {
+        server.close((err) => resume(err ? Effect.die(err) : Effect.void));
+      }),
+  );
+
+  yield* Effect.logInfo("expiration health listening").pipe(
+    Effect.annotateLogs({ port: env.port }),
   );
 
   yield* Effect.logInfo("expiration service started").pipe(

@@ -14,6 +14,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hono/node-server": "catalog:",
     "@nats-io/transport-node": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@tix/contracts": "workspace:*",
@@ -25,6 +26,7 @@
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
+    "hono": "catalog:",
     "postgres": "catalog:"
   },
   "devDependencies": {

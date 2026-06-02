@@ -3,6 +3,7 @@ import { ArkErrors, type } from "arktype";
 import { ORDERS_STREAM } from "@tix/contracts/subjects";
 
 const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
+const DEFAULT_PORT = 4500;
 
 const envSchema = type({
   DATABASE_URL: "string > 0",
@@ -10,6 +11,7 @@ const envSchema = type({
   REDIS_URL: "string > 0",
   "EXPIRATION_STREAM?": "string > 0",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
+  "PORT?": "string.numeric.parse",
 });
 
 export type ExpirationEnv = {
@@ -18,6 +20,7 @@ export type ExpirationEnv = {
   redis: { host: string; port: number };
   stream: string;
   otelEndpoint: string;
+  port: number;
 };
 
 function parseRedisUrl(raw: string): { host: string; port: number } {
@@ -38,11 +41,17 @@ export function parseEnv(): ExpirationEnv {
     throw new Error(`invalid environment: ${parsed.summary}`);
   }
 
+  const port = parsed.PORT ?? DEFAULT_PORT;
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`invalid PORT: ${port}`);
+  }
+
   return {
     databaseUrl: parsed.DATABASE_URL,
     natsUrl: parsed.NATS_URL,
     redis: parseRedisUrl(parsed.REDIS_URL),
     stream: parsed.EXPIRATION_STREAM ?? ORDERS_STREAM,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
+    port,
   };
 }
