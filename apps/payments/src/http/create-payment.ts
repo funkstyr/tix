@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { Clock, Effect, Metric } from "effect";
+import { Cause, Clock, Effect, Metric } from "effect";
 
 import { requireSession } from "@tix/contracts/auth-client";
 import { paymentCreateInput } from "@tix/contracts/payments";
@@ -21,6 +21,7 @@ import {
   paymentsSucceededTotal,
 } from "../runtime/metrics.ts";
 import { AuthClient, Database, PaymentIntents } from "../runtime/services.ts";
+import { classifyStripeError, statusToReason } from "../stripe-error.ts";
 import { tryOrpc } from "./boundary.ts";
 
 const DEFAULT_CURRENCY = "usd";
@@ -79,6 +80,14 @@ export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
           paymentMethodId: input.paymentMethodId,
         }),
       ),
+    ).pipe(
+      // A thrown Stripe SDK error reaches the defect channel via `tryOrpc`'s `Effect.die`,
+      // so classify and count it under the matching `reason` before it keeps propagating.
+      Effect.tapDefect((cause) =>
+        Metric.increment(
+          Metric.tagged(paymentsFailedTotal, "reason", classifyStripeError(Cause.squash(cause))),
+        ),
+      ),
     );
     const endMs = yield* Clock.currentTimeMillis;
 
@@ -88,7 +97,9 @@ export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
     // PRD scope. Skipping the row keeps UNIQUE(order_id) open for a retry with a different
     // card and prevents `payment.created.v1` firing for a charge that didn't actually clear.
     if (intent.status !== "succeeded") {
-      yield* Metric.increment(paymentsFailedTotal);
+      yield* Metric.increment(
+        Metric.tagged(paymentsFailedTotal, "reason", statusToReason(intent.status)),
+      );
 
       return yield* Effect.fail(new PaymentIntentNotSucceeded({ status: intent.status }));
     }
