@@ -102,6 +102,61 @@ describe("prometheus recording rules", () => {
     expect(rules).toContain('service:request_errors:ratio_rate1h{service="gateway"} / 0.01');
     expect(rules).toContain('service:request_errors:ratio_rate1h{service="auth"} / 0.01');
   });
+
+  it("records the checkout + payment coverage bad-event ratios at every burn window", () => {
+    const rules = renderRecordingRules();
+    for (const win of ["5m", "30m", "1h", "6h"]) {
+      expect(rules).toContain(`record: slo:availability_bad_ratio:ratio_rate${win}`);
+    }
+    // checkout = reserve success: bad = 1 - reserved/created.
+    expect(rules).toContain(
+      "1 - sum(rate(tickets_reserved_total[5m])) / clamp_min(sum(rate(orders_created_total[5m])), 1)",
+    );
+    expect(rules).toContain("slo: checkout");
+    // payment = charge success: bad = failed / (succeeded + failed).
+    expect(rules).toContain("sum(rate(payments_failed_total[5m]))");
+    expect(rules).toContain("slo: payment");
+  });
+
+  it("records the gateway/auth/payment latency-violation ratios from their histogram buckets", () => {
+    const rules = renderRecordingRules();
+    for (const win of ["5m", "30m", "1h", "6h"]) {
+      expect(rules).toContain(`record: slo:latency_violation:ratio_rate${win}`);
+    }
+    expect(rules).toContain(
+      '1 - sum(rate(gateway_request_duration_ms_bucket{le="500"}[5m])) / clamp_min(sum(rate(gateway_request_duration_ms_bucket{le="+Inf"}[5m])), 1)',
+    );
+    expect(rules).toContain('auth_request_duration_ms_bucket{le="300"}');
+    expect(rules).toContain('payment_charge_latency_ms_bucket{le="1000"}');
+    expect(rules).toContain("slo: gateway-latency");
+    expect(rules).toContain("slo: payment-latency");
+  });
+
+  it("records the Stripe charge-latency p95 value the stripe alert reads", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("record: payment:charge_latency_ms:p95_rate5m");
+    expect(rules).toContain(
+      "histogram_quantile(0.95, sum(rate(payment_charge_latency_ms_bucket[5m])) by (le))",
+    );
+  });
+
+  it("records the business-level rollups the capacity alerts project over", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("record: outbox:lag:max");
+    expect(rules).toContain("max(orders_outbox_lag or tickets_outbox_lag or payments_outbox_lag)");
+    expect(rules).toContain("record: order:created:rate10m");
+    expect(rules).toContain("record: inventory:available:min");
+  });
+
+  it("extends the error-budget burndown to the coverage + latency SLOs", () => {
+    const rules = renderRecordingRules();
+    // checkout budget 0.02, payment 0.01; latency budget 0.05. All record under `service` so the
+    // slo-budget board legends them by {{service}} with no board change.
+    expect(rules).toContain('slo:availability_bad_ratio:ratio_rate1h{slo="checkout"} / 0.02');
+    expect(rules).toContain('slo:latency_violation:ratio_rate1h{slo="gateway-latency"} / 0.05');
+    expect(rules).toContain("service: checkout");
+    expect(rules).toContain("service: gateway-latency");
+  });
 });
 
 describe("prometheus scrape_configs", () => {

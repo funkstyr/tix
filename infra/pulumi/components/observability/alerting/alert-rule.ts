@@ -16,8 +16,11 @@ const EXPR_UID = "__expr__";
 export type AlertCondition = "gt" | "lt";
 
 // Severity drives nothing in the dev log-sink path (everything routes to the one webhook), but
-// it labels the payload so the lesson — page vs ticket vs warning — is legible in the logs.
-export type AlertSeverity = "page" | "ticket" | "warning";
+// it labels the payload so the lesson — page vs ticket vs warning — is legible in the logs. The
+// notification policy (contact-points.ts) routes `page`/`ticket`/`warning` explicitly; `watchdog`
+// (ADR-0012 Tier 1's dead-man's-switch heartbeat) intentionally falls through to the root catch-all,
+// which re-notifies hourly — exactly the cadence an external "heartbeat absent" check expects.
+export type AlertSeverity = "page" | "ticket" | "warning" | "watchdog";
 
 export type AlertRuleSpec = {
   readonly uid: string;

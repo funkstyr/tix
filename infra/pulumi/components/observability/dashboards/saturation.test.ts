@@ -11,4 +11,10 @@ describe("saturationDashboardJson", () => {
     expect(json).toContain("orders_pending_count");
     expect(json).toContain('"uid": "saturation"');
   });
+
+  it("projects the silent-cliff levels two hours out with predict_linear", () => {
+    const json = saturationDashboardJson();
+    expect(json).toContain("predict_linear(outbox:lag:max[30m], 7200)");
+    expect(json).toContain("predict_linear(expiration_queue_depth[30m], 7200)");
+  });
 });

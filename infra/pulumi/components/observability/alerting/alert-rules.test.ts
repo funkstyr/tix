@@ -47,14 +47,19 @@ function threshold(rule: Rule): { type: string; params: number[] } {
 }
 
 describe("alertRulesJson", () => {
-  it("renders parseable provisioning JSON with the three rule groups", () => {
+  it("renders parseable provisioning JSON with the eight rule groups", () => {
     const config = JSON.parse(alertRulesJson());
 
     expect(config.apiVersion).toBe(1);
     expect(groups().map((g) => g.name)).toEqual([
       "slo_burn_rate",
+      "slo_coverage",
+      "latency_slos",
       "domain_alerts",
+      "stripe_alerts",
+      "capacity_alerts",
       "platform_alerts",
+      "watchdog",
     ]);
   });
 
@@ -125,6 +130,70 @@ describe("alertRulesJson", () => {
     const rule = ruleByUid("probe-failure");
     expect(queryExpr(rule)).toContain("probe_success");
     expect(threshold(rule)).toEqual({ type: "lt", params: [1] });
+  });
+
+  it("derives checkout + payment coverage burn alerts from the union", () => {
+    for (const uid of ["checkout-burn-fast", "checkout-burn-slow", "payment-burn-fast"]) {
+      expect(ruleByUid(uid)).toBeDefined();
+    }
+    // checkout budget is 2% → fast threshold 14.4 * 0.02 = 0.288, reading the coverage recording rule.
+    const fast = queryExpr(ruleByUid("checkout-burn-fast"));
+    expect(fast).toContain('slo:availability_bad_ratio:ratio_rate1h{slo="checkout"}');
+    expect(fast).toContain("0.288");
+    expect(ruleByUid("checkout-burn-fast").labels.severity).toBe("page");
+    expect(ruleByUid("checkout-burn-slow").labels.severity).toBe("ticket");
+  });
+
+  it("derives gateway/auth/payment latency burn alerts over the violation fraction", () => {
+    for (const uid of [
+      "gateway-latency-burn-fast",
+      "auth-latency-burn-fast",
+      "payment-latency-burn-slow",
+    ]) {
+      expect(ruleByUid(uid)).toBeDefined();
+    }
+    // latency budget is 5% → fast threshold 14.4 * 0.05 = 0.72.
+    const fast = queryExpr(ruleByUid("gateway-latency-burn-fast"));
+    expect(fast).toContain('slo:latency_violation:ratio_rate1h{slo="gateway-latency"}');
+    expect(fast).toContain("0.72");
+  });
+
+  it("alerts on the Stripe external dependency: error-rate, latency, and step-change", () => {
+    expect(threshold(ruleByUid("stripe-charge-error-rate"))).toEqual({
+      type: "gt",
+      params: [0.05],
+    });
+    expect(ruleByUid("stripe-charge-error-rate").labels.severity).toBe("page");
+
+    expect(queryExpr(ruleByUid("stripe-charge-latency"))).toContain(
+      "payment:charge_latency_ms:p95_rate5m",
+    );
+    expect(threshold(ruleByUid("stripe-charge-latency"))).toEqual({ type: "gt", params: [3000] });
+
+    const step = queryExpr(ruleByUid("payment-failure-spike"));
+    expect(step).toContain("offset 30m");
+    expect(step).toContain("and");
+  });
+
+  it("alerts on capacity levels including a predict_linear projection", () => {
+    expect(threshold(ruleByUid("inventory-exhausted"))).toEqual({ type: "lt", params: [1] });
+    expect(ruleByUid("inventory-exhausted").labels.severity).toBe("page");
+
+    expect(queryExpr(ruleByUid("outbox-lag-projected"))).toContain("predict_linear(outbox:lag:max");
+    expect(queryExpr(ruleByUid("queue-depth-projected"))).toContain(
+      "predict_linear(expiration_queue_depth",
+    );
+
+    expect(queryExpr(ruleByUid("order-rate-drop"))).toContain("order:created:rate10m");
+    expect(ruleByUid("order-rate-drop").labels.severity).toBe("page");
+  });
+
+  it("provisions a constant-true dead-man's-switch watchdog", () => {
+    const watchdog = ruleByUid("watchdog");
+    expect(queryExpr(watchdog)).toBe("vector(1)");
+    expect(threshold(watchdog)).toEqual({ type: "gt", params: [0] });
+    expect(watchdog.labels.severity).toBe("watchdog");
+    expect(watchdog.for).toBe("0s");
   });
 
   it("points every Prometheus query at the prometheus datasource and a threshold expression", () => {

@@ -312,11 +312,17 @@ The alerting half of the o11y UX layer splits across three places:
   valid in any stack, so no flag gates them.
 - **Grafana alert rules + contact point** (`components/observability/alerting/`) are authored
   in TypeScript, rendered to JSON (matching dashboards-as-code), and mounted at
-  `/etc/grafana/provisioning/alerting` via a `grafana-alerting` ConfigMap. `alert-rules.ts`
-  builds three groups — SLO multi-window burn-rate (gateway/auth, 99% SLO: fast 1h+5m pages,
-  slow 6h+30m tickets), domain alerts (saga stall, conflict spike, `expiry_duplicate_publish`
-  spike), and backend-down (`up{job=~…} < 1`). Every rule is the one `alertRule()` factory
-  shape: a Prometheus instant query (refId A) feeding a threshold expression (refId C).
+  `/etc/grafana/provisioning/alerting` via a `grafana-alerting` ConfigMap. `alert-rules.ts` is the
+  composition root over per-concern rule files (`burn-alerts.ts`, `stripe-alerts.ts`,
+  `capacity-alerts.ts`, `watchdog.ts`); ADR-0012 Tier 1 widens it from three groups to **eight** —
+  SLO burn (gateway/auth), `slo_coverage` (checkout reserve-success 0.98 + payment charge-success
+  0.99), `latency_slos` (gateway/auth/payment p95 burn over the quantile-violation fraction),
+  `domain_alerts` (saga stall, conflict spike, `expiry_duplicate_publish`), `stripe_alerts`
+  (charge error-rate > 5%, p95 > 3s, failure step-change vs `offset 30m`), `capacity_alerts`
+  (inventory-exhausted → page, `predict_linear` outbox/queue projections, order-rate drop),
+  `platform_alerts` (backend-down, probe-failure), and a `vector(1)` dead-man's-switch `watchdog`.
+  Every rule is the one `alertRule()` factory shape: a Prometheus instant query (refId A) feeding a
+  threshold expression (refId C).
   `contact-points.ts` provisions a single webhook contact point + a **severity-routed**
   notification policy (ADR-0011 Tier 3): a root catch-all over three `object_matchers`
   children (`severity = page|ticket|warning`, with tightening `group_wait`/`repeat_interval`),
@@ -346,12 +352,16 @@ and `docs/runbooks/` holds a `README.md` index + one file per alert. The always-
 `blackbox-exporter` (above, ungated) adds a `probe-failure` alert (`probe_success == 0`
 → page, in the `platform_alerts` group) over the `blackbox` scrape job.
 
-**SLO-as-data (ADR-0011 Tier 3).** `components/observability/slo.ts` is the single
-typed SLO source (gateway + auth, 0.99 objective; Google SRE 14.4/6 burn factors).
-The burn-rate thresholds in `alert-rules.ts` derive from it (replacing the prior
-`0.144`/`0.06` literals), as do the `slo:error_budget_consumed:ratio` recording rule
-in `prometheus-backend.ts` and the `slo-budget` burndown board — change the objective,
-all three follow.
+**SLO-as-data (ADR-0011 Tier 3; widened ADR-0012 Tier 1).** `components/observability/slo.ts` is the
+single typed SLO source. ADR-0012 makes `Slo` an **availability | latency discriminated union**:
+availability keeps the Google-SRE error-ratio burn math (gateway/auth at 0.99 derive the same
+`0.144`/`0.06` thresholds, proven in `slo.test.ts`); latency models the same multi-window burn over a
+quantile-violation fraction (`1 − rate(bucket{le=target})/rate(bucket{le=+Inf})`) for gateway p95 ≤
+500ms, auth ≤ 300ms, payment ≤ 1000ms. Seven objectives total (the two RED SLOs + checkout/payment
+coverage + three latency). The burn-rate thresholds in `burn-alerts.ts`, the coverage/latency/
+business-level recording rules and the `slo:error_budget_consumed:ratio` rule in
+`prometheus-backend.ts`, and the `slo-budget` burndown board all derive from it — change an objective,
+they follow. The cardinality rule holds: only low-cardinality `slo`/`service` labels reach metrics.
 
 ## Notes
 
