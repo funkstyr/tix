@@ -31,6 +31,15 @@ export type AlertRuleSpec = {
   readonly severity: AlertSeverity;
   // Annotation shown on the alert; may use Grafana's `{{ $labels.x }}` templating.
   readonly summary: string;
+  // Deep link to the runbook for this alert; surfaced as Grafana's `runbook_url` annotation so
+  // the firing notification carries "what to do" alongside "what fired".
+  readonly runbookUrl?: string;
+  // Grafana provisioning convention (apiVersion 1): the `__dashboardUid__` / `__panelId__`
+  // annotations link the rule back to the board (and panel) it watches, so an operator can jump
+  // from the alert to the live graph. Panel is optional — our foundation-SDK boards don't assign
+  // stable panel ids, so most rules wire only the board-level `dashboardUid`.
+  readonly dashboardUid?: string;
+  readonly panelId?: number;
 };
 
 export function alertRule(spec: AlertRuleSpec): Record<string, unknown> {
@@ -40,7 +49,12 @@ export function alertRule(spec: AlertRuleSpec): Record<string, unknown> {
     condition: "C",
     for: spec.pending,
     labels: { severity: spec.severity },
-    annotations: { summary: spec.summary },
+    annotations: {
+      summary: spec.summary,
+      ...(spec.runbookUrl ? { runbook_url: spec.runbookUrl } : {}),
+      ...(spec.dashboardUid ? { __dashboardUid__: spec.dashboardUid } : {}),
+      ...(spec.panelId !== undefined ? { __panelId__: String(spec.panelId) } : {}),
+    },
     // No data → treat as healthy: the `and`-gated burn queries and `up`-based backend check
     // both yield no series in the normal case, which must not page.
     noDataState: "OK",

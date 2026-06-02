@@ -8,6 +8,11 @@ import { alertRule } from "./alert-rule.ts";
 
 const FOLDER = "tix Alerts";
 
+// Runbook deep links ride on each rule as a `runbook_url` annotation (alert-rule.ts). Held as a
+// repo-relative `blob/main` URL base so a firing notification points at the committed runbook, not
+// a moving wiki. Per-alert filenames live alongside the rules below.
+const RUNBOOK_BASE = "https://github.com/funkstyr/tix/blob/main/docs/runbooks";
+
 // 99% availability SLO → a 1% error budget. The multi-window multi-burn-rate thresholds are
 // the Google SRE workbook values: 14.4× budget over the fast (1h+5m) pair pages, 6× over the
 // slow (6h+30m) pair tickets. Held as literals (not `14.4 * BUDGET`) so the rendered PromQL
@@ -64,6 +69,8 @@ function burnRate(service: "gateway" | "auth"): Array<Record<string, unknown>> {
       pending: "2m",
       severity: "page",
       summary: `${service} is burning its 99% error budget 14.4x (1h+5m windows) — page.`,
+      runbookUrl: `${RUNBOOK_BASE}/${service}-burn.md`,
+      dashboardUid: "edge-auth",
     }),
     alertRule({
       uid: `${service}-burn-slow`,
@@ -74,6 +81,8 @@ function burnRate(service: "gateway" | "auth"): Array<Record<string, unknown>> {
       pending: "15m",
       severity: "ticket",
       summary: `${service} is burning its 99% error budget 6x (6h+30m windows) — ticket.`,
+      runbookUrl: `${RUNBOOK_BASE}/${service}-burn.md`,
+      dashboardUid: "edge-auth",
     }),
   ];
 }
@@ -93,6 +102,8 @@ function sagaStall(): Record<string, unknown> {
     pending: "10m",
     severity: "page",
     summary: "Orders are being created while payments_succeeded is flat — saga stalled at pay.",
+    runbookUrl: `${RUNBOOK_BASE}/saga-stall.md`,
+    dashboardUid: "saga-funnel",
   });
 }
 
@@ -111,6 +122,8 @@ function conflictSpike(): Record<string, unknown> {
     pending: "5m",
     severity: "warning",
     summary: "Reservation conflicts (order race lost + ticket retry exhausted) are elevated.",
+    runbookUrl: `${RUNBOOK_BASE}/conflict-spike.md`,
+    dashboardUid: "saturation",
   });
 }
 
@@ -126,6 +139,8 @@ function duplicatePublishSpike(): Record<string, unknown> {
     pending: "5m",
     severity: "warning",
     summary: "expiry_duplicate_publish is firing — the at-least-once expiration path re-published.",
+    runbookUrl: `${RUNBOOK_BASE}/expiry-duplicate.md`,
+    dashboardUid: "expiration-worker",
   });
 }
 
@@ -142,5 +157,7 @@ function backendDown(): Record<string, unknown> {
     pending: "2m",
     severity: "page",
     summary: "Observability backend {{ $labels.job }} is down (up == 0).",
+    runbookUrl: `${RUNBOOK_BASE}/backend-down.md`,
+    dashboardUid: "platform-o11y",
   });
 }
