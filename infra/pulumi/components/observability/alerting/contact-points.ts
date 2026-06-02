@@ -2,7 +2,7 @@
 // and mounted at /etc/grafana/provisioning/alerting. The single contact point is a webhook
 // pointed at the in-cluster log sink (alert-log-sink.ts), so a firing alert's payload shows up
 // in `kubectl logs` — the full notification path, self-contained, no external account. The
-// root notification policy routes every alert to it.
+// notification policy is a routing tree: a catch-all root with per-severity children.
 
 export function contactPointsJson(webhookUrl: string): string {
   const config = {
@@ -23,8 +23,13 @@ export function contactPointsJson(webhookUrl: string): string {
         ],
       },
     ],
-    // Root policy: everything routes to the log sink. Grouping by folder + alertname keeps the
-    // webhook from being hammered per-series while still showing each distinct alert promptly.
+    // Routing tree. The root is the catch-all/fallback (anything not matching a child below still
+    // lands at the log sink); grouping by folder + alertname keeps the webhook from being hammered
+    // per-series. The severity children — keyed on the `severity` label `alert-rules.ts` sets —
+    // tier delivery: a `page` fires immediately (group_wait 0s) and re-notifies often (30m), a
+    // `ticket` waits a little and re-notifies hourly-ish (4h), a `warning` is the loosest (1m / 12h).
+    // In dev every leaf is still `log-sink`; prod swaps leaf receivers (PagerDuty / Slack / email)
+    // without touching this tree structure.
     policies: [
       {
         orgId: 1,
@@ -33,6 +38,26 @@ export function contactPointsJson(webhookUrl: string): string {
         group_wait: "10s",
         group_interval: "30s",
         repeat_interval: "1h",
+        routes: [
+          {
+            receiver: "log-sink",
+            object_matchers: [["severity", "=", "page"]],
+            group_wait: "0s",
+            repeat_interval: "30m",
+          },
+          {
+            receiver: "log-sink",
+            object_matchers: [["severity", "=", "ticket"]],
+            group_wait: "30s",
+            repeat_interval: "4h",
+          },
+          {
+            receiver: "log-sink",
+            object_matchers: [["severity", "=", "warning"]],
+            group_wait: "1m",
+            repeat_interval: "12h",
+          },
+        ],
       },
     ],
   };
