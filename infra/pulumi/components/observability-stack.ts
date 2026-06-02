@@ -205,29 +205,29 @@ export class ObservabilityStack extends pulumi.ComponentResource {
     // Secret exposing the same creds under the GRAFANA_USER / GRAFANA_PASSWORD keys the Job's
     // `envFrom` expects. TODO(prod): source these from the same Secret once Grafana's admin
     // password moves off the hardcoded dev default (see grafana-backend.ts TODO).
-    this.deployAnnotation = args.gitSha
-      ? (() => {
-          const annotationSecret = new k8s.core.v1.Secret(
-            `${name}-grafana-annotation`,
-            {
-              metadata: { name: "grafana-annotation", namespace },
-              stringData: { GRAFANA_USER: "admin", GRAFANA_PASSWORD: "admin" },
-            },
-            { parent: this, dependsOn: this.grafana },
-          );
-          return new DeployAnnotation(
-            `${name}-deploy-annotation`,
-            {
-              namespace,
-              grafanaUrl: GRAFANA_URL,
-              env: args.env,
-              gitSha: args.gitSha,
-              adminSecretName: annotationSecret.metadata.name,
-            },
-            { parent: this, dependsOn: this.grafana },
-          );
-        })()
-      : undefined;
+    let deployAnnotation: DeployAnnotation | undefined;
+    if (args.gitSha) {
+      const annotationSecret = new k8s.core.v1.Secret(
+        `${name}-grafana-annotation`,
+        {
+          metadata: { name: "grafana-annotation", namespace },
+          stringData: { GRAFANA_USER: "admin", GRAFANA_PASSWORD: "admin" },
+        },
+        { parent: this, dependsOn: this.grafana },
+      );
+      deployAnnotation = new DeployAnnotation(
+        `${name}-deploy-annotation`,
+        {
+          namespace,
+          grafanaUrl: GRAFANA_URL,
+          env: args.env,
+          gitSha: args.gitSha,
+          adminSecretName: annotationSecret.metadata.name,
+        },
+        { parent: this, dependsOn: this.grafana },
+      );
+    }
+    this.deployAnnotation = deployAnnotation;
 
     // Always-on blackbox synthetics (ADR-0011 Tier 3) — ungated, unlike the dev-only loadgen/alert
     // sink: it probes the services from outside in both dev and prod. The Prometheus `blackbox`

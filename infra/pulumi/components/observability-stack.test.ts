@@ -101,6 +101,15 @@ describe("ObservabilityStack", () => {
     expect(shaStack.deployAnnotation).toBeDefined();
     const meta = await promiseOf(shaStack.deployAnnotation!.job.metadata);
     expect(meta.name).toBe("deploy-annotation-abc1234");
+
+    // The Job pulls its Grafana basic-auth creds from a sibling `grafana-annotation` Secret via
+    // envFrom. That Secret is a constructor-local (not a named field), and the Job carries
+    // `pulumi.com/skipAwait`, so a renamed/broken Secret would fail silently at deploy time —
+    // lock in the wiring by asserting the secretRef name the envFrom resolves to.
+    const jobSpec = await promiseOf(shaStack.deployAnnotation!.job.spec);
+    expect(
+      jobSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name,
+    ).toBe("grafana-annotation");
   });
 
   it("omits the deploy annotation when no SHA is supplied", () => {
