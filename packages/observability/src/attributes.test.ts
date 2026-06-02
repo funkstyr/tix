@@ -7,12 +7,16 @@ describe("SpanAttr", () => {
     expect(SpanAttr.orderId).toBe("tix.order.id");
     expect(SpanAttr.ticketId).toBe("tix.ticket.id");
     expect(SpanAttr.buyerId).toBe("tix.buyer.id");
+    expect(SpanAttr.sellerId).toBe("tix.seller.id");
+    expect(SpanAttr.paymentId).toBe("tix.payment.id");
+    expect(SpanAttr.reservationStatus).toBe("tix.reservation.status");
     expect(SpanAttr.quantity).toBe("tix.order.quantity");
     expect(SpanAttr.valueCents).toBe("tix.order.value_cents");
     expect(SpanAttr.messageId).toBe("messaging.message.id");
     expect(SpanAttr.destination).toBe("messaging.destination.name");
     expect(SpanAttr.httpMethod).toBe("http.request.method");
     expect(SpanAttr.httpRoute).toBe("http.route");
+    expect(SpanAttr.httpStatus).toBe("http.response.status_code");
   });
 });
 
@@ -24,9 +28,18 @@ describe("domainAttributes", () => {
   });
 
   it("keeps falsy-but-defined values (0, false, empty string)", () => {
-    expect(domainAttributes({ [SpanAttr.quantity]: 0, [SpanAttr.valueCents]: 0 })).toEqual({
+    expect(
+      domainAttributes({
+        [SpanAttr.quantity]: 0,
+        [SpanAttr.valueCents]: 0,
+        [SpanAttr.reservationStatus]: "",
+        "tix.test.flag": false,
+      }),
+    ).toEqual({
       [SpanAttr.quantity]: 0,
       [SpanAttr.valueCents]: 0,
+      [SpanAttr.reservationStatus]: "",
+      "tix.test.flag": false,
     });
   });
 });
