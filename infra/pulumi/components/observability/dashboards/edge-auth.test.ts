@@ -15,9 +15,17 @@ describe("edgeAuthDashboardJson", () => {
     expect(dashboard.tags).toContain("red");
   });
 
-  it("renders six RED panels (three per service)", () => {
+  it("renders six RED panels (three per service) plus two drill-to-trace panels", () => {
     const dashboard = JSON.parse(edgeAuthDashboardJson());
-    expect(dashboard.panels).toHaveLength(6);
+    expect(dashboard.panels).toHaveLength(8);
+  });
+
+  it("adds an exemplar drill-to-trace latency panel per service (span-derived series)", () => {
+    const json = edgeAuthDashboardJson();
+    expect(json).toContain("duration_milliseconds_bucket");
+    expect(json).toContain('service_name=\\"gateway\\"');
+    expect(json).toContain('service_name=\\"auth\\"');
+    expect(json).toContain('"exemplar": true');
   });
 
   it("targets the hand-rolled RED series for gateway and auth", () => {

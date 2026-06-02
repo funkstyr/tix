@@ -1,5 +1,6 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 
+import { exemplarLatencyPanel } from "./_exemplar.ts";
 import { redRow } from "./red-row.ts";
 
 // Edge + auth RED board (ADR-0010), Services folder. The gateway and auth services emit
@@ -24,6 +25,15 @@ export function edgeAuthDashboardJson(): string {
   for (const panel of redRow("auth", { y: 9 })) {
     dashboard = dashboard.withPanel(panel);
   }
+
+  // Drill-to-trace latency beside the hand-rolled RED: span-derived series carry exemplars,
+  // so a latency spike here jumps to the slow trace in Tempo (ADR-0011 Tier 2). One per service.
+  // y:18 sits directly below the two 9-high RED rows (gateway 0-9, auth 9-18).
+  dashboard = dashboard
+    .withPanel(
+      exemplarLatencyPanel("Gateway latency → trace", "gateway", { h: 8, w: 12, x: 0, y: 18 }),
+    )
+    .withPanel(exemplarLatencyPanel("Auth latency → trace", "auth", { h: 8, w: 12, x: 12, y: 18 }));
 
   return JSON.stringify(dashboard.build(), null, 2);
 }
