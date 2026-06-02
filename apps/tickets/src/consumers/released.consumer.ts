@@ -8,6 +8,7 @@ import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
+import { dbSpan } from "@tix/observability/db-span";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -50,47 +51,51 @@ export async function startTicketsReleasedConsumer(
 
           // The transaction returns a discriminated outcome so the diagnostics that used to
           // log inside the (non-Effect) island now log through Effect — span-correlated.
-          const result = yield* withTimeout(
-            "tickets.db.restore_inventory",
-            Effect.tryPromise(() =>
-              db.db.transaction((tx) =>
-                withInboxDedupe(
-                  tx,
-                  ticketsInbox,
-                  { eventId, subject },
-                  async (): Promise<RestoreOutcome> => {
-                    // Serial retry by design: each attempt depends on the previous attempt's
-                    // version having lost the race. If we exhaust the budget we throw, which
-                    // rolls back the inbox row inside this transaction and lets NATS redeliver
-                    // — preferring a redelivery over silently losing the quantity restoration.
-                    for (let attempt = 0; attempt < RESTORE_ATTEMPT_LIMIT; attempt++) {
-                      // eslint-disable-next-line no-await-in-loop -- serial retry by design
-                      const [row] = await tx
-                        .select()
-                        .from(tickets)
-                        .where(eq(tickets.id, payload.ticketId));
-                      if (!row) {
-                        // Unknown ticketId is a no-op (inbox commits, no redelivery): a Ticket
-                        // that never existed isn't coming back, and we don't want to wedge the
-                        // consumer on a poison message.
-                        return { kind: "unknown_ticket" };
+          const result = yield* dbSpan(
+            "consume_order_reservation_released",
+            "tickets.inbox",
+            withTimeout(
+              "tickets.db.restore_inventory",
+              Effect.tryPromise(() =>
+                db.db.transaction((tx) =>
+                  withInboxDedupe(
+                    tx,
+                    ticketsInbox,
+                    { eventId, subject },
+                    async (): Promise<RestoreOutcome> => {
+                      // Serial retry by design: each attempt depends on the previous attempt's
+                      // version having lost the race. If we exhaust the budget we throw, which
+                      // rolls back the inbox row inside this transaction and lets NATS redeliver
+                      // — preferring a redelivery over silently losing the quantity restoration.
+                      for (let attempt = 0; attempt < RESTORE_ATTEMPT_LIMIT; attempt++) {
+                        // eslint-disable-next-line no-await-in-loop -- serial retry by design
+                        const [row] = await tx
+                          .select()
+                          .from(tickets)
+                          .where(eq(tickets.id, payload.ticketId));
+                        if (!row) {
+                          // Unknown ticketId is a no-op (inbox commits, no redelivery): a Ticket
+                          // that never existed isn't coming back, and we don't want to wedge the
+                          // consumer on a poison message.
+                          return { kind: "unknown_ticket" };
+                        }
+
+                        // eslint-disable-next-line no-await-in-loop -- serial retry by design
+                        const updated = await updateVersioned(
+                          tx,
+                          tickets,
+                          { id: row.id, version: row.version },
+                          { quantityAvailable: row.quantityAvailable + payload.quantity },
+                        );
+
+                        if (updated.rowsAffected === 1) return { kind: "restored" };
                       }
 
-                      // eslint-disable-next-line no-await-in-loop -- serial retry by design
-                      const updated = await updateVersioned(
-                        tx,
-                        tickets,
-                        { id: row.id, version: row.version },
-                        { quantityAvailable: row.quantityAvailable + payload.quantity },
+                      throw new Error(
+                        `ticket ${payload.ticketId} version conflict after ${RESTORE_ATTEMPT_LIMIT} attempts; rolling back for redelivery`,
                       );
-
-                      if (updated.rowsAffected === 1) return { kind: "restored" };
-                    }
-
-                    throw new Error(
-                      `ticket ${payload.ticketId} version conflict after ${RESTORE_ATTEMPT_LIMIT} attempts; rolling back for redelivery`,
-                    );
-                  },
+                    },
+                  ),
                 ),
               ),
             ),
