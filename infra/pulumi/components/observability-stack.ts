@@ -195,7 +195,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       childOpts,
     );
 
-    const backends = [this.tempo, this.loki, this.prometheus];
+    const backends = [this.tempo, this.loki, this.prometheus, this.pyroscope];
 
     // Dev-only webhook log sink + alert provisioning (ADR-0010). Constructed only when
     // alerting is on; prod omits both. The sink is a plain echo Deployment, so it depends on
