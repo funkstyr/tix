@@ -17,17 +17,23 @@ export type StripeFailureReason =
 // `instanceof Stripe.errors.*` checks, which break when the SDK reorganizes its class tree.
 const BY_TYPE: Record<string, StripeFailureReason> = {
   StripeCardError: "card_declined",
+  StripeInvalidRequestError: "api_error",
   StripeRateLimitError: "rate_limited",
   StripeAPIError: "api_error",
   StripeAuthenticationError: "authentication_error",
   StripeIdempotencyError: "idempotency_error",
   StripeConnectionError: "network",
+  // StripePermissionError (wrong API key scope) and StripeSignatureVerificationError
+  // (webhook-only, never thrown on the charge path) deliberately fall through to "unknown".
 };
 
 export function classifyStripeError(error: unknown): StripeFailureReason {
   if (typeof error === "object" && error !== null && "type" in error) {
     const type = (error as { type: unknown }).type;
-    if (typeof type === "string" && type in BY_TYPE) return BY_TYPE[type] as StripeFailureReason;
+    if (typeof type === "string") {
+      const reason = BY_TYPE[type];
+      if (reason !== undefined) return reason;
+    }
   }
 
   return "unknown";

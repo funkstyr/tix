@@ -18,6 +18,10 @@ describe("classifyStripeError", () => {
     expect(classifyStripeError({ type: "StripeAPIError" })).toBe("api_error");
   });
 
+  it("maps invalid-request errors (bad param / bad payment_method ID) to api_error", () => {
+    expect(classifyStripeError({ type: "StripeInvalidRequestError" })).toBe("api_error");
+  });
+
   it("maps authentication errors", () => {
     expect(classifyStripeError({ type: "StripeAuthenticationError" })).toBe("authentication_error");
   });
