@@ -64,7 +64,7 @@ function withDownstreamStub<K extends keyof DownstreamClients>(
   const runtime = createGatewayTestRuntime({ clients });
   const router = createGatewayRouter(runtime);
 
-  const context: GatewayRequestContext = { cookieHeader, otelParent: ROOT_CONTEXT };
+  const context: GatewayRequestContext = { cookieHeader, otelParent: ROOT_CONTEXT, method: "POST" };
 
   return createRouterClient(router, { context });
 }
