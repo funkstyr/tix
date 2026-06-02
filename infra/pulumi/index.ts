@@ -97,6 +97,13 @@ const metricsRetention = config.get("metricsRetention") ?? (stack === "prod" ? "
 const tracesRetention = config.get("tracesRetention") ?? (stack === "prod" ? "2160h" : "360h");
 const logsRetention = config.get("logsRetention") ?? (stack === "prod" ? "2160h" : "360h");
 
+// CA bundle (PEM) that signs the apiserver serving cert, for the kubelet/cAdvisor scrape (ADR-0012
+// Tier 2). No default: dev/kind has no trustable serving cert so the scrape uses insecure_skip_verify;
+// prod sets this (`pulumi config set tix:kubeletCaBundle "$(cat ca.crt)"`) so the scrape verifies.
+// TODO(prod): supply the cluster CA bundle when a real cluster is wired — until then prod renders
+// insecure, consistent with the other prod stubs (garageS3AccessKey, grafana anonymousAccess).
+const kubeletCaBundle = config.get("kubeletCaBundle");
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -133,6 +140,7 @@ const observability = new ObservabilityStack(
     metricsRetention,
     tracesRetention,
     logsRetention,
+    ...(kubeletCaBundle ? { kubeletCaBundle } : {}),
   },
   { dependsOn: namespace },
 );
@@ -583,6 +591,9 @@ export const garageService = observability.garage.service.metadata.name;
 export const postgresExporterService = postgresExporter.service.metadata.name;
 export const redisExporterService = redisExporter.service.metadata.name;
 export const natsExporterService = natsExporter.service.metadata.name;
+// Cluster USE (ADR-0012 Tier 2): node-exporter (DaemonSet) + kube-state-metrics scrape targets.
+export const nodeExporterService = observability.nodeExporter.service.metadata.name;
+export const kubeStateMetricsService = observability.kubeStateMetrics.service.metadata.name;
 // Present only when `alertingEnabled` (dev); undefined elsewhere, so prod gets no such output.
 export const alertLogSinkService = observability.logSink?.service.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;

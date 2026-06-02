@@ -5,7 +5,9 @@ import { BlackboxExporter } from "./observability/blackbox-exporter.ts";
 import { GarageBackend } from "./observability/garage-backend.ts";
 import { GarageBuckets, type GarageBucketName } from "./observability/garage-buckets.ts";
 import { GrafanaBackend } from "./observability/grafana-backend.ts";
+import { KubeStateMetrics } from "./observability/kube-state-metrics.ts";
 import { LokiBackend } from "./observability/loki-backend.ts";
+import { NodeExporter } from "./observability/node-exporter.ts";
 import {
   OtelCollector,
   type OtlpGrpcEndpoint,
@@ -57,6 +59,9 @@ export type ObservabilityStackArgs = {
   metricsRetention: string;
   tracesRetention: string;
   logsRetention: string;
+  // PEM contents of the CA that signs the apiserver serving cert, for the kubelet/cAdvisor scrape
+  // (ADR-0012 Tier 2). dev/kind omits it (insecure_skip_verify); prod supplies it so TLS verifies.
+  kubeletCaBundle?: string;
 };
 
 // Stands up the discrete in-cluster OpenTelemetry stack (ADR-0009): Garage
@@ -78,6 +83,9 @@ export class ObservabilityStack extends pulumi.ComponentResource {
   readonly collector: OtelCollector;
   // Always on (dev AND prod) — synthetics are valuable everywhere, unlike the dev-only loadgen.
   readonly blackbox: BlackboxExporter;
+  // Cluster USE (ADR-0012 Tier 2), always on: host layer (node-exporter) + object layer (KSM).
+  readonly nodeExporter: NodeExporter;
+  readonly kubeStateMetrics: KubeStateMetrics;
   // Present only when `alertingEnabled` (dev); undefined otherwise.
   readonly logSink: AlertLogSink | undefined;
 
@@ -141,10 +149,16 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       { parent: this, dependsOn: this.buckets },
     );
 
-    // Prometheus uses a local TSDB, so it depends on nothing but the namespace.
+    // Prometheus uses a local TSDB, so it depends on nothing but the namespace. It now also owns
+    // the stack's first cluster RBAC (SA + ClusterRole) and the kubelet TLS toggle (ADR-0012 Tier 2).
     this.prometheus = new PrometheusBackend(
       `${name}-prometheus`,
-      { namespace, storage: "1Gi", retention: args.metricsRetention },
+      {
+        namespace,
+        storage: "1Gi",
+        retention: args.metricsRetention,
+        ...(args.kubeletCaBundle ? { kubeletCaBundle: args.kubeletCaBundle } : {}),
+      },
       childOpts,
     );
 
@@ -175,6 +189,17 @@ export class ObservabilityStack extends pulumi.ComponentResource {
     // scrape job (deterministic probe-target constants in prometheus-backend.ts) drives it.
     this.blackbox = new BlackboxExporter(`${name}-blackbox`, { namespace }, childOpts);
 
+    // Cluster USE (ADR-0012 Tier 2), always on like blackbox: node-exporter (host CPU/mem/disk/net)
+    // and kube-state-metrics (pod/PVC/restart/OOMKill state + the stack's first cluster RBAC).
+    // Prometheus discovers both via the SA-authenticated service discovery wired above.
+    this.nodeExporter = new NodeExporter(`${name}-node-exporter`, { namespace }, childOpts);
+
+    this.kubeStateMetrics = new KubeStateMetrics(
+      `${name}-kube-state-metrics`,
+      { namespace },
+      childOpts,
+    );
+
     this.collector = new OtelCollector(
       `${name}-collector`,
       {
@@ -196,6 +221,8 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       grafana: this.grafana,
       collector: this.collector,
       blackbox: this.blackbox,
+      nodeExporter: this.nodeExporter,
+      kubeStateMetrics: this.kubeStateMetrics,
       logSink: this.logSink,
     });
   }

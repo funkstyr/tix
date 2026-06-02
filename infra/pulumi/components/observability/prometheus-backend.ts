@@ -1,6 +1,7 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import { createPrometheusRbac } from "./prometheus-rbac.ts";
 import {
   coverageSlos,
   errorBudget,
@@ -22,6 +23,11 @@ const PROMETHEUS_IMAGE = "prom/prometheus:v3.12.0";
 
 const HTTP_PORT = 9090;
 
+// Where the prod kubelet CA bundle is mounted when `kubeletCaBundle` is set. The kubelet/cAdvisor
+// scrape verifies the apiserver-proxy TLS against it; dev (no bundle) uses insecure_skip_verify.
+const KUBELET_CA_DIR = "/etc/prometheus/kubelet";
+const KUBELET_CA_FILE = `${KUBELET_CA_DIR}/ca.crt`;
+
 export type PrometheusBackendArgs = {
   namespace: pulumi.Input<string>;
   storage: string;
@@ -29,6 +35,11 @@ export type PrometheusBackendArgs = {
   // without it Prometheus keeps samples until the PVC fills. Parameterized
   // dev-small / prod-larger so a dev box isn't sized for prod's history.
   retention: string;
+  // PEM contents of the CA that signs the apiserver/kubelet serving cert (ADR-0012 Tier 2). When
+  // set (prod), the kubelet/cAdvisor scrape verifies TLS against it; when omitted (dev/kind, whose
+  // serving cert isn't in any trust store), the scrape uses insecure_skip_verify. Same gating shape
+  // as traceSamplingPercent.
+  kubeletCaBundle?: string;
 };
 
 // Prometheus metrics backend. The gateway collector pushes OTLP metrics to
@@ -39,6 +50,9 @@ export class PrometheusBackend extends pulumi.ComponentResource {
   readonly config: k8s.core.v1.ConfigMap;
   readonly statefulSet: k8s.apps.v1.StatefulSet;
   readonly service: k8s.core.v1.Service;
+  readonly serviceAccount: k8s.core.v1.ServiceAccount;
+  // Present only when `kubeletCaBundle` is set (prod); undefined in dev (insecure kubelet TLS).
+  readonly kubeletCa: k8s.core.v1.ConfigMap | undefined;
 
   constructor(name: string, args: PrometheusBackendArgs, opts?: pulumi.ComponentResourceOptions) {
     super("tix:infra:PrometheusBackend", name, args, opts);
@@ -51,6 +65,24 @@ export class PrometheusBackend extends pulumi.ComponentResource {
       "app.kubernetes.io/component": "observability",
     };
 
+    // The stack's first cluster RBAC (ADR-0012 Tier 2): SA + ClusterRole (SD list/watch +
+    // nodes/proxy) so the cluster-USE scrape jobs can discover targets and reach cAdvisor.
+    const rbac = createPrometheusRbac(name, namespace, childOpts);
+    this.serviceAccount = rbac.serviceAccount;
+
+    // Prod kubelet TLS: mount the CA bundle so the cAdvisor scrape verifies. Dev omits it and the
+    // rendered config falls back to insecure_skip_verify.
+    this.kubeletCa = args.kubeletCaBundle
+      ? new k8s.core.v1.ConfigMap(
+          `${name}-kubelet-ca`,
+          {
+            metadata: { name: "prometheus-kubelet-ca", namespace },
+            data: { "ca.crt": args.kubeletCaBundle },
+          },
+          childOpts,
+        )
+      : undefined;
+
     this.config = new k8s.core.v1.ConfigMap(
       `${name}-config`,
       {
@@ -59,7 +91,7 @@ export class PrometheusBackend extends pulumi.ComponentResource {
         // `rule_files` in prometheus.yml. The recording rules pre-aggregate the RED series so
         // the multi-window burn-rate alerts read a single recorded series (ADR-0010).
         data: {
-          "prometheus.yml": renderPrometheusConfig(),
+          "prometheus.yml": renderPrometheusConfig(this.kubeletCa ? KUBELET_CA_FILE : undefined),
           "rules.yml": renderRecordingRules(),
         },
       },
@@ -77,6 +109,9 @@ export class PrometheusBackend extends pulumi.ComponentResource {
           template: {
             metadata: { labels },
             spec: {
+              // SA token automounts at /var/run/secrets/kubernetes.io/serviceaccount — what the
+              // kubernetes_sd_configs and the bearer-token kubelet scrape authenticate with.
+              serviceAccountName: this.serviceAccount.metadata.name,
               terminationGracePeriodSeconds: 30,
               containers: [
                 {
@@ -98,6 +133,9 @@ export class PrometheusBackend extends pulumi.ComponentResource {
                   volumeMounts: [
                     { name: "config", mountPath: "/etc/prometheus", readOnly: true },
                     { name: "data", mountPath: "/prometheus" },
+                    ...(this.kubeletCa
+                      ? [{ name: "kubelet-ca", mountPath: KUBELET_CA_DIR, readOnly: true }]
+                      : []),
                   ],
                   readinessProbe: {
                     httpGet: { path: "/-/ready", port: HTTP_PORT },
@@ -106,7 +144,12 @@ export class PrometheusBackend extends pulumi.ComponentResource {
                   },
                 },
               ],
-              volumes: [{ name: "config", configMap: { name: this.config.metadata.name } }],
+              volumes: [
+                { name: "config", configMap: { name: this.config.metadata.name } },
+                ...(this.kubeletCa
+                  ? [{ name: "kubelet-ca", configMap: { name: this.kubeletCa.metadata.name } }]
+                  : []),
+              ],
             },
           },
           volumeClaimTemplates: [
@@ -139,6 +182,8 @@ export class PrometheusBackend extends pulumi.ComponentResource {
       config: this.config,
       statefulSet: this.statefulSet,
       service: this.service,
+      serviceAccount: this.serviceAccount,
+      kubeletCa: this.kubeletCa,
     });
   }
 }
@@ -170,7 +215,7 @@ const PROBE_TARGETS = [
 // lifts the OTel service identity onto the resulting series labels.
 // Exported (not module-private) so unit tests can assert on the rendered config string
 // without standing up the component; the ConfigMap consumes the same function.
-export function renderPrometheusConfig(): string {
+export function renderPrometheusConfig(kubeletCaBundlePath?: string): string {
   const probeTargets = PROBE_TARGETS.map((url) => `          - ${url}`).join("\n");
 
   return `# Generated by tix:infra:PrometheusBackend (ADR-0009; LGTM self-scrape ADR-0010).
@@ -243,7 +288,70 @@ ${probeTargets}
         target_label: instance
       - target_label: __address__
         replacement: blackbox-exporter:9115
+${clusterUseScrapeConfigs(kubeletCaBundlePath)}`;
+}
+
+// Cluster USE scrape jobs (ADR-0012 Tier 2). These three use in-cluster service discovery, which
+// only works because the Prometheus pod now runs as a ServiceAccount (prometheus-rbac.ts): the SD
+// client reads the projected token + the in-cluster API host.
+//
+//   - node-exporter: endpoints-role SD scoped to the node-exporter headless Service; the `node`
+//     label comes from each endpoint's node name.
+//   - kube-state-metrics: a single Deployment behind a ClusterIP Service → a plain static target.
+//   - kubelet-cadvisor: node-role SD, but the scrape is routed THROUGH the apiserver proxy
+//     (__address__ → kubernetes.default.svc:443, __metrics_path__ → the node proxy path) so it
+//     needs only nodes/proxy and no node-network reachability. metric_relabel_configs keeps only
+//     namespace="tix" — the cardinality gate that stops the prod 90d TSDB paying for every
+//     container's series across kube-system/ingress-nginx/the node's system slices.
+function clusterUseScrapeConfigs(kubeletCaBundlePath?: string): string {
+  return `  - job_name: node-exporter
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [tix]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        regex: node-exporter
+        action: keep
+      - source_labels: [__meta_kubernetes_endpoint_node_name]
+        target_label: node
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets: ["kube-state-metrics:8080"]
+  - job_name: kubelet-cadvisor
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    tls_config:
+${kubeletTlsConfig(kubeletCaBundlePath)}
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      # Route through the apiserver proxy: portable across kind and prod, needs only nodes/proxy.
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/\${1}/proxy/metrics/cadvisor
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+    metric_relabel_configs:
+      # Cardinality gate: keep only the tix workload namespace's per-container series.
+      - source_labels: [namespace]
+        regex: tix
+        action: keep
 `;
+}
+
+// kubelet/cAdvisor TLS toggle (ADR-0012 Tier 2). dev (no CA): kind's apiserver/kubelet serving cert
+// isn't in any trust store, so verification can't succeed — skip it. prod: verify against the
+// mounted CA bundle. Same gating shape as traceSamplingPercent.
+function kubeletTlsConfig(caBundlePath?: string): string {
+  if (!caBundlePath) {
+    return "      insecure_skip_verify: true";
+  }
+  return `      ca_file: ${caBundlePath}\n      insecure_skip_verify: false`;
 }
 
 // Recording rules (ADR-0010). Pre-aggregate the hand-rolled RED series the gateway and auth
@@ -338,6 +446,26 @@ function businessLevelRules(): string {
 // zeros) so a 99% SLO renders `/ 0.01`, not the float-noise `/ 0.010000000000000009`. Every SLO —
 // gateway/auth availability, the coverage SLOs, and the latency objectives — records under one
 // `service` label so the slo-budget board legends them all by `{{service}}`.
+// Cluster USE rollups (ADR-0012 Tier 2). The cluster-use board + alerts read THESE recorded series,
+// never the raw per-container cAdvisor metrics — the `by (pod)` / `by (node)` aggregation keeps
+// recorded cardinality at pod/node scope so the prod 90d TSDB stays bounded. cAdvisor series are
+// already namespace-scoped to `tix` at scrape time (metric_relabel_configs); node_* series come from
+// node-exporter and are node-scoped (bounded by node count).
+function clusterUseRules(): string {
+  return `      - record: namespace:container_cpu_usage:rate5m
+        expr: sum(rate(container_cpu_usage_seconds_total{namespace="tix",container!=""}[5m])) by (pod)
+      - record: namespace:container_memory_working_set:bytes
+        expr: sum(container_memory_working_set_bytes{namespace="tix",container!=""}) by (pod)
+      - record: namespace:container_cpu_throttled:rate5m
+        expr: sum(rate(container_cpu_cfs_throttled_periods_total{namespace="tix"}[5m])) by (pod)
+      - record: node:cpu_utilization:ratio
+        expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (node)
+      - record: node:memory_utilization:ratio
+        expr: 1 - (sum(node_memory_MemAvailable_bytes) by (node) / sum(node_memory_MemTotal_bytes) by (node))
+      - record: node:filesystem_utilization:ratio
+        expr: 1 - (sum(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}) by (node) / sum(node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) by (node))`;
+}
+
 function errorBudgetConsumedRule(slo: Slo): string {
   const budget = String(Number(errorBudget(slo).toFixed(3)));
   const label = isRedAvailability(slo) ? slo.name : sloId(slo);
@@ -396,5 +524,9 @@ ${businessLevelRules()}
     interval: 30s
     rules:
 ${errorBudgets}
+  - name: tix_cluster_use
+    interval: 30s
+    rules:
+${clusterUseRules()}
 `;
 }

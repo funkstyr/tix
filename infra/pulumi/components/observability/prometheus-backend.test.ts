@@ -6,9 +6,19 @@ import {
   renderPrometheusConfig as render,
   renderRecordingRules,
 } from "./prometheus-backend.ts";
+import { PROMETHEUS_CLUSTER_ROLE_RULES } from "./prometheus-rbac.ts";
 
 function build(): PrometheusBackend {
   return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi", retention: "15d" });
+}
+
+function buildWithCa(): PrometheusBackend {
+  return new PrometheusBackend("test-prod", {
+    namespace: "tix",
+    storage: "1Gi",
+    retention: "90d",
+    kubeletCaBundle: "-----BEGIN CERTIFICATE-----\nMIIfake\n-----END CERTIFICATE-----",
+  });
 }
 
 describe("PrometheusBackend", () => {
@@ -59,6 +69,54 @@ describe("PrometheusBackend", () => {
     expect(data?.["rules.yml"]).toBeDefined();
     expect(data?.["prometheus.yml"] ?? "").toContain("rule_files:");
     expect(data?.["prometheus.yml"] ?? "").toContain("/etc/prometheus/rules.yml");
+  });
+
+  it("runs under the prometheus ServiceAccount so service discovery can authenticate", async () => {
+    const prometheus = build();
+
+    const spec = await promiseOf(prometheus.statefulSet.spec);
+    expect(spec.template.spec?.serviceAccountName).toBe("prometheus");
+  });
+
+  it("omits the kubelet CA mount in dev (no bundle)", async () => {
+    const prometheus = build();
+
+    expect(prometheus.kubeletCa).toBeUndefined();
+    const spec = await promiseOf(prometheus.statefulSet.spec);
+    const mounts = (spec.template.spec?.containers[0]?.volumeMounts ?? []).map((m) => m.name);
+    expect(mounts).not.toContain("kubelet-ca");
+  });
+
+  it("mounts the kubelet CA bundle when supplied (prod)", async () => {
+    const prometheus = buildWithCa();
+
+    expect(prometheus.kubeletCa).toBeDefined();
+    const spec = await promiseOf(prometheus.statefulSet.spec);
+    const mounts = (spec.template.spec?.containers[0]?.volumeMounts ?? []).map((m) => m.name);
+    expect(mounts).toContain("kubelet-ca");
+  });
+});
+
+describe("PrometheusBackend RBAC (least privilege)", () => {
+  it("grants nodes/proxy (get) for cAdvisor and list/watch for service discovery", () => {
+    expect(PROMETHEUS_CLUSTER_ROLE_RULES).toEqual([
+      {
+        apiGroups: [""],
+        resources: ["nodes", "endpoints", "services", "pods"],
+        verbs: ["list", "watch"],
+      },
+      { apiGroups: [""], resources: ["nodes/proxy"], verbs: ["get"] },
+    ]);
+  });
+
+  it("never grants nodes/metrics, configmaps, secrets, or a write verb", () => {
+    const resources = PROMETHEUS_CLUSTER_ROLE_RULES.flatMap((r) => r.resources);
+    expect(resources).not.toContain("nodes/metrics");
+    expect(resources).not.toContain("configmaps");
+    expect(resources).not.toContain("secrets");
+
+    const verbs = new Set(PROMETHEUS_CLUSTER_ROLE_RULES.flatMap((r) => r.verbs));
+    expect([...verbs].sort()).toEqual(["get", "list", "watch"]);
   });
 });
 
@@ -148,6 +206,15 @@ describe("prometheus recording rules", () => {
     expect(rules).toContain("record: inventory:available:min");
   });
 
+  it("rolls up cluster-USE series to pod/node scope so the prod TSDB stays bounded", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("name: tix_cluster_use");
+    expect(rules).toContain("record: namespace:container_cpu_usage:rate5m");
+    expect(rules).toContain("record: node:memory_utilization:ratio");
+    // The cAdvisor rollups read the already-namespace-scoped tix series, by pod.
+    expect(rules).toContain('container_cpu_usage_seconds_total{namespace="tix",container!=""}');
+  });
+
   it("extends the error-budget burndown to the coverage + latency SLOs", () => {
     const rules = renderRecordingRules();
     // checkout budget 0.02, payment 0.01; latency budget 0.05. All record under `service` so the
@@ -200,5 +267,30 @@ describe("prometheus scrape_configs", () => {
     // The `nats` job points at the exporter, not NATS :8222 (which is JSON, not Prometheus).
     expect(config).toContain("job_name: nats");
     expect(config).toContain("nats-exporter:7777");
+  });
+
+  it("discovers the cluster-USE targets and proxies cAdvisor through the apiserver", () => {
+    const config = render();
+    expect(config).toContain("job_name: node-exporter");
+    expect(config).toContain("job_name: kube-state-metrics");
+    expect(config).toContain("kube-state-metrics:8080");
+    expect(config).toContain("job_name: kubelet-cadvisor");
+    expect(config).toContain("replacement: kubernetes.default.svc:443");
+    expect(config).toContain("/api/v1/nodes/${1}/proxy/metrics/cadvisor");
+  });
+
+  it("scopes cAdvisor series to the tix namespace (cardinality gate)", () => {
+    const config = render();
+    expect(config).toContain("metric_relabel_configs");
+    expect(config).toContain("source_labels: [namespace]");
+    expect(config).toContain("regex: tix");
+  });
+
+  it("skips kubelet TLS verification in dev and verifies against the CA in prod", () => {
+    expect(render()).toContain("insecure_skip_verify: true");
+
+    const prod = render("/etc/prometheus/kubelet/ca.crt");
+    expect(prod).toContain("ca_file: /etc/prometheus/kubelet/ca.crt");
+    expect(prod).toContain("insecure_skip_verify: false");
   });
 });
