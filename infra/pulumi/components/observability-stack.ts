@@ -1,5 +1,6 @@
 import * as pulumi from "@pulumi/pulumi";
 
+import { AlertLogSink } from "./observability/alert-log-sink.ts";
 import { GarageBackend } from "./observability/garage-backend.ts";
 import { GarageBuckets, type GarageBucketName } from "./observability/garage-buckets.ts";
 import { GrafanaBackend } from "./observability/grafana-backend.ts";
@@ -31,6 +32,10 @@ const TEMPO_BUCKET: GarageBucketName = "tempo";
 const LOKI_BUCKET: GarageBucketName = "loki";
 const S3_KEY_NAME = "tix-observability";
 
+// In-cluster webhook target for Grafana's alert contact point (deterministic Service DNS, like
+// the rest of the stack). Provisioned only when `alertingEnabled` (ADR-0010).
+const ALERT_LOG_SINK_URL = "http://alert-log-sink:8080/";
+
 export type ObservabilityStackArgs = {
   namespace: pulumi.Input<string>;
   // Absolute root URL Grafana serves itself under, e.g. `http://localhost/grafana`.
@@ -39,6 +44,9 @@ export type ObservabilityStackArgs = {
   garageAdminToken: pulumi.Input<string>;
   garageS3AccessKey: pulumi.Input<string>;
   garageS3SecretKey: pulumi.Input<string>;
+  // Provision alert rules + the webhook→log-sink contact point (ADR-0010). Dev-only — off for
+  // prod, so prod gets neither the alerting provisioning nor the log-sink Deployment.
+  alertingEnabled?: boolean;
 };
 
 // Stands up the discrete in-cluster OpenTelemetry stack (ADR-0009): Garage
@@ -58,6 +66,8 @@ export class ObservabilityStack extends pulumi.ComponentResource {
   readonly prometheus: PrometheusBackend;
   readonly grafana: GrafanaBackend;
   readonly collector: OtelCollector;
+  // Present only when `alertingEnabled` (dev); undefined otherwise.
+  readonly logSink: AlertLogSink | undefined;
 
   constructor(name: string, args: ObservabilityStackArgs, opts?: pulumi.ComponentResourceOptions) {
     super("tix:infra:ObservabilityStack", name, args, opts);
@@ -126,6 +136,13 @@ export class ObservabilityStack extends pulumi.ComponentResource {
 
     const backends = [this.tempo, this.loki, this.prometheus];
 
+    // Dev-only webhook log sink + alert provisioning (ADR-0010). Constructed only when
+    // alerting is on; prod omits both. The sink is a plain echo Deployment, so it depends on
+    // nothing but the namespace.
+    this.logSink = args.alertingEnabled
+      ? new AlertLogSink(`${name}-alert-log-sink`, { namespace }, childOpts)
+      : undefined;
+
     this.grafana = new GrafanaBackend(
       `${name}-grafana`,
       {
@@ -134,6 +151,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
         tempoUrl: TEMPO_URL,
         lokiUrl: LOKI_URL,
         prometheusUrl: PROMETHEUS_URL,
+        ...(args.alertingEnabled ? { alerting: { logSinkUrl: ALERT_LOG_SINK_URL } } : {}),
       },
       { parent: this, dependsOn: backends },
     );
@@ -157,6 +175,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       prometheus: this.prometheus,
       grafana: this.grafana,
       collector: this.collector,
+      logSink: this.logSink,
     });
   }
 }

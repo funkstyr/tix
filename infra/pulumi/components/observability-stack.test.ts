@@ -5,7 +5,7 @@ import { promiseOf } from "./pulumi-mocks.ts";
 
 const ACCESS_KEY = "GKa1b2c3d4e5f60718293a4b5c";
 
-function build(): ObservabilityStack {
+function build(args?: { alertingEnabled?: boolean }): ObservabilityStack {
   return new ObservabilityStack("test", {
     namespace: "tix",
     grafanaRootUrl: "http://localhost/grafana",
@@ -13,6 +13,7 @@ function build(): ObservabilityStack {
     garageAdminToken: "admintoken",
     garageS3AccessKey: ACCESS_KEY,
     garageS3SecretKey: "0".repeat(64),
+    ...args,
   });
 }
 
@@ -66,5 +67,25 @@ describe("ObservabilityStack", () => {
 
     const lokiSpec = await promiseOf(stack.loki.deployment.spec);
     expect(lokiSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name).toBe(secretName);
+  });
+
+  it("stands up the log sink and provisions Grafana alerting when alerting is enabled", async () => {
+    const stack = build({ alertingEnabled: true });
+
+    expect(stack.logSink).toBeDefined();
+    const meta = await promiseOf(stack.logSink!.service.metadata);
+    expect(meta.name).toBe("alert-log-sink");
+
+    expect(stack.grafana.alerting).toBeDefined();
+    const data = await promiseOf(stack.grafana.alerting!.data);
+    const contacts = JSON.parse(data?.["contact-points.json"] ?? "{}");
+    expect(contacts.contactPoints[0].receivers[0].settings.url).toBe("http://alert-log-sink:8080/");
+  });
+
+  it("omits the log sink and alerting provisioning by default", () => {
+    const stack = build();
+
+    expect(stack.logSink).toBeUndefined();
+    expect(stack.grafana.alerting).toBeUndefined();
   });
 });

@@ -8,7 +8,10 @@ import { moneyInventoryDashboardJson } from "./dashboards/money-inventory.ts";
 import { platformO11yDashboardJson } from "./dashboards/platform-o11y.ts";
 import { GrafanaBackend, renderDashboardProvider as renderProvider } from "./grafana-backend.ts";
 
-function build(args?: { anonymousAccess?: boolean }): GrafanaBackend {
+function build(args?: {
+  anonymousAccess?: boolean;
+  alerting?: { logSinkUrl: string };
+}): GrafanaBackend {
   return new GrafanaBackend("test", {
     namespace: "tix",
     grafanaRootUrl: "http://localhost/grafana",
@@ -190,6 +193,45 @@ describe("GrafanaBackend", () => {
     expect(pod?.volumes?.length).toBeGreaterThan(0);
     expect(pod?.volumes?.every((v) => v.configMap !== undefined)).toBe(true);
     expect(pod?.volumes?.some((v) => v.persistentVolumeClaim !== undefined)).toBe(false);
+  });
+});
+
+describe("GrafanaBackend alerting provisioning (dev-only)", () => {
+  const ALERTING_PATH = "/etc/grafana/provisioning/alerting";
+
+  it("provisions alert rules + a webhook contact point when alerting is enabled", async () => {
+    const grafana = build({ alerting: { logSinkUrl: "http://alert-log-sink:8080/" } });
+
+    expect(grafana.alerting).toBeDefined();
+
+    const data = await promiseOf(grafana.alerting!.data);
+    expect(JSON.parse(data?.["alert-rules.json"] ?? "{}").apiVersion).toBe(1);
+
+    const contacts = JSON.parse(data?.["contact-points.json"] ?? "{}");
+    expect(contacts.contactPoints[0].receivers[0].settings.url).toBe("http://alert-log-sink:8080/");
+  });
+
+  it("mounts the alerting ConfigMap into the provisioning path", async () => {
+    const grafana = build({ alerting: { logSinkUrl: "http://alert-log-sink:8080/" } });
+
+    const pod = await podSpecOf(grafana);
+    const mount = pod?.containers[0]?.volumeMounts?.find((m) => m.mountPath === ALERTING_PATH);
+    expect(mount).toBeDefined();
+
+    const volume = pod?.volumes?.find((v) => v.name === mount?.name);
+    expect(volume?.configMap?.name).toBe("grafana-alerting");
+  });
+
+  it("omits the alerting ConfigMap and mount when alerting is disabled", async () => {
+    const grafana = build();
+
+    expect(grafana.alerting).toBeUndefined();
+
+    const pod = await podSpecOf(grafana);
+    expect(pod?.containers[0]?.volumeMounts?.some((m) => m.mountPath === ALERTING_PATH)).toBe(
+      false,
+    );
+    expect(pod?.volumes?.some((v) => v.name === "alerting")).toBe(false);
   });
 });
 

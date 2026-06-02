@@ -45,3 +45,20 @@ Both synthesize RED + service-graph metrics. The collector connectors keep all s
   `:3200`, Loki `:3100`, Prometheus self `:9090`, Garage admin `:3903`/metrics), the first
   scrape path in a stack that was OTLP-push-only. `up{job=~...}` is the version-stable
   liveness core; the ingest-rate panels are best-effort against the pinned images.
+- **Alerting + SLOs landed (2026-06).** Recording rules (`prometheus-backend.ts`
+  `renderRecordingRules()` → `rules.yml`, loaded via `rule_files`) pre-aggregate the RED series
+  into `service:request_errors:ratio_rateW` (gateway/auth, 5m/30m/1h/6h), p95, and the saga
+  conversion ratios — **always provisioned**, no flag. Grafana alert rules + a webhook contact
+  point are authored in TypeScript under `components/observability/alerting/`, rendered to JSON,
+  and mounted at `/etc/grafana/provisioning/alerting`: SLO multi-window burn-rate (gateway/auth,
+  99% SLO — fast 1h+5m pages, slow 6h+30m tickets), saga stall, conflict spike,
+  `expiry_duplicate_publish` spike, and backend-down (`up < 1`). Each rule is one `alertRule()`
+  factory shape (Prometheus instant query → threshold expression). The contact point is a
+  webhook → an in-cluster `mendhak/http-https-echo` **log sink** (`AlertLogSink`), so a firing
+  alert's payload shows in `kubectl logs deploy/alert-log-sink`. The Grafana provisioning + log
+  sink are gated by a dedicated `alertingEnabled` flag (on in `dev`, unset in `prod`) — distinct
+  from `loadgenEnabled`, though dev runs both since the rules only trip against the generator's
+  induced load. The alerting-provisioning path is **not** exercised by the kind smoke
+  (`alertingEnabled` is unset there), so end-to-end "a failure trips an alert and the payload
+  lands in the sink's logs" is a manual verify; components are unit-tested on the rendered
+  manifests.

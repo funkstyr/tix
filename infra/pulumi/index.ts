@@ -65,6 +65,12 @@ const imagePullPolicy = config.get("imagePullPolicy") ?? "Never";
 // `sk_test_…` key for the pay stage to clear (see infra/pulumi/CLAUDE.md).
 const loadgenEnabled = config.getBoolean("loadgenEnabled") ?? false;
 
+// Dev-only alerting (ADR-0010): provisions Grafana alert rules + a webhook contact point and an
+// in-cluster log-sink Deployment so a firing alert shows up in `kubectl logs`. Off by default
+// and absent from `prod`; `Pulumi.dev.yaml` turns it on. The rules only trip against live load,
+// so it pairs with `loadgenEnabled` in dev. (Prometheus recording rules are always provisioned.)
+const alertingEnabled = config.getBoolean("alertingEnabled") ?? false;
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -96,6 +102,7 @@ const observability = new ObservabilityStack(
     garageAdminToken,
     garageS3AccessKey,
     garageS3SecretKey,
+    alertingEnabled,
   },
   { dependsOn: namespace },
 );
@@ -471,6 +478,8 @@ export const tempoService = observability.tempo.service.metadata.name;
 export const lokiService = observability.loki.service.metadata.name;
 export const prometheusService = observability.prometheus.service.metadata.name;
 export const garageService = observability.garage.service.metadata.name;
+// Present only when `alertingEnabled` (dev); undefined elsewhere, so prod gets no such output.
+export const alertLogSinkService = observability.logSink?.service.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;
 // Present only when `loadgenEnabled` (dev); undefined elsewhere, so it simply doesn't

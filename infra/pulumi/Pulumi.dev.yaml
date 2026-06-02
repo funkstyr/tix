@@ -13,6 +13,10 @@ config:
   # Dev-only k6 load generator (ADR-0010). Off elsewhere; prod never sets it. The pay
   # stage needs a real Stripe sk_test_ key (`pulumi config set --secret stripeKey …`).
   tix:loadgenEnabled: "true"
+  # Dev-only alerting (ADR-0010): Grafana alert rules + a webhook contact point routed to an
+  # in-cluster log sink, so a firing alert shows in `kubectl logs deploy/alert-log-sink`. Off
+  # elsewhere; prod never sets it. Pairs with loadgenEnabled — the rules trip on induced load.
+  tix:alertingEnabled: "true"
   # Secret-shaped values (postgresPassword, per-service role passwords,
   # betterAuthSecret, ticketsServiceToken, stripeKey, garageRpcSecret,
   # garageAdminToken, garageS3SecretKey) are not committed. (garageS3AccessKey defaults to a valid
