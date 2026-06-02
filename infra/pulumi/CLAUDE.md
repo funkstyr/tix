@@ -23,6 +23,7 @@ command therefore needs `pnpm install` to have run and a recent Node.
 | `ObservabilityStack` | `components/observability-stack.ts`          | Composes the discrete o11y stack from `components/observability/`: gateway OTel Collector + Garage + Tempo + Loki + Prometheus + Grafana; ADR-0009                                                                                                                               |
 | `LoadGenerator`      | `components/load-generator.ts`               | **Dev-only** k6 Deployment + script ConfigMap. Drives the gateway saga (sign-in → browse → reserve → pay) with induced failures and pushes its own load metrics over OTLP (ADR-0010). Gated by `loadgenEnabled`, off for `prod`.                                                 |
 | `AlertLogSink`       | `components/observability/alert-log-sink.ts` | **Dev-only** `mendhak/http-https-echo` Deployment + Service. The webhook target for Grafana's alert contact point — echoes each alert payload to stdout, so a firing alert shows in `kubectl logs deploy/alert-log-sink` (ADR-0010). Gated by `alertingEnabled`, off for `prod`. |
+| `BlackboxExporter`   | `components/observability/blackbox-exporter.ts` | **Always-on (ungated, dev AND prod)** `prom/blackbox-exporter` Deployment + `http_2xx` ConfigMap + Service on 9115. Probed by Prometheus's `blackbox` scrape job (each HTTP service's `/health` + `/ready`, relabelled → `blackbox-exporter:9115`) for outside-in liveness; backs the `probe-failure` alert + `synthetics` board (ADR-0011 Tier 3). Contrast the dev-only `LoadGenerator`/`AlertLogSink` rows — the synthetic monitor runs everywhere. |
 
 `MigrationJob` and `ServiceDeployment` are reusable: no service-specific
 identifiers live in their files. Wire each service in `index.ts`.
@@ -50,12 +51,12 @@ per-backend components under `components/observability/`:
 
 | Backend             | File                    | Workload                                                       | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------------------- | ----------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OtelCollector`     | `otel-collector.ts`     | Deployment + Service `otel-collector` (4317/4318/8888)         | Single OTLP ingress; fans out per signal. Contrib distro: `spanmetrics` + `servicegraph` connectors bridge traces→metrics (span-derived RED + service graph, ADR-0010). **Dual traces pipeline (ADR-0011 Tier 2):** `traces/metrics` (unsampled → connectors, so RED stays accurate) + `traces/store` (→ `tail_sampling` → Tempo). `tail_sampling` keeps all errors + all slow (≥500ms) + a `samplingPercent` probabilistic baseline. Exposes internal telemetry on `:8888` (prometheus pull reader) scraped by Prometheus for the Platform/o11y board. |
+| `OtelCollector`     | `otel-collector.ts`     | **StatefulSet** + queue PVC + Service `otel-collector` (4317/4318/8888) | Single OTLP ingress; fans out per signal. Contrib distro: `spanmetrics` + `servicegraph` connectors bridge traces→metrics (span-derived RED + service graph, ADR-0010). **Dual traces pipeline (ADR-0011 Tier 2):** `traces/metrics` (unsampled → connectors, so RED stays accurate) + `traces/store` (→ `tail_sampling` → Tempo). `tail_sampling` keeps all errors + all slow (≥500ms) + a `samplingPercent` probabilistic baseline. **Durable queue (ADR-0011 Tier 3):** a `file_storage`-backed persistent `sending_queue` on the `otlp/tempo` exporter (the 1Gi queue PVC) survives a collector restart without dropping in-flight traces — hence StatefulSet, not Deployment. Exposes internal telemetry on `:8888` (prometheus pull reader) scraped by Prometheus for the Platform/o11y board. |
 | `GarageBackend`     | `garage-backend.ts`     | StatefulSet + PVC + Secret + Service `garage` (3900/3901/3903) | S3 object store for Tempo + Loki (`server --single-node`); admin API on 3903.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `GarageBuckets`     | `garage-buckets.ts`     | one-shot Job (`curl` → Garage admin API)                       | Creates the `tempo`/`loki` buckets + imports the S3 key.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `TempoBackend`      | `tempo-backend.ts`      | StatefulSet + WAL PVC + Service `tempo` (3200/4317)            | Traces; S3 blocks in Garage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `LokiBackend`       | `loki-backend.ts`       | Deployment + Service `loki` (3100)                             | Logs; S3 chunks in Garage; OTLP at `/otlp/v1/logs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)           | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver **and** scrapes the LGTM backends' own /metrics for the Platform/o11y board (ADR-0010).                                                                                                                                                                                                                                                                                                                                                                                              |
+| `TempoBackend`      | `tempo-backend.ts`      | StatefulSet + WAL PVC + Service `tempo` (3200/4317)            | Traces; S3 blocks in Garage. `compactor.compaction.block_retention` = `tracesRetention` (ADR-0011 Tier 3).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `LokiBackend`       | `loki-backend.ts`       | Deployment + Service `loki` (3100)                             | Logs; S3 chunks in Garage; OTLP at `/otlp/v1/logs`. `limits_config.retention_period` = `logsRetention` + a retention-enabled compactor (ADR-0011 Tier 3).                                                                                                                                                                                                                                                                                                                                                                                                |
+| `PrometheusBackend` | `prometheus-backend.ts` | StatefulSet + TSDB PVC + Service `prometheus` (9090)           | Metrics; **local** TSDB (vanilla Prometheus, no S3); OTLP receiver **and** scrapes the LGTM backends' own /metrics for the Platform/o11y board (ADR-0010). `--storage.tsdb.retention.time` = `metricsRetention`; also serves the `blackbox` scrape job + `slo:error_budget_consumed:ratio` recording rule (ADR-0011 Tier 3).                                                                                                                                                                                                                              |
 | `GrafanaBackend`    | `grafana-backend.ts`    | Deployment + Service `grafana` (3000)                          | UI; Tempo/Loki/Prometheus datasources + dashboards-as-code provisioned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 Every backend service now exports all three OTLP signals to
@@ -114,6 +115,15 @@ its image is shell-less (scratch), `GarageBuckets` drives the **admin API** with
 > community edition was archived in 2026). `prod` stays a non-runnable stub (same
 > components, no provider wired); real object storage / scoped creds land when a
 > provider is chosen. `TODO(prod)` markers note the per-component gaps.
+
+**Backend durability + retention (ADR-0011 Tier 3).** Each store now has a bounded
+retention window threaded from `index.ts` per stack (dev-small / prod-larger):
+Prometheus `--storage.tsdb.retention.time` (`15d`/`90d`), Tempo
+`block_retention` and Loki `retention_period` (`360h`/`2160h`). They default per
+stack but are overridable via the `metricsRetention`/`tracesRetention`/`logsRetention`
+config keys. The `OtelCollector` is now a StatefulSet with a queue PVC: a
+`file_storage` extension backs a persistent `sending_queue` on the Tempo exporter,
+so a collector restart survives in-flight traces rather than dropping them.
 
 ## Smoke deploy (one command)
 
@@ -220,6 +230,9 @@ curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-aut
 | `loadgenEnabled`       | bool   | `false`                 | Dev-only k6 load generator (ADR-0010); `true` in dev, unset in prod.                                                                                                                                                                  |
 | `alertingEnabled`      | bool   | `false`                 | Dev-only Grafana alert rules + webhook→log-sink contact point (ADR-0010); `true` in dev, unset in prod. Recording rules are always provisioned regardless.                                                                            |
 | `traceSamplingPercent` | number | `100` dev / `10` prod   | Tail-sampling probabilistic baseline for the collector's `traces/store` pipeline (ADR-0011 Tier 2). Errors + slow (≥500ms) traces are always kept; this rate samples the rest. Dev keeps 100% so load-gen traces stay representative. |
+| `metricsRetention`     | string | `15d` dev / `90d` prod  | Prometheus `--storage.tsdb.retention.time` (ADR-0011 Tier 3). Day-unit string; dev keeps a short window, prod a quarter. Defaulted per stack, overridable here.                                                                       |
+| `tracesRetention`      | string | `360h` dev / `2160h` prod | Tempo `compactor.compaction.block_retention` (ADR-0011 Tier 3). Go-duration hour string (Tempo/Loki don't take `d`). Defaulted per stack, overridable here.                                                                          |
+| `logsRetention`        | string | `360h` dev / `2160h` prod | Loki `limits_config.retention_period` + retention-enabled compactor (ADR-0011 Tier 3). Go-duration hour string. Defaulted per stack, overridable here.                                                                              |
 | `garageRpcSecret`      | secret | —                       | Garage RPC secret (32-byte hex); required even single-node.                                                                                                                                                                           |
 | `garageAdminToken`     | secret | —                       | Garage admin API bearer token; used by the bucket bootstrap.                                                                                                                                                                          |
 | `garageS3AccessKey`    | string | `GK…` (dev default)     | Garage S3 access key (`GK`+24 hex); Tempo/Loki authenticate.                                                                                                                                                                          |
@@ -304,8 +317,10 @@ The alerting half of the o11y UX layer splits across three places:
   slow 6h+30m tickets), domain alerts (saga stall, conflict spike, `expiry_duplicate_publish`
   spike), and backend-down (`up{job=~…} < 1`). Every rule is the one `alertRule()` factory
   shape: a Prometheus instant query (refId A) feeding a threshold expression (refId C).
-  `contact-points.ts` provisions a single webhook contact point + a root policy routing
-  everything to the log sink.
+  `contact-points.ts` provisions a single webhook contact point + a **severity-routed**
+  notification policy (ADR-0011 Tier 3): a root catch-all over three `object_matchers`
+  children (`severity = page|ticket|warning`, with tightening `group_wait`/`repeat_interval`),
+  every leaf resolving to the log sink in dev — prod swaps the leaves without touching the tree.
 - **The log sink** (`AlertLogSink`) is the webhook target — `mendhak/http-https-echo` echoing
   each alert payload to stdout. View a firing alert with
   `kubectl -n tix logs deploy/alert-log-sink`.
@@ -322,6 +337,21 @@ mount when given an `alerting` arg, so prod has no contact point dangling at an 
   cluster with both `loadgenEnabled` + `alertingEnabled` on and a real Stripe test key (so the
   pay-stage failures the saga-stall / burn-rate alerts key on are real). Grafana reads both
   YAML and JSON from the provisioning dir; we emit JSON to stay on the dashboards-as-code path.
+
+**Runbooks + annotations (ADR-0011 Tier 3).** Every alert now links a
+`docs/runbooks/<alert>.md` (Symptom / Likely cause / Checks / Remediation) via a
+`runbook_url` annotation, plus a dashboard deep-link via `__dashboardUid__` /
+`__panelId__` — `alertRule()` grew optional `runbookUrl`/`dashboardUid`/`panelId`,
+and `docs/runbooks/` holds a `README.md` index + one file per alert. The always-on
+`blackbox-exporter` (above, ungated) adds a `probe-failure` alert (`probe_success == 0`
+→ page, in the `platform_alerts` group) over the `blackbox` scrape job.
+
+**SLO-as-data (ADR-0011 Tier 3).** `components/observability/slo.ts` is the single
+typed SLO source (gateway + auth, 0.99 objective; Google SRE 14.4/6 burn factors).
+The burn-rate thresholds in `alert-rules.ts` derive from it (replacing the prior
+`0.144`/`0.06` literals), as do the `slo:error_budget_consumed:ratio` recording rule
+in `prometheus-backend.ts` and the `slo-budget` burndown board — change the objective,
+all three follow.
 
 ## Notes
 
