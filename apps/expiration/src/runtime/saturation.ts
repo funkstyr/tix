@@ -13,7 +13,10 @@ export const expirationSaturationPoller: Effect.Effect<void, never, Scheduler> =
     const scheduler = yield* Scheduler;
     const pollOnce = Effect.gen(function* () {
       const c = yield* Effect.tryPromise(() => scheduler.counts()).pipe(
-        Effect.catchAll(() => Effect.succeed({ waiting: 0, delayed: 0, active: 0 })),
+        // catchAllCause (not catchAll) so a defect — a synchronous BullMQ panic that
+        // tryPromise escalates to a Die — also defaults this tick rather than killing the
+        // poller fiber. Matches the orders/tickets pollers.
+        Effect.catchAllCause(() => Effect.succeed({ waiting: 0, delayed: 0, active: 0 })),
       );
       yield* Metric.set(queueDepthGauge, c.waiting + c.delayed + c.active);
     });
