@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { promiseOf } from "../pulumi-mocks.ts";
 import {
   OtelCollector,
+  __renderCollectorConfigForTest as render,
   type OtlpGrpcEndpoint,
   type OtlpHttpLogsEndpoint,
   type OtlpHttpMetricsEndpoint,
@@ -39,7 +40,7 @@ describe("OtelCollector", () => {
     expect(meta.name).toBe("otel-collector");
 
     const spec = await promiseOf(collector.service.spec);
-    expect((spec.ports ?? []).map((p) => p.port)).toEqual([4317, 4318]);
+    expect((spec.ports ?? []).map((p) => p.port)).toEqual([4317, 4318, 8888]);
   });
 
   it("points the collector at its mounted config file", async () => {
@@ -80,5 +81,17 @@ describe("OtelCollector", () => {
     expect(config).toMatch(/traces:[\s\S]*exporters: \[otlp\/tempo, spanmetrics, servicegraph\]/);
     // ...and as receivers on the metrics pipeline (their output), alongside raw OTLP.
     expect(config).toMatch(/metrics:[\s\S]*receivers: \[otlp, spanmetrics, servicegraph\]/);
+  });
+});
+
+describe("otel-collector internal telemetry", () => {
+  it("exposes its own metrics on :8888 for Prometheus to scrape", () => {
+    const config = render(
+      "tempo:4317" as OtlpGrpcEndpoint,
+      "http://loki:3100/otlp/v1/logs" as OtlpHttpLogsEndpoint,
+      "http://prometheus:9090/api/v1/otlp/v1/metrics" as OtlpHttpMetricsEndpoint,
+    );
+    expect(config).toContain("telemetry:");
+    expect(config).toContain("0.0.0.0:8888");
   });
 });

@@ -10,6 +10,8 @@ const COLLECTOR_IMAGE = "otel/opentelemetry-collector-contrib:0.153.0";
 
 const OTLP_GRPC_PORT = 4317;
 const OTLP_HTTP_PORT = 4318;
+// Internal telemetry port: Prometheus scrapes the collector's own metrics here (ADR-0010).
+const TELEMETRY_PORT = 8888;
 
 const CONFIG_DIR = "/etc/otelcol";
 const CONFIG_FILE = "config.yaml";
@@ -87,6 +89,7 @@ export class OtelCollector extends pulumi.ComponentResource {
                   ports: [
                     { name: "otlp-grpc", containerPort: OTLP_GRPC_PORT },
                     { name: "otlp-http", containerPort: OTLP_HTTP_PORT },
+                    { name: "metrics", containerPort: TELEMETRY_PORT },
                   ],
                   volumeMounts: [{ name: "config", mountPath: CONFIG_DIR, readOnly: true }],
                 },
@@ -108,6 +111,7 @@ export class OtelCollector extends pulumi.ComponentResource {
           ports: [
             { name: "otlp-grpc", port: OTLP_GRPC_PORT, targetPort: OTLP_GRPC_PORT },
             { name: "otlp-http", port: OTLP_HTTP_PORT, targetPort: OTLP_HTTP_PORT },
+            { name: "metrics", port: TELEMETRY_PORT, targetPort: TELEMETRY_PORT },
           ],
         },
       },
@@ -179,6 +183,16 @@ exporters:
     metrics_endpoint: ${prometheusMetricsEndpoint}
 
 service:
+  # Expose internal collector metrics on 0.0.0.0:${TELEMETRY_PORT} so Prometheus can
+  # scrape the collector's own health (ADR-0010). The default bind is localhost-only.
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: ${TELEMETRY_PORT}
   pipelines:
     traces:
       receivers: [otlp]
@@ -194,3 +208,6 @@ service:
       exporters: [otlphttp/prometheus]
 `;
 }
+
+// Exported for unit assertions only (the ConfigMap consumes the same string).
+export const __renderCollectorConfigForTest = renderCollectorConfig;
