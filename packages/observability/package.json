@@ -35,6 +35,10 @@
     "./attributes": {
       "types": "./dist/attributes.d.ts",
       "import": "./dist/attributes.js"
+    },
+    "./db-span": {
+      "types": "./dist/db-span.d.ts",
+      "import": "./dist/db-span.js"
     }
   },
   "scripts": {

@@ -4,6 +4,7 @@ import { Clock, Effect, Metric } from "effect";
 import { requireSession } from "@tix/contracts/auth-client";
 import { paymentCreateInput } from "@tix/contracts/payments";
 import { SpanAttr } from "@tix/observability/attributes";
+import { dbSpan } from "@tix/observability/db-span";
 import { withResilience, withTimeout } from "@tix/observability/resilience";
 
 import {
@@ -92,18 +93,22 @@ export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
       return yield* Effect.fail(new PaymentIntentNotSucceeded({ status: intent.status }));
     }
 
-    const recorded = yield* withTimeout(
-      "payments.db.record_payment",
-      tryOrpc(() =>
-        db.db.transaction((tx) =>
-          recordPayment(tx, {
-            orderId: order.id,
-            userId: session.user.id,
-            stripeId: intent.stripeId,
-            amountCents: order.priceCents,
-            currency: DEFAULT_CURRENCY,
-            status: intent.status,
-          }),
+    const recorded = yield* dbSpan(
+      "record_payment",
+      "payments.payments",
+      withTimeout(
+        "payments.db.record_payment",
+        tryOrpc(() =>
+          db.db.transaction((tx) =>
+            recordPayment(tx, {
+              orderId: order.id,
+              userId: session.user.id,
+              stripeId: intent.stripeId,
+              amountCents: order.priceCents,
+              currency: DEFAULT_CURRENCY,
+              status: intent.status,
+            }),
+          ),
         ),
       ),
     );

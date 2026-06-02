@@ -72,6 +72,15 @@ const loadgenEnabled = config.getBoolean("loadgenEnabled") ?? false;
 // so it pairs with `loadgenEnabled` in dev. (Prometheus recording rules are always provisioned.)
 const alertingEnabled = config.getBoolean("alertingEnabled") ?? false;
 
+// Tail-sampling baseline for traces persisted to Tempo (ADR-0011 Tier 2): the percent of
+// non-error, non-slow traces kept on the path to the trace store. Errors and slow traces are
+// always kept; this only samples the rest. The spanmetrics/servicegraph connectors read the
+// full unsampled stream, so span-derived RED stays accurate regardless. Dev keeps every trace
+// (100); prod samples the routine baseline down (10) to bound trace-store volume. Overridable
+// per stack via `pulumi config set tix:traceSamplingPercent`.
+const traceSamplingPercent =
+  config.getNumber("traceSamplingPercent") ?? (stack === "prod" ? 10 : 100);
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -104,6 +113,7 @@ const observability = new ObservabilityStack(
     garageS3AccessKey,
     garageS3SecretKey,
     alertingEnabled,
+    traceSamplingPercent,
   },
   { dependsOn: namespace },
 );

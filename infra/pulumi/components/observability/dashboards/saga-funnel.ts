@@ -4,6 +4,7 @@ import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 import { DataqueryBuilder } from "@grafana/grafana-foundation-sdk/prometheus";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
+import { exemplarLatencyPanel } from "./_exemplar.ts";
 import { PROMETHEUS, tsPanel } from "./_shared.ts";
 import type { Series } from "./_shared.ts";
 
@@ -30,6 +31,11 @@ export function sagaFunnelDashboardJson(): string {
     .withPanel(conflictRates())
     .withPanel(paymentOutcomes())
     .withPanel(expirationRate())
+    // Drill-to-trace latency in the free right slot of the y:16 row (beside expirationRate at
+    // x:0,y:16): span-derived series carry exemplars, click a spike to jump to the trace.
+    .withPanel(
+      exemplarLatencyPanel("Saga latency → trace", "orders", { h: 8, w: 12, x: 12, y: 16 }),
+    )
     .build();
 
   return JSON.stringify(dashboard, null, 2);

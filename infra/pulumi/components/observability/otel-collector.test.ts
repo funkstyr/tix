@@ -16,6 +16,7 @@ function build(): OtelCollector {
     lokiLogsEndpoint: "http://loki:3100/otlp/v1/logs" as OtlpHttpLogsEndpoint,
     prometheusMetricsEndpoint:
       "http://prometheus:9090/api/v1/otlp/v1/metrics" as OtlpHttpMetricsEndpoint,
+    samplingPercent: 100,
   });
 }
 
@@ -28,7 +29,8 @@ describe("OtelCollector", () => {
     expect(config).toContain("endpoint: tempo:4317");
     expect(config).toContain("logs_endpoint: http://loki:3100/otlp/v1/logs");
     expect(config).toContain("metrics_endpoint: http://prometheus:9090/api/v1/otlp/v1/metrics");
-    expect(config).toContain("exporters: [otlp/tempo, spanmetrics, servicegraph]");
+    expect(config).toContain("exporters: [spanmetrics, servicegraph]");
+    expect(config).toContain("exporters: [otlp/tempo]");
     expect(config).toContain("exporters: [otlphttp/loki]");
     expect(config).toContain("exporters: [otlphttp/prometheus]");
   });
@@ -77,8 +79,8 @@ describe("OtelCollector", () => {
 
     const data = await promiseOf(collector.config.data);
     const config = data?.["config.yaml"] ?? "";
-    // Connectors sit as exporters on the traces pipeline (their input)...
-    expect(config).toMatch(/traces:[\s\S]*exporters: \[otlp\/tempo, spanmetrics, servicegraph\]/);
+    // Connectors sit as exporters on the unsampled traces/metrics pipeline (their input)...
+    expect(config).toMatch(/traces\/metrics:[\s\S]*exporters: \[spanmetrics, servicegraph\]/);
     // ...and as receivers on the metrics pipeline (their output), alongside raw OTLP.
     expect(config).toMatch(/metrics:[\s\S]*receivers: \[otlp, spanmetrics, servicegraph\]/);
   });
@@ -90,8 +92,37 @@ describe("otel-collector internal telemetry", () => {
       "tempo:4317" as OtlpGrpcEndpoint,
       "http://loki:3100/otlp/v1/logs" as OtlpHttpLogsEndpoint,
       "http://prometheus:9090/api/v1/otlp/v1/metrics" as OtlpHttpMetricsEndpoint,
+      100,
     );
     expect(config).toContain("telemetry:");
     expect(config).toContain("0.0.0.0:8888");
+  });
+});
+
+describe("renderCollectorConfig tail sampling", () => {
+  const cfg = render(
+    "tempo:4317" as OtlpGrpcEndpoint,
+    "http://loki:3100/otlp/v1/logs" as OtlpHttpLogsEndpoint,
+    "http://prometheus:9090/api/v1/otlp/v1/metrics" as OtlpHttpMetricsEndpoint,
+    100,
+  );
+
+  it("feeds spanmetrics/servicegraph from the UNSAMPLED traces stream", () => {
+    expect(cfg).toContain("traces/metrics:");
+    expect(cfg).toMatch(/traces\/metrics:[\s\S]*exporters: \[spanmetrics, servicegraph\]/);
+  });
+
+  it("applies tail_sampling only on the path to Tempo", () => {
+    expect(cfg).toContain("traces/store:");
+    expect(cfg).toMatch(
+      /traces\/store:[\s\S]*processors: \[batch, tail_sampling\][\s\S]*exporters: \[otlp\/tempo\]/,
+    );
+    expect(cfg).toContain("tail_sampling:");
+  });
+
+  it("keeps-all-errors and keeps-slow, and uses the given probabilistic percent", () => {
+    expect(cfg).toContain("status_code");
+    expect(cfg).toContain("latency");
+    expect(cfg).toContain("sampling_percentage: 100");
   });
 });

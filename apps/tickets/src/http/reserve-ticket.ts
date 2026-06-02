@@ -3,6 +3,7 @@ import { Effect, Metric } from "effect";
 
 import { reserveTicketInput } from "@tix/contracts/tickets-reserve";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
+import { dbSpan } from "@tix/observability/db-span";
 import { withTimeout } from "@tix/observability/resilience";
 
 import { ReservationConflict, SoldOut, TicketNotFound } from "../domain/errors.ts";
@@ -27,39 +28,43 @@ export function reserveTicketProgram(input: typeof reserveTicketInput.infer) {
   return Effect.gen(function* () {
     const db = yield* Database;
 
-    const outcome = yield* withTimeout(
-      "tickets.db.reserve",
-      tryOrpc(async (): Promise<ReserveOutcome> => {
-        // Serial retry by design: each attempt depends on the previous attempt's version
-        // having lost the race. Parallelizing the reads/updates would defeat the
-        // optimistic-version check.
-        for (let attempt = 0; attempt < MAX_RESERVE_ATTEMPTS; attempt++) {
-          // eslint-disable-next-line no-await-in-loop -- serial retry by design
-          const [row] = await db.db.select().from(tickets).where(eq(tickets.id, input.ticketId));
-          if (!row) return { kind: "not_found" };
+    const outcome = yield* dbSpan(
+      "reserve_ticket",
+      "tickets.tickets",
+      withTimeout(
+        "tickets.db.reserve",
+        tryOrpc(async (): Promise<ReserveOutcome> => {
+          // Serial retry by design: each attempt depends on the previous attempt's version
+          // having lost the race. Parallelizing the reads/updates would defeat the
+          // optimistic-version check.
+          for (let attempt = 0; attempt < MAX_RESERVE_ATTEMPTS; attempt++) {
+            // eslint-disable-next-line no-await-in-loop -- serial retry by design
+            const [row] = await db.db.select().from(tickets).where(eq(tickets.id, input.ticketId));
+            if (!row) return { kind: "not_found" };
 
-          if (row.quantityAvailable < input.quantity) return { kind: "sold_out" };
+            if (row.quantityAvailable < input.quantity) return { kind: "sold_out" };
 
-          // eslint-disable-next-line no-await-in-loop -- serial retry by design
-          const result = await updateVersioned(
-            db.db,
-            tickets,
-            { id: row.id, version: row.version },
-            { quantityAvailable: row.quantityAvailable - input.quantity },
-          );
+            // eslint-disable-next-line no-await-in-loop -- serial retry by design
+            const result = await updateVersioned(
+              db.db,
+              tickets,
+              { id: row.id, version: row.version },
+              { quantityAvailable: row.quantityAvailable - input.quantity },
+            );
 
-          if (result.rowsAffected === 1) {
-            return {
-              kind: "ok",
-              quantityAvailable: row.quantityAvailable - input.quantity,
-              unitPriceCents: row.unitPriceCents,
-              version: row.version + 1,
-            };
+            if (result.rowsAffected === 1) {
+              return {
+                kind: "ok",
+                quantityAvailable: row.quantityAvailable - input.quantity,
+                unitPriceCents: row.unitPriceCents,
+                version: row.version + 1,
+              };
+            }
           }
-        }
 
-        return { kind: "conflict" };
-      }),
+          return { kind: "conflict" };
+        }),
+      ),
     );
 
     switch (outcome.kind) {

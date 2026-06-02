@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { ObservabilityStack } from "./observability-stack.ts";
 import { promiseOf } from "./pulumi-mocks.ts";
@@ -13,14 +13,25 @@ function build(args?: { alertingEnabled?: boolean }): ObservabilityStack {
     garageAdminToken: "admintoken",
     garageS3AccessKey: ACCESS_KEY,
     garageS3SecretKey: "0".repeat(64),
+    traceSamplingPercent: 100,
     ...args,
   });
 }
 
 describe("ObservabilityStack", () => {
-  it("exposes the gateway collector as the OTLP ingress", async () => {
-    const stack = build();
+  // Building the full stack (7 backends + 8 synthesized dashboards) is the heavy part, so we do
+  // it once per arg-variant and share the instances across the read-only assertions below.
+  // Rebuilding per `it` made each test body race the 5s timeout under CI fork-contention; the
+  // construction now lives in beforeAll (10s hook budget) and runs twice, not twelve times.
+  let stack: ObservabilityStack;
+  let alertingStack: ObservabilityStack;
 
+  beforeAll(() => {
+    stack = build();
+    alertingStack = build({ alertingEnabled: true });
+  });
+
+  it("exposes the gateway collector as the OTLP ingress", async () => {
     const meta = await promiseOf(stack.collector.service.metadata);
     expect(meta.name).toBe("otel-collector");
 
@@ -30,15 +41,11 @@ describe("ObservabilityStack", () => {
   });
 
   it("exposes Grafana as the UI service the ingress routes to", async () => {
-    const stack = build();
-
     const meta = await promiseOf(stack.grafana.service.metadata);
     expect(meta.name).toBe("grafana");
   });
 
   it("wires the collector to fan out to the discrete backends", async () => {
-    const stack = build();
-
     const data = await promiseOf(stack.collector.config.data);
     const config = data?.["config.yaml"] ?? "";
     expect(config).toContain("endpoint: tempo:4317");
@@ -47,8 +54,6 @@ describe("ObservabilityStack", () => {
   });
 
   it("threads one S3 access key through Garage, the bucket bootstrap, Tempo, and Loki", async () => {
-    const stack = build();
-
     // The configured access key lands in the single Garage credentials Secret...
     const secret = await promiseOf(stack.garage.credentialsSecret.stringData);
     expect(secret?.["GARAGE_S3_ACCESS_KEY"]).toBe(ACCESS_KEY);
@@ -70,21 +75,17 @@ describe("ObservabilityStack", () => {
   });
 
   it("stands up the log sink and provisions Grafana alerting when alerting is enabled", async () => {
-    const stack = build({ alertingEnabled: true });
-
-    expect(stack.logSink).toBeDefined();
-    const meta = await promiseOf(stack.logSink!.service.metadata);
+    expect(alertingStack.logSink).toBeDefined();
+    const meta = await promiseOf(alertingStack.logSink!.service.metadata);
     expect(meta.name).toBe("alert-log-sink");
 
-    expect(stack.grafana.alerting).toBeDefined();
-    const data = await promiseOf(stack.grafana.alerting!.data);
+    expect(alertingStack.grafana.alerting).toBeDefined();
+    const data = await promiseOf(alertingStack.grafana.alerting!.data);
     const contacts = JSON.parse(data?.["contact-points.json"] ?? "{}");
     expect(contacts.contactPoints[0].receivers[0].settings.url).toBe("http://alert-log-sink:8080/");
   });
 
   it("omits the log sink and alerting provisioning by default", () => {
-    const stack = build();
-
     expect(stack.logSink).toBeUndefined();
     expect(stack.grafana.alerting).toBeUndefined();
   });

@@ -23,6 +23,7 @@ import {
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { SpanAttr } from "@tix/observability/attributes";
+import { dbSpan } from "@tix/observability/db-span";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withResilience, withTimeout } from "@tix/observability/resilience";
 
@@ -121,46 +122,50 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
     const createdAt = new Date(nowMs);
     const expiresAt = new Date(nowMs + env.reservationTtlMs);
 
-    const row = yield* withTimeout(
-      "orders.db.create_order",
-      tryOrpc(() =>
-        db.db.transaction(async (tx) => {
-          const [inserted] = await tx
-            .insert(orders)
-            .values({
-              id: orderId,
-              buyerId: session.user.id,
-              ticketId: input.ticketId,
-              quantity: input.quantity,
-              priceCents,
-              status: "created",
-              expiresAt,
-              createdAt,
-            })
-            .returning();
+    const row = yield* dbSpan(
+      "create_order",
+      "orders.orders",
+      withTimeout(
+        "orders.db.create_order",
+        tryOrpc(() =>
+          db.db.transaction(async (tx) => {
+            const [inserted] = await tx
+              .insert(orders)
+              .values({
+                id: orderId,
+                buyerId: session.user.id,
+                ticketId: input.ticketId,
+                quantity: input.quantity,
+                priceCents,
+                status: "created",
+                expiresAt,
+                createdAt,
+              })
+              .returning();
 
-          if (!inserted) {
-            throw new ORPCError("INTERNAL_SERVER_ERROR", {
-              message: "order insert returned no row",
+            if (!inserted) {
+              throw new ORPCError("INTERNAL_SERVER_ERROR", {
+                message: "order insert returned no row",
+              });
+            }
+
+            await enqueueEvent(tx, ordersOutbox, {
+              subject: ORDER_CREATED_V1,
+              eventId: uuidv7(),
+              payload: {
+                orderId: inserted.id,
+                ticketId: inserted.ticketId,
+                buyerId: inserted.buyerId,
+                quantity: inserted.quantity,
+                priceCents,
+                expiresAt: inserted.expiresAt.toISOString(),
+                createdAt: inserted.createdAt.toISOString(),
+              },
             });
-          }
 
-          await enqueueEvent(tx, ordersOutbox, {
-            subject: ORDER_CREATED_V1,
-            eventId: uuidv7(),
-            payload: {
-              orderId: inserted.id,
-              ticketId: inserted.ticketId,
-              buyerId: inserted.buyerId,
-              quantity: inserted.quantity,
-              priceCents,
-              expiresAt: inserted.expiresAt.toISOString(),
-              createdAt: inserted.createdAt.toISOString(),
-            },
-          });
-
-          return inserted;
-        }),
+            return inserted;
+          }),
+        ),
       ),
     ).pipe(
       // A *typed* failure here — the insert or its outbox enqueue erroring — happened after the

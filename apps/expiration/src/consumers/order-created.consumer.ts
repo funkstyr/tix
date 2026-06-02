@@ -6,6 +6,7 @@ import { ORDER_CREATED_V1 } from "@tix/contracts/subjects";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
+import { dbSpan } from "@tix/observability/db-span";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -63,12 +64,16 @@ export async function startExpirationConsumer(
             ...(traceparent === undefined ? {} : { traceparent }),
           };
 
-          const result = yield* withTimeout(
-            "expiration.db.schedule_expiry",
-            Effect.tryPromise(() =>
-              db.db.transaction((tx) =>
-                withInboxDedupe(tx, expirationInbox, { eventId, subject }, () =>
-                  scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, job, delayMs, payload.orderId),
+          const result = yield* dbSpan(
+            "schedule_expiry",
+            "expiration.inbox",
+            withTimeout(
+              "expiration.db.schedule_expiry",
+              Effect.tryPromise(() =>
+                db.db.transaction((tx) =>
+                  withInboxDedupe(tx, expirationInbox, { eventId, subject }, () =>
+                    scheduler.scheduleDelayed(EXPIRATION_JOB_NAME, job, delayMs, payload.orderId),
+                  ),
                 ),
               ),
             ),
