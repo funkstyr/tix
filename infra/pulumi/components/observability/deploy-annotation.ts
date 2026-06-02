@@ -51,7 +51,14 @@ export class DeployAnnotation extends pulumi.ComponentResource {
     this.job = new k8s.batch.v1.Job(
       `${name}-job`,
       {
-        metadata: { name: `deploy-annotation-${args.gitSha}`, namespace: args.namespace },
+        metadata: {
+          name: `deploy-annotation-${args.gitSha}`,
+          namespace: args.namespace,
+          // Don't await Job completion: Pulumi otherwise blocks `pulumi up` until the k8s Job
+          // succeeds, so a transient Grafana hiccup would fail the whole rollout. This marker is
+          // cosmetic (a dashboard overlay) — it must never block a deploy.
+          annotations: { "pulumi.com/skipAwait": "true" },
+        },
         spec: {
           backoffLimit: 3,
           ttlSecondsAfterFinished: 600,

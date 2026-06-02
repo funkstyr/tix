@@ -109,6 +109,10 @@ const logLevel = config.get("logLevel") ?? (stack === "prod" ? "warn" : "info");
 // insecure, consistent with the other prod stubs (garageS3AccessKey, grafana anonymousAccess).
 const kubeletCaBundle = config.get("kubeletCaBundle");
 
+// Git SHA of the deploy being applied (ADR-0010 deploy markers). Supplied by the deploy
+// invocation: `pulumi config set tix:gitSha <sha>` or the GIT_SHA env. Absent → no marker.
+const gitSha = config.get("gitSha") ?? process.env["GIT_SHA"];
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -135,6 +139,7 @@ const observability = new ObservabilityStack(
   "tix",
   {
     namespace: namespace.metadata.name,
+    env: stack,
     grafanaRootUrl: `http://${ingressHost}/grafana`,
     garageRpcSecret,
     garageAdminToken,
@@ -146,6 +151,7 @@ const observability = new ObservabilityStack(
     tracesRetention,
     logsRetention,
     ...(kubeletCaBundle ? { kubeletCaBundle } : {}),
+    ...(gitSha ? { gitSha } : {}),
   },
   { dependsOn: namespace },
 );

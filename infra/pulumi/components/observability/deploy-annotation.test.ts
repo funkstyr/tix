@@ -21,6 +21,11 @@ describe("DeployAnnotation", () => {
     expect(meta.name).toBe("deploy-annotation-abc1234");
   });
 
+  it("skips awaiting Job completion so a cosmetic marker can't block the deploy", async () => {
+    const meta = await promiseOf(annotation.job.metadata);
+    expect(meta.annotations?.["pulumi.com/skipAwait"]).toBe("true");
+  });
+
   it("posts a deploy-tagged annotation to the Grafana annotations API", async () => {
     const spec = await promiseOf(annotation.job.spec);
     const container = spec.template.spec?.containers[0];
