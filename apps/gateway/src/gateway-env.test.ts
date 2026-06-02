@@ -34,3 +34,15 @@ describe("parseEnv", () => {
     expect(env.sessionCookieName).toBe("__Secure-tix.session");
   });
 });
+
+describe("parseEnv faroCollectorUrl", () => {
+  it("defaults to the in-cluster faro receiver", () => {
+    expect(parseEnv(baseEnv).faroCollectorUrl).toBe("http://otel-collector:8090/");
+  });
+
+  it("honours an override", () => {
+    expect(parseEnv({ ...baseEnv, FARO_COLLECTOR_URL: "http://collector:8090/" }).faroCollectorUrl).toBe(
+      "http://collector:8090/",
+    );
+  });
+});

@@ -3,6 +3,7 @@ import { ArkErrors, type } from "arktype";
 const DEFAULT_PORT = 4000;
 const DEFAULT_SESSION_COOKIE_NAME = "tix.session";
 const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
+const DEFAULT_FARO_COLLECTOR_URL = "http://otel-collector:8090/";
 
 const envSchema = type({
   "GATEWAY_HTTP_PORT?": "string.numeric.parse",
@@ -13,6 +14,7 @@ const envSchema = type({
   PAYMENTS_BASE_URL: "string > 0",
   "SESSION_COOKIE_NAME?": "string > 0",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
+  "FARO_COLLECTOR_URL?": "string > 0",
 });
 
 export type GatewayEnv = {
@@ -24,6 +26,7 @@ export type GatewayEnv = {
   paymentsBaseUrl: string;
   sessionCookieName: string;
   otelEndpoint: string;
+  faroCollectorUrl: string;
 };
 
 export function parseEnv(env: Record<string, string | undefined>): GatewayEnv {
@@ -46,5 +49,6 @@ export function parseEnv(env: Record<string, string | undefined>): GatewayEnv {
     paymentsBaseUrl: parsed.PAYMENTS_BASE_URL,
     sessionCookieName: parsed.SESSION_COOKIE_NAME ?? DEFAULT_SESSION_COOKIE_NAME,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
+    faroCollectorUrl: parsed.FARO_COLLECTOR_URL ?? DEFAULT_FARO_COLLECTOR_URL,
   };
 }
