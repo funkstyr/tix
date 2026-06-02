@@ -1,7 +1,8 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
-import { DataqueryBuilder } from "@grafana/grafana-foundation-sdk/prometheus";
 import * as stat from "@grafana/grafana-foundation-sdk/stat";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
+
+import { statPanel, tsPanel } from "./_shared.ts";
 
 // Platform / o11y board (ADR-0010): the backends watching themselves, fed by the Prometheus
 // scrape of the LGTM stack (prometheus-backend.ts scrape_configs; collector telemetry on
@@ -13,13 +14,7 @@ import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
 const DASHBOARD_UID = "platform-o11y";
 
-// Stable UID of the Prometheus datasource provisioned by GrafanaBackend.
-const PROMETHEUS = { type: "prometheus", uid: "prometheus" } as const;
-
 const BACKENDS = "otel-collector|tempo|loki|prometheus|garage";
-
-type Series = { readonly expr: string; readonly legend: string };
-type GridPos = { readonly h: number; readonly w: number; readonly x: number; readonly y: number };
 
 export function platformO11yDashboardJson(): string {
   const dashboard = new DashboardBuilder("Platform / o11y")
@@ -39,12 +34,9 @@ export function platformO11yDashboardJson(): string {
 
 // The robust core: one series per scrape target, 1 = up / 0 = down.
 function backendUp(): stat.PanelBuilder {
-  return new stat.PanelBuilder()
-    .title("Backend up")
-    .datasource(PROMETHEUS)
-    .unit("short")
-    .gridPos({ h: 6, w: 24, x: 0, y: 0 })
-    .withTarget(new DataqueryBuilder().expr(`up{job=~"${BACKENDS}"}`).legendFormat("{{job}}").instant());
+  return statPanel("Backend up", "short", { h: 6, w: 24, x: 0, y: 0 }, [
+    { expr: `up{job=~"${BACKENDS}"}`, legend: "{{job}}" },
+  ]);
 }
 
 // Collector ingest vs egress — is the single OTLP gateway keeping up. Best-effort names.
@@ -63,23 +55,3 @@ function backendIngest(): timeseries.PanelBuilder {
   ]);
 }
 
-// One reviewed factory for the structurally-identical rate panels (saga-funnel's redRow
-// philosophy): a metric rename touches one target string, never a JSON blob.
-function tsPanel(
-  title: string,
-  unit: string,
-  gridPos: GridPos,
-  series: readonly Series[],
-): timeseries.PanelBuilder {
-  let built = new timeseries.PanelBuilder()
-    .title(title)
-    .datasource(PROMETHEUS)
-    .unit(unit)
-    .gridPos(gridPos);
-
-  for (const { expr, legend } of series) {
-    built = built.withTarget(new DataqueryBuilder().expr(expr).legendFormat(legend));
-  }
-
-  return built;
-}

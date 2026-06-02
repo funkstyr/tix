@@ -4,6 +4,8 @@ import { DataqueryBuilder, PromQueryFormat } from "@grafana/grafana-foundation-s
 import * as stat from "@grafana/grafana-foundation-sdk/stat";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
+import { PROMETHEUS, statPanel, tsPanel } from "./_shared.ts";
+
 // Money & inventory board (ADR-0010), Domain folder. The order-value distribution
 // (order_value_cents), GMV/AOV, payment success rate + charge latency, and the reserved-vs-
 // released seat churn. All hand-rolled Effect.Metric series (ADR-0010) — the histograms land
@@ -11,10 +13,6 @@ import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 // by 100 for USD. No span-derived series here, so nothing double-counts the saga funnel.
 
 const DASHBOARD_UID = "money-inventory";
-const PROMETHEUS = { type: "prometheus", uid: "prometheus" } as const;
-
-type Series = { readonly expr: string; readonly legend: string };
-type GridPos = { readonly h: number; readonly w: number; readonly x: number; readonly y: number };
 
 export function moneyInventoryDashboardJson(): string {
   const dashboard = new DashboardBuilder("Money & Inventory")
@@ -104,28 +102,3 @@ function seatChurn(): timeseries.PanelBuilder {
   ]);
 }
 
-function statPanel(
-  title: string,
-  unit: string,
-  gridPos: GridPos,
-  series: readonly Series[],
-): stat.PanelBuilder {
-  let built = new stat.PanelBuilder().title(title).datasource(PROMETHEUS).unit(unit).gridPos(gridPos);
-  for (const { expr, legend } of series) {
-    built = built.withTarget(new DataqueryBuilder().expr(expr).legendFormat(legend).instant());
-  }
-  return built;
-}
-
-function tsPanel(
-  title: string,
-  unit: string,
-  gridPos: GridPos,
-  series: readonly Series[],
-): timeseries.PanelBuilder {
-  let built = new timeseries.PanelBuilder().title(title).datasource(PROMETHEUS).unit(unit).gridPos(gridPos);
-  for (const { expr, legend } of series) {
-    built = built.withTarget(new DataqueryBuilder().expr(expr).legendFormat(legend));
-  }
-  return built;
-}

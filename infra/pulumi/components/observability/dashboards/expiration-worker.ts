@@ -1,6 +1,6 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
-import { DataqueryBuilder } from "@grafana/grafana-foundation-sdk/prometheus";
-import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
+
+import { tsPanel } from "./_shared.ts";
 
 // Expiration-worker board (ADR-0010), Domain folder. The BullMQ delayed-job worker that
 // auto-cancels expired Orders: throughput (expirations_processed_total), the dedupe signal
@@ -9,10 +9,6 @@ import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 // series only (ADR-0010).
 
 const DASHBOARD_UID = "expiration-worker";
-const PROMETHEUS = { type: "prometheus", uid: "prometheus" } as const;
-
-type Series = { readonly expr: string; readonly legend: string };
-type GridPos = { readonly h: number; readonly w: number; readonly x: number; readonly y: number };
 
 export function expirationWorkerDashboardJson(): string {
   const dashboard = new DashboardBuilder("Expiration Worker")
@@ -55,15 +51,3 @@ export function expirationWorkerDashboardJson(): string {
   return JSON.stringify(dashboard, null, 2);
 }
 
-function tsPanel(
-  title: string,
-  unit: string,
-  gridPos: GridPos,
-  series: readonly Series[],
-): timeseries.PanelBuilder {
-  let built = new timeseries.PanelBuilder().title(title).datasource(PROMETHEUS).unit(unit).gridPos(gridPos);
-  for (const { expr, legend } of series) {
-    built = built.withTarget(new DataqueryBuilder().expr(expr).legendFormat(legend));
-  }
-  return built;
-}
