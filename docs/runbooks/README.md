@@ -46,6 +46,7 @@ logs-ingest-absent watchdog over Loki's own counter.
 | `node-memory-pressure`                            | page        | `cluster-use`                   | [node-memory-pressure.md](./node-memory-pressure.md)             |
 | `backend-down`                                    | page        | `platform-o11y`                 | [backend-down.md](./backend-down.md)                             |
 | `probe-failure`                                   | page        | `synthetics`                    | [probe-failure.md](./probe-failure.md)                           |
+| `synthetic-journey-failure`                       | page        | `synthetics`                    | [synthetic-journey-failure.md](./synthetic-journey-failure.md)   |
 | `error-log-rate`                                  | warning     | `logs-overview`                 | [error-log-rate.md](./error-log-rate.md)                         |
 | `logs-ingest-absent`                              | page        | `logs-overview`                 | [logs-ingest-absent.md](./logs-ingest-absent.md)                 |
 | `watchdog`                                        | watchdog    | —                               | [watchdog.md](./watchdog.md)                                     |

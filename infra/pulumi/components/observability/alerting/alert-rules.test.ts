@@ -135,6 +135,13 @@ describe("alertRulesJson", () => {
     expect(threshold(rule)).toEqual({ type: "lt", params: [1] });
   });
 
+  it("pages when the synthetic buyer-journey fails over a 10m window", () => {
+    const rule = ruleByUid("synthetic-journey-failure");
+    expect(queryExpr(rule)).toContain('increase(synthetic_journey_total{result="failure"}[10m])');
+    expect(threshold(rule)).toEqual({ type: "gt", params: [0] });
+    expect(rule.labels.severity).toBe("page");
+  });
+
   it("derives checkout + payment coverage burn alerts from the union", () => {
     for (const uid of ["checkout-burn-fast", "checkout-burn-slow", "payment-burn-fast"]) {
       expect(ruleByUid(uid)).toBeDefined();
