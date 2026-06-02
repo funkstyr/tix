@@ -16,6 +16,7 @@
     "@stripe/stripe-js": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tix/contracts": "workspace:*",
+    "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "better-auth": "catalog:",
     "react": "catalog:",
