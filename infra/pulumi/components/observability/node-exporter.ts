@@ -56,6 +56,18 @@ export class NodeExporter extends pulumi.ComponentResource {
                     "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|run/k3s/.+)($|/)",
                   ],
                   ports: [{ name: "metrics", containerPort: HTTP_PORT, hostPort: HTTP_PORT }],
+                  // Can't go as far as the datastore exporters: reading the host /proc + /sys under
+                  // hostPID keeps this on root. But it writes nothing and needs no capabilities, so
+                  // lock down what a host-access DaemonSet still can.
+                  securityContext: {
+                    readOnlyRootFilesystem: true,
+                    allowPrivilegeEscalation: false,
+                    capabilities: { drop: ["ALL"] },
+                  },
+                  resources: {
+                    requests: { cpu: "10m", memory: "32Mi" },
+                    limits: { memory: "64Mi" },
+                  },
                   volumeMounts: [
                     { name: "proc", mountPath: "/host/proc", readOnly: true },
                     { name: "sys", mountPath: "/host/sys", readOnly: true },

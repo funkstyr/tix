@@ -43,4 +43,18 @@ describe("NodeExporter", () => {
     expect(spec.clusterIP).toBe("None");
     expect((spec.ports ?? []).map((p) => p.port)).toEqual([9100]);
   });
+
+  it("locks down what a host-access DaemonSet can, short of dropping root", async () => {
+    const exporter = build();
+
+    const container = (await promiseOf(exporter.daemonSet.spec)).template.spec?.containers[0];
+    expect(container?.securityContext).toMatchObject({
+      readOnlyRootFilesystem: true,
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ["ALL"] },
+    });
+    // Host /proc + /sys under hostPID keep it on root — non-root is deliberately NOT forced.
+    expect(container?.securityContext?.runAsNonRoot).toBeUndefined();
+    expect(container?.resources?.limits).toEqual({ memory: "64Mi" });
+  });
 });

@@ -56,4 +56,12 @@ describe("KubeStateMetrics RBAC (least privilege)", () => {
     const spec = await promiseOf(ksm.deployment.spec);
     expect(spec.template.spec?.serviceAccountName).toBe("kube-state-metrics");
   });
+
+  it("caps memory (tracks object count) with no CPU limit on the reflector", async () => {
+    const ksm = build();
+
+    const container = (await promiseOf(ksm.deployment.spec)).template.spec?.containers[0];
+    expect(container?.resources?.limits).toEqual({ memory: "128Mi" });
+    expect(container?.resources?.limits?.["cpu"]).toBeUndefined();
+  });
 });

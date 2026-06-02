@@ -30,4 +30,19 @@ describe("PostgresExporter", () => {
       key: "DATA_SOURCE_NAME",
     });
   });
+
+  it("runs hardened: non-root, read-only rootfs, no capabilities, bounded memory", async () => {
+    const exporter = build();
+
+    const container = (await promiseOf(exporter.deployment.spec)).template.spec?.containers[0];
+    expect(container?.securityContext).toMatchObject({
+      runAsNonRoot: true,
+      readOnlyRootFilesystem: true,
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ["ALL"] },
+    });
+    // No CPU limit (don't throttle the scraper); memory is capped.
+    expect(container?.resources?.limits).toEqual({ memory: "64Mi" });
+    expect(container?.resources?.limits?.["cpu"]).toBeUndefined();
+  });
 });

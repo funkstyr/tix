@@ -22,4 +22,18 @@ describe("RedisExporter", () => {
     const env = spec.template.spec?.containers[0]?.env ?? [];
     expect(env).toContainEqual({ name: "REDIS_ADDR", value: "redis://redis:6379" });
   });
+
+  it("runs hardened: non-root, read-only rootfs, no capabilities, bounded memory", async () => {
+    const exporter = build();
+
+    const container = (await promiseOf(exporter.deployment.spec)).template.spec?.containers[0];
+    expect(container?.securityContext).toMatchObject({
+      runAsNonRoot: true,
+      readOnlyRootFilesystem: true,
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ["ALL"] },
+    });
+    expect(container?.resources?.limits).toEqual({ memory: "64Mi" });
+    expect(container?.resources?.limits?.["cpu"]).toBeUndefined();
+  });
 });

@@ -65,7 +65,9 @@ export class KubeStateMetrics extends pulumi.ComponentResource {
     );
 
     // ClusterRole + binding are cluster-scoped (KSM watches all namespaces); the binding points the
-    // grant at the namespaced ServiceAccount above.
+    // grant at the namespaced ServiceAccount above. The object name is deliberately fixed (not
+    // `${name}`-prefixed): one tix stack per cluster is assumed (dev = kind, prod = its own cluster).
+    // Two stacks sharing a cluster would collide here — give it a stack-derived name if that changes.
     this.clusterRole = new k8s.rbac.v1.ClusterRole(
       `${name}-clusterrole`,
       {
@@ -127,6 +129,12 @@ export class KubeStateMetrics extends pulumi.ComponentResource {
                     readOnlyRootFilesystem: true,
                     allowPrivilegeEscalation: false,
                     capabilities: { drop: ["ALL"] },
+                  },
+                  // Memory tracks cluster object count, so the ceiling is higher than the datastore
+                  // exporters'; no CPU limit (a throttled reflector falls behind on object state).
+                  resources: {
+                    requests: { cpu: "10m", memory: "64Mi" },
+                    limits: { memory: "128Mi" },
                   },
                   livenessProbe: {
                     httpGet: { path: "/livez", port: METRICS_PORT },

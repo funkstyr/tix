@@ -49,6 +49,9 @@ export function createPrometheusRbac(
     opts,
   );
 
+  // The ClusterRole + binding names are deliberately fixed (not `${name}`-prefixed): one tix stack
+  // per cluster is assumed (dev = kind, prod = its own cluster). Two stacks sharing a cluster would
+  // collide on these cluster-scoped objects — give them stack-derived names if that ever changes.
   const clusterRole = new k8s.rbac.v1.ClusterRole(
     `${name}-clusterrole`,
     {

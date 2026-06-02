@@ -47,6 +47,21 @@ export class RedisExporter extends pulumi.ComponentResource {
                   image: REDIS_EXPORTER_IMAGE,
                   env: [{ name: "REDIS_ADDR", value: args.redisAddr }],
                   ports: [{ name: "http", containerPort: HTTP_PORT }],
+                  // Hardened like kube-state-metrics: a read-only network client needs no root, no
+                  // writable rootfs, and no Linux capabilities.
+                  securityContext: {
+                    runAsNonRoot: true,
+                    runAsUser: 65534,
+                    readOnlyRootFilesystem: true,
+                    allowPrivilegeEscalation: false,
+                    capabilities: { drop: ["ALL"] },
+                  },
+                  // Tiny, steady footprint; no CPU limit on purpose — throttling a metrics scraper
+                  // just delays its own samples (the cluster-use board even alerts on CPU throttling).
+                  resources: {
+                    requests: { cpu: "10m", memory: "32Mi" },
+                    limits: { memory: "64Mi" },
+                  },
                   readinessProbe: {
                     httpGet: { path: "/", port: HTTP_PORT },
                     initialDelaySeconds: 5,

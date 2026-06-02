@@ -24,4 +24,18 @@ describe("NatsExporter", () => {
     expect(args).toContain("-jsz=all");
     expect(args).toContain("http://nats:8222");
   });
+
+  it("runs hardened: non-root, read-only rootfs, no capabilities, bounded memory", async () => {
+    const exporter = build();
+
+    const container = (await promiseOf(exporter.deployment.spec)).template.spec?.containers[0];
+    expect(container?.securityContext).toMatchObject({
+      runAsNonRoot: true,
+      readOnlyRootFilesystem: true,
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ["ALL"] },
+    });
+    expect(container?.resources?.limits).toEqual({ memory: "64Mi" });
+    expect(container?.resources?.limits?.["cpu"]).toBeUndefined();
+  });
 });
