@@ -9,6 +9,7 @@ import { datastoreHealthDashboardJson } from "./dashboards/datastore-health.ts";
 import { edgeAuthDashboardJson } from "./dashboards/edge-auth.ts";
 import { expirationWorkerDashboardJson } from "./dashboards/expiration-worker.ts";
 import { loadProfileDashboardJson } from "./dashboards/load-profile.ts";
+import { logsOverviewDashboardJson } from "./dashboards/logs-overview.ts";
 import { moneyInventoryDashboardJson } from "./dashboards/money-inventory.ts";
 import { platformO11yDashboardJson } from "./dashboards/platform-o11y.ts";
 import { sagaFunnelDashboardJson } from "./dashboards/saga-funnel.ts";
@@ -130,6 +131,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
           "slo-budget.json": sloBudgetDashboardJson(),
           "synthetics.json": syntheticsDashboardJson(),
           "cluster-use.json": clusterUseDashboardJson(),
+          "logs-overview.json": logsOverviewDashboardJson(),
         },
       },
       childOpts,
@@ -182,6 +184,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
             { key: "slo-budget.json", path: "platform/slo-budget.json" },
             { key: "synthetics.json", path: "platform/synthetics.json" },
             { key: "cluster-use.json", path: "platform/cluster-use.json" },
+            { key: "logs-overview.json", path: "platform/logs-overview.json" },
           ],
         },
       },

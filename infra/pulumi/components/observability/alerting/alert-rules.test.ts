@@ -47,7 +47,7 @@ function threshold(rule: Rule): { type: string; params: number[] } {
 }
 
 describe("alertRulesJson", () => {
-  it("renders parseable provisioning JSON with the ten rule groups", () => {
+  it("renders parseable provisioning JSON with the eleven rule groups", () => {
     const config = JSON.parse(alertRulesJson());
 
     expect(config.apiVersion).toBe(1);
@@ -61,6 +61,7 @@ describe("alertRulesJson", () => {
       "datastore_health",
       "cluster_use",
       "platform_alerts",
+      "logs_alerts",
       "watchdog",
     ]);
   });
@@ -220,16 +221,38 @@ describe("alertRulesJson", () => {
     expect(watchdog.for).toBe("0s");
   });
 
-  it("points every Prometheus query at the prometheus datasource and a threshold expression", () => {
+  it("points every query at its datasource and resolves to a threshold expression", () => {
     for (const rule of allRules()) {
       expect(rule.condition).toBe("C");
 
+      // Query node A reads Prometheus, except the logs pillar's Loki-datasource rules (Tier 3).
       const a = rule.data.find((d) => d.refId === "A");
-      expect(a?.datasourceUid).toBe("prometheus");
+      expect(a?.datasourceUid === "prometheus" || a?.datasourceUid === "loki").toBe(true);
 
       const c = rule.data.find((d) => d.refId === "C");
       expect(c?.datasourceUid).toBe("__expr__");
       expect(c?.model.type).toBe("threshold");
     }
+  });
+
+  it("alerts on an error-log spike over the Loki severity_number, reducing before the threshold", () => {
+    const rule = ruleByUid("error-log-rate");
+
+    const a = rule.data.find((d) => d.refId === "A");
+    expect(a?.datasourceUid).toBe("loki");
+    expect(a?.model.expr).toContain("severity_number >= 17");
+
+    // The 3-node Loki shape: a `reduce` (B) collapses the instant sample before the threshold (C).
+    expect(rule.data.find((d) => d.refId === "B")?.model.type).toBe("reduce");
+    expect(rule.condition).toBe("C");
+    expect(rule.labels.severity).toBe("warning");
+  });
+
+  it("pages on absent log ingestion (the logs-pipeline dead-man's-switch)", () => {
+    const rule = ruleByUid("logs-ingest-absent");
+
+    expect(queryExpr(rule)).toContain("absent(rate(loki_distributor_lines_received_total");
+    expect(rule.data.find((d) => d.refId === "A")?.datasourceUid).toBe("prometheus");
+    expect(rule.labels.severity).toBe("page");
   });
 });

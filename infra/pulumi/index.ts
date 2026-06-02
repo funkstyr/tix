@@ -97,6 +97,11 @@ const metricsRetention = config.get("metricsRetention") ?? (stack === "prod" ? "
 const tracesRetention = config.get("tracesRetention") ?? (stack === "prod" ? "2160h" : "360h");
 const logsRetention = config.get("logsRetention") ?? (stack === "prod" ? "2160h" : "360h");
 
+// Log verbosity per service (ADR-0012 Tier 3). `@tix/service-runtime` reads `LOG_LEVEL` and gates
+// every logger (incl. the OTLP exporter) at it: dev runs verbose (`info`), prod warn-and-up so
+// Loki's bill stays bounded. Overridable per stack via `pulumi config set tix:logLevel`.
+const logLevel = config.get("logLevel") ?? (stack === "prod" ? "warn" : "info");
+
 // CA bundle (PEM) that signs the apiserver serving cert, for the kubelet/cAdvisor scrape (ADR-0012
 // Tier 2). No default: dev/kind has no trustable serving cert so the scrape uses insecure_skip_verify;
 // prod sets this (`pulumi config set tix:kubeletCaBundle "$(cat ca.crt)"`) so the scrape verifies.
@@ -330,7 +335,7 @@ const authDeployment = new ServiceDeployment(
     env: {
       AUTH_HTTP_PORT: String(AUTH_PORT),
       AUTH_BASE_URL,
-      LOG_LEVEL: "info",
+      LOG_LEVEL: logLevel,
     },
     secrets: {
       DATABASE_URL: { name: authSecret.metadata.name, key: "DATABASE_URL" },
@@ -367,7 +372,7 @@ const ticketsDeployment = new ServiceDeployment(
       TICKETS_HTTP_PORT: String(TICKETS_PORT),
       AUTH_BASE_URL,
       NATS_URL,
-      LOG_LEVEL: "info",
+      LOG_LEVEL: logLevel,
     },
     secrets: {
       DATABASE_URL: { name: ticketsSecret.metadata.name, key: "DATABASE_URL" },
@@ -408,7 +413,7 @@ const ordersDeployment = new ServiceDeployment(
       AUTH_BASE_URL,
       TICKETS_BASE_URL,
       NATS_URL,
-      LOG_LEVEL: "info",
+      LOG_LEVEL: logLevel,
     },
     secrets: {
       DATABASE_URL: { name: ordersSecret.metadata.name, key: "DATABASE_URL" },
@@ -448,7 +453,7 @@ const paymentsDeployment = new ServiceDeployment(
       PAYMENTS_HTTP_PORT: String(PAYMENTS_PORT),
       AUTH_BASE_URL,
       NATS_URL,
-      LOG_LEVEL: "info",
+      LOG_LEVEL: logLevel,
     },
     secrets: {
       DATABASE_URL: { name: paymentsSecret.metadata.name, key: "DATABASE_URL" },
@@ -488,7 +493,7 @@ const expiration = new ServiceDeployment(
       PORT: String(EXPIRATION_PORT),
       NATS_URL,
       REDIS_URL,
-      LOG_LEVEL: "info",
+      LOG_LEVEL: logLevel,
     },
     secrets: {
       DATABASE_URL: { name: expirationSecret.metadata.name, key: "DATABASE_URL" },
@@ -518,7 +523,7 @@ const gatewayDeployment = new ServiceDeployment("gateway", {
     TICKETS_BASE_URL,
     ORDERS_BASE_URL,
     PAYMENTS_BASE_URL,
-    LOG_LEVEL: "info",
+    LOG_LEVEL: logLevel,
   },
   secrets: {
     BETTER_AUTH_SECRET: { name: authSecret.metadata.name, key: "BETTER_AUTH_SECRET" },

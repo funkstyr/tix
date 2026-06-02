@@ -4,15 +4,17 @@ import { latencyBurnRules, sloBurnRules, sloCoverageRules } from "./burn-alerts.
 import { capacityAlertRules } from "./capacity-alerts.ts";
 import { clusterAlertRules } from "./cluster-alerts.ts";
 import { datastoreAlertRules } from "./datastore-alerts.ts";
+import { logsAlertRules } from "./logs-alerts.ts";
 import { stripeAlertRules } from "./stripe-alerts.ts";
 import { watchdogRules } from "./watchdog.ts";
 
 // Grafana-managed alert rules provisioned as-code (ADR-0010), rendered to JSON and mounted at
 // /etc/grafana/provisioning/alerting. ADR-0012 Tier 1 widened the set from three groups to eight;
 // Tier 2 adds two substrate-health groups — `datastore_health` (Postgres/Redis/JetStream engines)
-// and `cluster_use` (node/pod/PVC USE) — for ten total. Per-concern rule builders live in sibling
-// files; this file only composes them into the provisioning document. All rules route to the
-// in-cluster webhook log sink (contact-points.ts).
+// and `cluster_use` (node/pod/PVC USE); Tier 3 adds `logs_alerts` (error-log-rate spike +
+// logs-ingest-absent watchdog, the first group reading the Loki datasource) — for eleven total.
+// Per-concern rule builders live in sibling files; this file only composes them into the
+// provisioning document. All rules route to the in-cluster webhook log sink (contact-points.ts).
 
 // Each group is one provisioning rule-group; group order here is the order Grafana lists them in.
 function ruleGroups(): Array<{ name: string; rules: Array<Record<string, unknown>> }> {
@@ -26,6 +28,7 @@ function ruleGroups(): Array<{ name: string; rules: Array<Record<string, unknown
     { name: "datastore_health", rules: datastoreAlertRules() },
     { name: "cluster_use", rules: clusterAlertRules() },
     { name: "platform_alerts", rules: [backendDown(), probeFailure()] },
+    { name: "logs_alerts", rules: logsAlertRules() },
     { name: "watchdog", rules: watchdogRules() },
   ];
 }
