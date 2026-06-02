@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { promiseOf } from "../pulumi-mocks.ts";
-import { PrometheusBackend, renderPrometheusConfig as render } from "./prometheus-backend.ts";
+import {
+  PrometheusBackend,
+  renderPrometheusConfig as render,
+  renderRecordingRules,
+} from "./prometheus-backend.ts";
 
 function build(): PrometheusBackend {
   return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi" });
@@ -38,6 +42,50 @@ describe("PrometheusBackend", () => {
 
     const spec = await promiseOf(prometheus.service.spec);
     expect((spec.ports ?? []).map((p) => p.port)).toEqual([9090]);
+  });
+
+  it("mounts the recording rules alongside the config and loads them via rule_files", async () => {
+    const prometheus = build();
+
+    const data = await promiseOf(prometheus.config.data);
+    expect(data?.["rules.yml"]).toBeDefined();
+    expect(data?.["prometheus.yml"] ?? "").toContain("rule_files:");
+    expect(data?.["prometheus.yml"] ?? "").toContain("/etc/prometheus/rules.yml");
+  });
+});
+
+describe("prometheus recording rules", () => {
+  it("records the per-service error ratio at every burn-rate window", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("record: service:request_errors:ratio_rate5m");
+
+    for (const service of ["gateway", "auth"]) {
+      for (const win of ["5m", "30m", "1h", "6h"]) {
+        expect(rules).toContain(
+          `sum(rate(${service}_request_errors_total[${win}])) / clamp_min(sum(rate(${service}_requests_total[${win}])), 1)`,
+        );
+      }
+    }
+  });
+
+  it("labels each recorded ratio with its service so one alert query can select it", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("service: gateway");
+    expect(rules).toContain("service: auth");
+  });
+
+  it("records p95 latency per service", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("record: service:request_duration_ms:p95_rate5m");
+    expect(rules).toContain(
+      "histogram_quantile(0.95, sum(rate(gateway_request_duration_ms_bucket[5m])) by (le))",
+    );
+  });
+
+  it("records the saga conversion ratios", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("record: saga:reserved_per_created:ratio_rate5m");
+    expect(rules).toContain("record: saga:paid_per_reserved:ratio_rate5m");
   });
 });
 

@@ -1,6 +1,8 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import { alertRulesJson } from "./alerting/alert-rules.ts";
+import { contactPointsJson } from "./alerting/contact-points.ts";
 import { authDeepDiveDashboardJson } from "./dashboards/auth-deep-dive.ts";
 import { edgeAuthDashboardJson } from "./dashboards/edge-auth.ts";
 import { expirationWorkerDashboardJson } from "./dashboards/expiration-worker.ts";
@@ -29,6 +31,11 @@ export type GrafanaBackendArgs = {
   // and front Grafana with real auth. TODO(prod): also source the admin password
   // from a Secret rather than the hardcoded dev default below.
   anonymousAccess?: boolean;
+  // When set, provision alert rules + a webhook contact point under
+  // /etc/grafana/provisioning/alerting (ADR-0010). Gated by `alertingEnabled` in index.ts so
+  // it's dev-only — prod omits it (no dangling contact point pointing at an absent log sink).
+  // `logSinkUrl` is the in-cluster webhook target, e.g. `http://alert-log-sink:8080/`.
+  alerting?: { logSinkUrl: string };
 };
 
 // Grafana with the three backends pre-wired as datasources. Anonymous Admin
@@ -46,9 +53,15 @@ const DOMAIN_DIR = `${DASHBOARDS_PATH}/domain`;
 const PLATFORM_DIR = `${DASHBOARDS_PATH}/platform`;
 const SERVICES_DIR = `${DASHBOARDS_PATH}/services`;
 
+// Grafana reads this path for provisioned alerting (contact points, notification policies, and
+// alert rules) on every boot — its default unified-alerting provisioning directory.
+const ALERTING_PATH = "/etc/grafana/provisioning/alerting";
+
 export class GrafanaBackend extends pulumi.ComponentResource {
   readonly datasources: k8s.core.v1.ConfigMap;
   readonly dashboards: k8s.core.v1.ConfigMap;
+  // Present only when `args.alerting` is supplied (dev); undefined otherwise.
+  readonly alerting: k8s.core.v1.ConfigMap | undefined;
   readonly deployment: k8s.apps.v1.Deployment;
   readonly service: k8s.core.v1.Service;
 
@@ -112,6 +125,58 @@ export class GrafanaBackend extends pulumi.ComponentResource {
       childOpts,
     );
 
+    // Alerting as code (ADR-0010), dev-only: alert rules + a webhook contact point routing to
+    // the in-cluster log sink. Created only when `args.alerting` is supplied so prod omits both
+    // the ConfigMap and the mount below — no contact point dangling at an absent service.
+    this.alerting = args.alerting
+      ? new k8s.core.v1.ConfigMap(
+          `${name}-alerting`,
+          {
+            metadata: { name: "grafana-alerting", namespace },
+            data: {
+              "contact-points.json": contactPointsJson(args.alerting.logSinkUrl),
+              "alert-rules.json": alertRulesJson(),
+            },
+          },
+          childOpts,
+        )
+      : undefined;
+
+    const volumeMounts = [
+      { name: "datasources", mountPath: "/etc/grafana/provisioning/datasources", readOnly: true },
+      { name: "dashboards", mountPath: DASHBOARDS_PATH, readOnly: true },
+      ...(this.alerting ? [{ name: "alerting", mountPath: ALERTING_PATH, readOnly: true }] : []),
+    ];
+
+    const volumes = [
+      { name: "datasources", configMap: { name: this.datasources.metadata.name } },
+      {
+        name: "dashboards",
+        configMap: {
+          name: this.dashboards.metadata.name,
+          // Project each board into its folder's subdir so the matching file provider files it
+          // under that Grafana folder. The provider yaml stays at the mount root. ConfigMap
+          // keys can't contain `/`, so the layout lives here in `items[].path`, not in the
+          // data keys above.
+          items: [
+            { key: "dashboards.yaml", path: "dashboards.yaml" },
+            { key: "saga-funnel.json", path: "domain/saga-funnel.json" },
+            { key: "load-profile.json", path: "platform/load-profile.json" },
+            { key: "edge-auth.json", path: "services/edge-auth.json" },
+            { key: "auth-deep-dive.json", path: "services/auth-deep-dive.json" },
+            { key: "money-inventory.json", path: "domain/money-inventory.json" },
+            { key: "expiration-worker.json", path: "domain/expiration-worker.json" },
+            { key: "platform-o11y.json", path: "platform/platform-o11y.json" },
+          ],
+        },
+      },
+      // The alerting ConfigMap mounts whole (both JSON files at the provisioning root) — keys
+      // carry no `/`, so no `items` projection is needed.
+      ...(this.alerting
+        ? [{ name: "alerting", configMap: { name: this.alerting.metadata.name } }]
+        : []),
+    ];
+
     this.deployment = new k8s.apps.v1.Deployment(
       `${name}-deployment`,
       {
@@ -129,18 +194,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
                   image: GRAFANA_IMAGE,
                   env,
                   ports: [{ name: "http", containerPort: HTTP_PORT }],
-                  volumeMounts: [
-                    {
-                      name: "datasources",
-                      mountPath: "/etc/grafana/provisioning/datasources",
-                      readOnly: true,
-                    },
-                    {
-                      name: "dashboards",
-                      mountPath: DASHBOARDS_PATH,
-                      readOnly: true,
-                    },
-                  ],
+                  volumeMounts,
                   readinessProbe: {
                     httpGet: { path: "/api/health", port: HTTP_PORT },
                     initialDelaySeconds: 10,
@@ -148,29 +202,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
                   },
                 },
               ],
-              volumes: [
-                { name: "datasources", configMap: { name: this.datasources.metadata.name } },
-                {
-                  name: "dashboards",
-                  configMap: {
-                    name: this.dashboards.metadata.name,
-                    // Project each board into its folder's subdir so the matching file
-                    // provider files it under that Grafana folder. The provider yaml stays
-                    // at the mount root. ConfigMap keys can't contain `/`, so the layout
-                    // lives here in `items[].path`, not in the data keys above.
-                    items: [
-                      { key: "dashboards.yaml", path: "dashboards.yaml" },
-                      { key: "saga-funnel.json", path: "domain/saga-funnel.json" },
-                      { key: "load-profile.json", path: "platform/load-profile.json" },
-                      { key: "edge-auth.json", path: "services/edge-auth.json" },
-                      { key: "auth-deep-dive.json", path: "services/auth-deep-dive.json" },
-                      { key: "money-inventory.json", path: "domain/money-inventory.json" },
-                      { key: "expiration-worker.json", path: "domain/expiration-worker.json" },
-                      { key: "platform-o11y.json", path: "platform/platform-o11y.json" },
-                    ],
-                  },
-                },
-              ],
+              volumes,
             },
           },
         },
@@ -193,6 +225,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
     this.registerOutputs({
       datasources: this.datasources,
       dashboards: this.dashboards,
+      alerting: this.alerting,
       deployment: this.deployment,
       service: this.service,
     });

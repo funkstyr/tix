@@ -12,16 +12,17 @@ command therefore needs `pnpm install` to have run and a recent Node.
 
 ## Components
 
-| Component            | File                                | Emits                                                                                                                                                                                                                            |
-| -------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `StatefulInfra`      | `components/stateful-infra.ts`      | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                                                                                                                                              |
-| `PostgresRoles`      | `components/postgres-roles.ts`      | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                                                                                                                                                |
-| `StreamBootstrap`    | `components/stream-bootstrap.ts`    | ConfigMap + one-shot Job (`natsio/nats-box`) that creates the JetStream streams idempotently (mirrors `nats-init.sh`)                                                                                                            |
-| `ServiceDeployment`  | `components/service-deployment.ts`  | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes)                                                                                                                      |
-| `MigrationJob`       | `components/migration-job.ts`       | k8s Job that runs the image's `pnpm db:migrate`                                                                                                                                                                                  |
-| `IngressRoutes`      | `components/ingress-routes.ts`      | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`), Grafana (`/grafana/*`, optional) and web SPA (`/*`)                                                                                               |
-| `ObservabilityStack` | `components/observability-stack.ts` | Composes the discrete o11y stack from `components/observability/`: gateway OTel Collector + Garage + Tempo + Loki + Prometheus + Grafana; ADR-0009                                                                               |
-| `LoadGenerator`      | `components/load-generator.ts`      | **Dev-only** k6 Deployment + script ConfigMap. Drives the gateway saga (sign-in → browse → reserve → pay) with induced failures and pushes its own load metrics over OTLP (ADR-0010). Gated by `loadgenEnabled`, off for `prod`. |
+| Component            | File                                         | Emits                                                                                                                                                                                                                                                                            |
+| -------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StatefulInfra`      | `components/stateful-infra.ts`               | Postgres StatefulSet, NATS JetStream StatefulSet, Redis Deployment, services + PVCs                                                                                                                                                                                              |
+| `PostgresRoles`      | `components/postgres-roles.ts`               | ConfigMap with idempotent bootstrap SQL, one-shot Job that runs `psql` (ADR-0003)                                                                                                                                                                                                |
+| `StreamBootstrap`    | `components/stream-bootstrap.ts`             | ConfigMap + one-shot Job (`natsio/nats-box`) that creates the JetStream streams idempotently (mirrors `nats-init.sh`)                                                                                                                                                            |
+| `ServiceDeployment`  | `components/service-deployment.ts`           | Deployment + ClusterIP Service (ConfigMap when `env` has > 8 keys; port-less workers skip Service + probes)                                                                                                                                                                      |
+| `MigrationJob`       | `components/migration-job.ts`                | k8s Job that runs the image's `pnpm db:migrate`                                                                                                                                                                                                                                  |
+| `IngressRoutes`      | `components/ingress-routes.ts`               | Single ingress-nginx Ingress fronting gateway (`/health`, `/api/*`, `/rpc/*`), Grafana (`/grafana/*`, optional) and web SPA (`/*`)                                                                                                                                               |
+| `ObservabilityStack` | `components/observability-stack.ts`          | Composes the discrete o11y stack from `components/observability/`: gateway OTel Collector + Garage + Tempo + Loki + Prometheus + Grafana; ADR-0009                                                                                                                               |
+| `LoadGenerator`      | `components/load-generator.ts`               | **Dev-only** k6 Deployment + script ConfigMap. Drives the gateway saga (sign-in → browse → reserve → pay) with induced failures and pushes its own load metrics over OTLP (ADR-0010). Gated by `loadgenEnabled`, off for `prod`.                                                 |
+| `AlertLogSink`       | `components/observability/alert-log-sink.ts` | **Dev-only** `mendhak/http-https-echo` Deployment + Service. The webhook target for Grafana's alert contact point — echoes each alert payload to stdout, so a firing alert shows in `kubectl logs deploy/alert-log-sink` (ADR-0010). Gated by `alertingEnabled`, off for `prod`. |
 
 `MigrationJob` and `ServiceDeployment` are reusable: no service-specific
 identifiers live in their files. Wire each service in `index.ts`.
@@ -193,33 +194,34 @@ curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-aut
 
 ## Stack config keys
 
-| Key                   | Type   | Default                 | Purpose                                                              |
-| --------------------- | ------ | ----------------------- | -------------------------------------------------------------------- |
-| `namespace`           | string | `tix`                   | Target k8s namespace.                                                |
-| `postgresPassword`    | secret | —                       | Admin (`postgres`) role password.                                    |
-| `authPassword`        | secret | —                       | `auth_user` role password.                                           |
-| `ticketsPassword`     | secret | —                       | `tickets_user` role password.                                        |
-| `ordersPassword`      | secret | —                       | `orders_user` role password.                                         |
-| `paymentsPassword`    | secret | —                       | `payments_user` role password.                                       |
-| `expirationPassword`  | secret | —                       | `expiration_user` role password.                                     |
-| `betterAuthSecret`    | secret | —                       | better-auth signing secret.                                          |
-| `ticketsServiceToken` | secret | —                       | Shared HMAC token for tickets ↔ orders service calls.                |
-| `stripeKey`           | secret | —                       | Stripe API key (payments).                                           |
-| `authImage`           | string | `tix-auth:dev`          | Image tag for the auth Deployment + migration Job.                   |
-| `ticketsImage`        | string | `tix-tickets:dev`       | Image tag for the tickets Deployment + migration Job.                |
-| `ordersImage`         | string | `tix-orders:dev`        | Image tag for the orders Deployment + migration Job.                 |
-| `paymentsImage`       | string | `tix-payments:dev`      | Image tag for the payments Deployment + migration Job.               |
-| `expirationImage`     | string | `tix-expiration:dev`    | Image tag for the expiration Deployment + migration Job.             |
-| `gatewayImage`        | string | `tix-gateway:dev`       | Image tag for the gateway Deployment.                                |
-| `webImage`            | string | `tix-web:dev`           | Image tag for the web (nginx) Deployment.                            |
-| `webOrigin`           | string | `http://localhost:4000` | CORS origin the gateway accepts; matches the SPA's public URL.       |
-| `host`                | string | `localhost`             | `Host` header the ingress matches; serves the whole stack.           |
-| `imagePullPolicy`     | string | `Never`                 | `Never` for dev (local-built); `IfNotPresent` for prod.              |
-| `loadgenEnabled`      | bool   | `false`                 | Dev-only k6 load generator (ADR-0010); `true` in dev, unset in prod. |
-| `garageRpcSecret`     | secret | —                       | Garage RPC secret (32-byte hex); required even single-node.          |
-| `garageAdminToken`    | secret | —                       | Garage admin API bearer token; used by the bucket bootstrap.         |
-| `garageS3AccessKey`   | string | `GK…` (dev default)     | Garage S3 access key (`GK`+24 hex); Tempo/Loki authenticate.         |
-| `garageS3SecretKey`   | secret | —                       | Garage S3 secret key (64 hex).                                       |
+| Key                   | Type   | Default                 | Purpose                                                                                                                                                    |
+| --------------------- | ------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `namespace`           | string | `tix`                   | Target k8s namespace.                                                                                                                                      |
+| `postgresPassword`    | secret | —                       | Admin (`postgres`) role password.                                                                                                                          |
+| `authPassword`        | secret | —                       | `auth_user` role password.                                                                                                                                 |
+| `ticketsPassword`     | secret | —                       | `tickets_user` role password.                                                                                                                              |
+| `ordersPassword`      | secret | —                       | `orders_user` role password.                                                                                                                               |
+| `paymentsPassword`    | secret | —                       | `payments_user` role password.                                                                                                                             |
+| `expirationPassword`  | secret | —                       | `expiration_user` role password.                                                                                                                           |
+| `betterAuthSecret`    | secret | —                       | better-auth signing secret.                                                                                                                                |
+| `ticketsServiceToken` | secret | —                       | Shared HMAC token for tickets ↔ orders service calls.                                                                                                      |
+| `stripeKey`           | secret | —                       | Stripe API key (payments).                                                                                                                                 |
+| `authImage`           | string | `tix-auth:dev`          | Image tag for the auth Deployment + migration Job.                                                                                                         |
+| `ticketsImage`        | string | `tix-tickets:dev`       | Image tag for the tickets Deployment + migration Job.                                                                                                      |
+| `ordersImage`         | string | `tix-orders:dev`        | Image tag for the orders Deployment + migration Job.                                                                                                       |
+| `paymentsImage`       | string | `tix-payments:dev`      | Image tag for the payments Deployment + migration Job.                                                                                                     |
+| `expirationImage`     | string | `tix-expiration:dev`    | Image tag for the expiration Deployment + migration Job.                                                                                                   |
+| `gatewayImage`        | string | `tix-gateway:dev`       | Image tag for the gateway Deployment.                                                                                                                      |
+| `webImage`            | string | `tix-web:dev`           | Image tag for the web (nginx) Deployment.                                                                                                                  |
+| `webOrigin`           | string | `http://localhost:4000` | CORS origin the gateway accepts; matches the SPA's public URL.                                                                                             |
+| `host`                | string | `localhost`             | `Host` header the ingress matches; serves the whole stack.                                                                                                 |
+| `imagePullPolicy`     | string | `Never`                 | `Never` for dev (local-built); `IfNotPresent` for prod.                                                                                                    |
+| `loadgenEnabled`      | bool   | `false`                 | Dev-only k6 load generator (ADR-0010); `true` in dev, unset in prod.                                                                                       |
+| `alertingEnabled`     | bool   | `false`                 | Dev-only Grafana alert rules + webhook→log-sink contact point (ADR-0010); `true` in dev, unset in prod. Recording rules are always provisioned regardless. |
+| `garageRpcSecret`     | secret | —                       | Garage RPC secret (32-byte hex); required even single-node.                                                                                                |
+| `garageAdminToken`    | secret | —                       | Garage admin API bearer token; used by the bucket bootstrap.                                                                                               |
+| `garageS3AccessKey`   | string | `GK…` (dev default)     | Garage S3 access key (`GK`+24 hex); Tempo/Loki authenticate.                                                                                               |
+| `garageS3SecretKey`   | secret | —                       | Garage S3 secret key (64 hex).                                                                                                                             |
 
 ## Validation
 
@@ -282,6 +284,42 @@ board renders them.
   component is covered by `load-generator.test.ts`; end-to-end "dashboards show live
   data" is a manual verify against a `dev` cluster with the flag on and a real test
   key.
+
+## Alerting + SLOs (ADR-0010)
+
+The alerting half of the o11y UX layer splits across three places:
+
+- **Prometheus recording rules** (`prometheus-backend.ts`, `renderRecordingRules()`) ride
+  the config ConfigMap as `rules.yml`, loaded via `rule_files`. They pre-aggregate the
+  hand-rolled RED series: `service:request_errors:ratio_rateW` (gateway + auth, at the
+  5m/30m/1h/6h windows the burn-rate alerts compare), `service:request_duration_ms:p95_rate5m`,
+  and the `saga:*:ratio_rate5m` conversion ratios. **Always provisioned** — they're cheap and
+  valid in any stack, so no flag gates them.
+- **Grafana alert rules + contact point** (`components/observability/alerting/`) are authored
+  in TypeScript, rendered to JSON (matching dashboards-as-code), and mounted at
+  `/etc/grafana/provisioning/alerting` via a `grafana-alerting` ConfigMap. `alert-rules.ts`
+  builds three groups — SLO multi-window burn-rate (gateway/auth, 99% SLO: fast 1h+5m pages,
+  slow 6h+30m tickets), domain alerts (saga stall, conflict spike, `expiry_duplicate_publish`
+  spike), and backend-down (`up{job=~…} < 1`). Every rule is the one `alertRule()` factory
+  shape: a Prometheus instant query (refId A) feeding a threshold expression (refId C).
+  `contact-points.ts` provisions a single webhook contact point + a root policy routing
+  everything to the log sink.
+- **The log sink** (`AlertLogSink`) is the webhook target — `mendhak/http-https-echo` echoing
+  each alert payload to stdout. View a firing alert with
+  `kubectl -n tix logs deploy/alert-log-sink`.
+
+Both the Grafana provisioning and the log sink are gated by `alertingEnabled` (`true` in
+`Pulumi.dev.yaml`, unset for `prod`) — `GrafanaBackend` only emits the alerting ConfigMap +
+mount when given an `alerting` arg, so prod has no contact point dangling at an absent sink.
+
+- **It is off in the kind smoke** (the `kind-smoke` stack doesn't set `alertingEnabled`), and
+  Grafana's alerting-provisioning path is **not** exercised by the smoke. Components are
+  covered by unit tests (`alert-rules.test.ts`, `contact-points.test.ts`,
+  `alert-log-sink.test.ts`, and the prometheus/grafana backend tests); end-to-end "a failure
+  trips an alert and the payload lands in the sink's logs" is a manual verify against a `dev`
+  cluster with both `loadgenEnabled` + `alertingEnabled` on and a real Stripe test key (so the
+  pay-stage failures the saga-stall / burn-rate alerts key on are real). Grafana reads both
+  YAML and JSON from the provisioning dir; we emit JSON to stay on the dashboards-as-code path.
 
 ## Notes
 
