@@ -13,6 +13,7 @@
     "@tix/config": "workspace:*",
     "@tix/contracts": "workspace:*",
     "@tix/messaging": "workspace:*",
+    "@tix/saga-client": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "drizzle-orm": "catalog:",

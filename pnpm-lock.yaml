@@ -206,6 +206,9 @@ importers:
       '@tix/messaging':
         specifier: workspace:*
         version: link:../../packages/messaging
+      '@tix/saga-client':
+        specifier: workspace:*
+        version: link:../../packages/saga-client
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.1

@@ -1,27 +1,35 @@
-import { createORPCClient } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
 import { setTimeout as delay } from "node:timers/promises";
+
+import { makeSagaClients } from "@tix/saga-client/clients";
 
 import type { AuthRouterClient } from "@tix/contracts/auth";
 import type { OrdersRouterClient } from "@tix/contracts/orders";
-import { RPC_PREFIX } from "@tix/contracts/rpc";
 import type { TicketsRouterClient } from "@tix/contracts/tickets";
 
 import { env } from "./env.ts";
 
+// api-e2e drives each service on its own localhost port (no gateway) and never charges, so the
+// shared factory is pointed at the per-service URLs; the payments client is unused here, so its
+// base URL is a harmless placeholder (env has no PAYMENTS_BASE_URL).
+function clients() {
+  return makeSagaClients({
+    authBaseUrl: env.AUTH_BASE_URL,
+    ticketsBaseUrl: env.TICKETS_BASE_URL,
+    ordersBaseUrl: env.ORDERS_BASE_URL,
+    paymentsBaseUrl: env.ORDERS_BASE_URL,
+  });
+}
+
 export function authClient(): AuthRouterClient {
-  const link = new RPCLink({ url: `${env.AUTH_BASE_URL}${RPC_PREFIX}` });
-  return createORPCClient(link);
+  return clients().auth;
 }
 
 export function ticketsClient(): TicketsRouterClient {
-  const link = new RPCLink({ url: `${env.TICKETS_BASE_URL}${RPC_PREFIX}` });
-  return createORPCClient(link);
+  return clients().tickets;
 }
 
 export function ordersClient(): OrdersRouterClient {
-  const link = new RPCLink({ url: `${env.ORDERS_BASE_URL}${RPC_PREFIX}` });
-  return createORPCClient(link);
+  return clients().orders;
 }
 
 export async function pollTicketRestored(
