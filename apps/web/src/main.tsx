@@ -1,6 +1,7 @@
 import { type JSX, StrictMode, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { initWebRum, setRumRoute } from "@tix/observability/web-rum";
 
 import { createWebAuthClient } from "./auth/auth-client";
 import { AuthProvider } from "./auth/auth-context";
@@ -8,10 +9,18 @@ import { useAuth } from "./auth/use-auth";
 import { ClientProvider } from "./client/client-context";
 import { createGatewayClient } from "./client/gateway-client";
 import { parseEnv } from "./env";
+import { rumConfigFromEnv } from "./observability/rum";
 import type { RouterContext } from "./routes/__root";
 import { routeTree } from "./routeTree.gen";
 
 const env = parseEnv(import.meta.env);
+
+// Browser RUM (ADR-0013). No-op when VITE_RUM_URL is unset. Initialized before the gateway
+// client so the OTel-web fetch instrumentation patches `fetch` ahead of the first request,
+// which is what threads `traceparent` onto the backend trace (the stitch).
+const rumConfig = rumConfigFromEnv(env);
+const faro = rumConfig ? initWebRum(rumConfig) : null;
+
 const gatewayClient = createGatewayClient(env.VITE_GATEWAY_URL);
 const authClient = createWebAuthClient(env.VITE_GATEWAY_URL);
 
@@ -23,6 +32,15 @@ const router = createRouter({
   routeTree,
   context: { auth: undefined } as unknown as RouterContext,
 });
+
+// Feed the normalized route PATTERN (e.g. /tickets/$ticketId), never the concrete path, as the
+// RUM view label — the cardinality rule (ADR-0013). `routeId` is the pattern from the route tree.
+if (faro) {
+  router.subscribe("onResolved", () => {
+    const match = router.state.matches.at(-1);
+    if (match) setRumRoute(faro, match.routeId);
+  });
+}
 
 declare module "@tanstack/react-router" {
   interface Register {
