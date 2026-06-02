@@ -13,6 +13,7 @@ function build(args?: { alertingEnabled?: boolean }): ObservabilityStack {
     garageAdminToken: "admintoken",
     garageS3AccessKey: ACCESS_KEY,
     garageS3SecretKey: "0".repeat(64),
+    traceSamplingPercent: 100,
     ...args,
   });
 }

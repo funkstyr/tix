@@ -47,6 +47,9 @@ export type ObservabilityStackArgs = {
   // Provision alert rules + the webhook→log-sink contact point (ADR-0010). Dev-only — off for
   // prod, so prod gets neither the alerting provisioning nor the log-sink Deployment.
   alertingEnabled?: boolean;
+  // Tail-sampling baseline kept on the path to Tempo (errors + slow traces always kept).
+  // Env-driven: dev passes 100 (keep every trace), prod a lower rate.
+  traceSamplingPercent: number;
 };
 
 // Stands up the discrete in-cluster OpenTelemetry stack (ADR-0009): Garage
@@ -163,6 +166,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
         tempoEndpoint: TEMPO_OTLP_ENDPOINT,
         lokiLogsEndpoint: LOKI_OTLP_LOGS,
         prometheusMetricsEndpoint: PROMETHEUS_OTLP_METRICS,
+        samplingPercent: args.traceSamplingPercent,
       },
       { parent: this, dependsOn: backends },
     );
