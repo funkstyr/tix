@@ -38,6 +38,7 @@
   "dependencies": {
     "@effect/platform": "catalog:",
     "@nats-io/transport-node": "catalog:",
+    "@pyroscope/nodejs": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
