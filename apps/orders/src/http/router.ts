@@ -22,6 +22,7 @@ import {
 } from "@tix/contracts/subjects";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
+import { SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withResilience, withTimeout } from "@tix/observability/resilience";
 
@@ -54,6 +55,9 @@ export type OrdersRequestContext = { otelParent: OtelContext };
 // executes it on the live runtime.
 export function createOrderProgram(input: typeof orderCreateInput.infer) {
   return Effect.gen(function* () {
+    yield* Effect.annotateCurrentSpan(SpanAttr.ticketId, input.ticketId);
+    yield* Effect.annotateCurrentSpan(SpanAttr.quantity, input.quantity);
+
     const authClient = yield* AuthClient;
     const ticketsClient = yield* Tickets;
     const db = yield* Database;
@@ -93,7 +97,8 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
         > => {
           // Lost the race: between getById and reserve, another buyer claimed the seats.
           if (error.code === "CONFLICT") {
-            return Metric.increment(reservationConflictsTotal).pipe(
+            return Effect.annotateCurrentSpan(SpanAttr.ticketId, input.ticketId).pipe(
+              Effect.zipRight(Metric.increment(reservationConflictsTotal)),
               Effect.zipRight(Effect.fail(new ReservationConflict({ ticketId: input.ticketId }))),
             );
           }
@@ -178,6 +183,9 @@ export function createOrderProgram(input: typeof orderCreateInput.infer) {
 
     yield* Metric.increment(ordersCreatedTotal);
     yield* Metric.update(orderValueCents, priceCents);
+    yield* Effect.annotateCurrentSpan(SpanAttr.orderId, row.id);
+    yield* Effect.annotateCurrentSpan(SpanAttr.buyerId, row.buyerId);
+    yield* Effect.annotateCurrentSpan(SpanAttr.valueCents, priceCents);
 
     return toOrderRecord(row);
   });
