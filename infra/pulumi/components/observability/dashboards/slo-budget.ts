@@ -2,11 +2,13 @@ import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 
 import { statPanel, tsPanel } from "./_shared.ts";
 
-// SLO error-budget burndown (ADR-0011 Tier 3), Platform folder. Reads the
-// `slo:error_budget_consumed:ratio` recording rule (prometheus-backend.ts) — current 1h error
-// ratio over each service's budget, so 1.0 (100%) means burning exactly at the budget rate and
-// >1 means burning faster than the SLO allows. The recorded series carries a `service` label, so
-// a single target legends by service rather than one target per SLO.
+// SLO error-budget burndown (ADR-0011 Tier 3; widened ADR-0012 Tier 1), Platform folder. Reads the
+// `slo:error_budget_consumed:ratio` recording rule (prometheus-backend.ts) — current 1h bad-event
+// ratio over each SLO's budget, so 1.0 (100%) means burning exactly at the budget rate and >1 means
+// burning faster than the SLO allows. The recorded series carries a `service` label, so a single
+// target legends by SLO rather than one target per objective — and now that every SLO (gateway/auth
+// availability, the checkout/payment coverage SLOs, and the latency objectives) records under that
+// one rule, this board covers all of them with no per-SLO target.
 
 const DASHBOARD_UID = "slo-budget";
 

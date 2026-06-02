@@ -8,12 +8,27 @@ same shape: **Symptom**, **Likely cause**, **Checks** (boards / queries to run),
 These describe the dev/staging topology (the LGTM stack + k6 load generator, ADR-0009/0010). In a
 real incident, treat them as a starting point, not gospel.
 
-| Alert (uid)                      | Severity    | Dashboard           | Runbook                                      |
-| -------------------------------- | ----------- | ------------------- | -------------------------------------------- |
-| `gateway-burn-fast` / `-slow`    | page/ticket | `edge-auth`         | [gateway-burn.md](./gateway-burn.md)         |
-| `auth-burn-fast` / `-slow`       | page/ticket | `edge-auth`         | [auth-burn.md](./auth-burn.md)               |
-| `saga-stall`                     | page        | `saga-funnel`       | [saga-stall.md](./saga-stall.md)             |
-| `conflict-spike`                 | warning     | `saturation`        | [conflict-spike.md](./conflict-spike.md)     |
-| `expiry-duplicate-publish-spike` | warning     | `expiration-worker` | [expiry-duplicate.md](./expiry-duplicate.md) |
-| `backend-down`                   | page        | `platform-o11y`     | [backend-down.md](./backend-down.md)         |
-| `probe-failure`                  | page        | `synthetics`        | [probe-failure.md](./probe-failure.md)       |
+The ADR-0012 Tier 1 additions widen the table: SLO coverage (checkout / payment), latency SLOs, the
+external-dependency (Stripe) alerts, business-anomaly + predictive-capacity alerts, and the
+dead-man's-switch watchdog.
+
+| Alert (uid)                                       | Severity    | Dashboard                       | Runbook                                                      |
+| ------------------------------------------------- | ----------- | ------------------------------- | ------------------------------------------------------------ |
+| `gateway-burn-fast` / `-slow`                     | page/ticket | `edge-auth`                     | [gateway-burn.md](./gateway-burn.md)                         |
+| `auth-burn-fast` / `-slow`                        | page/ticket | `edge-auth`                     | [auth-burn.md](./auth-burn.md)                               |
+| `checkout-burn-fast` / `-slow`                    | page/ticket | `saga-funnel`                   | [checkout-burn.md](./checkout-burn.md)                       |
+| `payment-burn-fast` / `-slow`                     | page/ticket | `money-inventory`               | [payment-burn.md](./payment-burn.md)                         |
+| `gateway-latency-burn-*` / `auth-*` / `payment-*` | page/ticket | `edge-auth` / `money-inventory` | [latency-burn.md](./latency-burn.md)                         |
+| `saga-stall`                                      | page        | `saga-funnel`                   | [saga-stall.md](./saga-stall.md)                             |
+| `conflict-spike`                                  | warning     | `saturation`                    | [conflict-spike.md](./conflict-spike.md)                     |
+| `expiry-duplicate-publish-spike`                  | warning     | `expiration-worker`             | [expiry-duplicate.md](./expiry-duplicate.md)                 |
+| `stripe-charge-error-rate`                        | page        | `money-inventory`               | [stripe-charge-error-rate.md](./stripe-charge-error-rate.md) |
+| `stripe-charge-latency`                           | ticket      | `money-inventory`               | [stripe-charge-latency.md](./stripe-charge-latency.md)       |
+| `payment-failure-spike`                           | warning     | `money-inventory`               | [payment-failure-spike.md](./payment-failure-spike.md)       |
+| `inventory-exhausted`                             | page        | `saturation`                    | [inventory-exhausted.md](./inventory-exhausted.md)           |
+| `outbox-lag-projected`                            | ticket      | `saturation`                    | [outbox-lag.md](./outbox-lag.md)                             |
+| `queue-depth-projected`                           | ticket      | `saturation`                    | [queue-depth.md](./queue-depth.md)                           |
+| `order-rate-drop`                                 | page        | `saturation`                    | [order-rate-drop.md](./order-rate-drop.md)                   |
+| `backend-down`                                    | page        | `platform-o11y`                 | [backend-down.md](./backend-down.md)                         |
+| `probe-failure`                                   | page        | `synthetics`                    | [probe-failure.md](./probe-failure.md)                       |
+| `watchdog`                                        | watchdog    | —                               | [watchdog.md](./watchdog.md)                                 |

@@ -1,7 +1,19 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
-import { SLOS, errorBudget, type Slo } from "./slo.ts";
+import {
+  coverageSlos,
+  errorBudget,
+  isRedAvailability,
+  latencySlos,
+  recordedBadRatioName,
+  recordedBadRatioSeries,
+  SLOS,
+  sloId,
+  type AvailabilitySlo,
+  type LatencySlo,
+  type Slo,
+} from "./slo.ts";
 
 // Prometheus (metrics). Receives OTLP push directly (no scraping) and stores to
 // a local TSDB on a PVC — vanilla Prometheus has no object-storage backend, so
@@ -256,16 +268,72 @@ function p95Rule(service: string): string {
           service: ${service}`;
 }
 
-// Error-budget consumed (ADR-0011 Tier 3): the current 1h error ratio over the SLO's budget,
-// derived from slo.ts so the objective is the single source. ≥1 means the service is burning
-// budget faster than the SLO allows. The budget divisor is formatted (3 dp, no trailing zeros)
-// so a 99% SLO renders `/ 0.01`, not the float-noise `/ 0.010000000000000009`.
+// Stripe charge-latency p95 value (ms), read by the `stripe-charge-latency` alert (alert-rules.ts).
+// The payments service emits a separate `payment_charge_latency_ms` histogram (not the request-
+// duration one), so this can't ride `p95Rule` — it's the external-dependency latency, not ours.
+function chargeLatencyP95Rule(): string {
+  return `      - record: payment:charge_latency_ms:p95_rate5m
+        expr: histogram_quantile(0.95, sum(rate(payment_charge_latency_ms_bucket[5m])) by (le))`;
+}
+
+// ADR-0012 Tier 1 bad-event fraction recording rules for the new SLOs. gateway/auth availability
+// stay on the RED `errorRatioRule` above; checkout/payment availability and the latency objectives
+// record their bad fraction here so the burn alerts read one recorded series per window.
+
+// checkout = reserve success (bad = 1 - reserved/created); payment = charge success
+// (bad = failed / (succeeded + failed)). The `clamp_min(_, 1)` floors the denominator at 1 req/s so
+// a quiet window yields 0, not NaN (matches errorRatioRule / red-row.ts).
+function availabilityBadRatioExpr(slo: AvailabilitySlo, win: string): string {
+  if (slo.name === "checkout") {
+    return `1 - sum(rate(tickets_reserved_total[${win}])) / clamp_min(sum(rate(orders_created_total[${win}])), 1)`;
+  }
+  return `sum(rate(payments_failed_total[${win}])) / clamp_min(sum(rate(payments_succeeded_total[${win}])) + sum(rate(payments_failed_total[${win}])), 1)`;
+}
+
+// Latency violation = the fraction of requests slower than the bound: 1 - (≤bound)/(all). Reads the
+// histogram's `le="<targetMs>"` and `le="+Inf"` buckets (ADR-0012 Tier 1 — assumes a bucket boundary
+// at the bound; alert firing is a manual dev verify, the same posture as the other burn alerts).
+function latencyViolationExpr(slo: LatencySlo, win: string): string {
+  const le = (bound: string) => `sum(rate(${slo.bucketMetric}{le="${bound}"}[${win}]))`;
+  return `1 - ${le(String(slo.targetMs))} / clamp_min(${le("+Inf")}, 1)`;
+}
+
+function sloBadRatioRule(slo: Slo, win: string): string {
+  const expr =
+    slo.type === "latency" ? latencyViolationExpr(slo, win) : availabilityBadRatioExpr(slo, win);
+
+  return `      - record: ${recordedBadRatioName(slo, win)}
+        expr: ${expr}
+        labels:
+          slo: ${sloId(slo)}`;
+}
+
+// Business levels (ADR-0012 Tier 1): single-series rollups the capacity alerts read instead of
+// recomputing across the three outbox gauges / the order-rate / inventory inline. `outbox:lag:max`
+// folds the three relay gauges into one series the `predict_linear` projection can ride.
+function businessLevelRules(): string {
+  return `      - record: outbox:lag:max
+        expr: max(orders_outbox_lag or tickets_outbox_lag or payments_outbox_lag)
+      - record: order:created:rate10m
+        expr: sum(rate(orders_created_total[10m]))
+      - record: inventory:available:min
+        expr: min(tickets_available_inventory)`;
+}
+
+// Error-budget consumed (ADR-0011 Tier 3, widened ADR-0012 Tier 1): the current 1h bad-event ratio
+// over the SLO's budget, derived from slo.ts so the objective is the single source. ≥1 means the
+// SLO is burning budget faster than allowed. The budget divisor is formatted (3 dp, no trailing
+// zeros) so a 99% SLO renders `/ 0.01`, not the float-noise `/ 0.010000000000000009`. Every SLO —
+// gateway/auth availability, the coverage SLOs, and the latency objectives — records under one
+// `service` label so the slo-budget board legends them all by `{{service}}`.
 function errorBudgetConsumedRule(slo: Slo): string {
   const budget = String(Number(errorBudget(slo).toFixed(3)));
+  const label = isRedAvailability(slo) ? slo.name : sloId(slo);
+
   return `      - record: slo:error_budget_consumed:ratio
-        expr: service:request_errors:ratio_rate1h{service="${slo.service}"} / ${budget}
+        expr: ${recordedBadRatioSeries(slo, "1h")} / ${budget}
         labels:
-          service: ${slo.service}`;
+          service: ${label}`;
 }
 
 export function renderRecordingRules(): string {
@@ -275,15 +343,24 @@ export function renderRecordingRules(): string {
 
   const p95s = RED_SERVICES.map(p95Rule).join("\n");
 
+  const coverageRatios = coverageSlos
+    .flatMap((slo) => RATIO_WINDOWS.map((win) => sloBadRatioRule(slo, win)))
+    .join("\n");
+
+  const latencyRatios = latencySlos
+    .flatMap((slo) => RATIO_WINDOWS.map((win) => sloBadRatioRule(slo, win)))
+    .join("\n");
+
   const errorBudgets = SLOS.map(errorBudgetConsumedRule).join("\n");
 
-  return `# Generated by tix:infra:PrometheusBackend (recording rules, ADR-0010).
+  return `# Generated by tix:infra:PrometheusBackend (recording rules, ADR-0010; SLO breadth ADR-0012).
 groups:
   - name: tix_red_aggregates
     interval: 30s
     rules:
 ${ratios}
 ${p95s}
+${chargeLatencyP95Rule()}
   - name: tix_saga_conversion
     interval: 30s
     rules:
@@ -291,6 +368,18 @@ ${p95s}
         expr: sum(rate(tickets_reserved_total[5m])) / clamp_min(sum(rate(orders_created_total[5m])), 1)
       - record: saga:paid_per_reserved:ratio_rate5m
         expr: sum(rate(payments_succeeded_total[5m])) / clamp_min(sum(rate(tickets_reserved_total[5m])), 1)
+  - name: tix_slo_coverage
+    interval: 30s
+    rules:
+${coverageRatios}
+  - name: tix_slo_latency
+    interval: 30s
+    rules:
+${latencyRatios}
+  - name: tix_business_levels
+    interval: 30s
+    rules:
+${businessLevelRules()}
   - name: tix_slo_error_budget
     interval: 30s
     rules:
