@@ -19,6 +19,7 @@ function build(args?: {
     tempoUrl: "http://tempo:3200",
     lokiUrl: "http://loki:3100",
     prometheusUrl: "http://prometheus:9090",
+    pyroscopeUrl: "http://pyroscope:4040",
     ...args,
   });
 }
@@ -42,6 +43,16 @@ describe("GrafanaBackend", () => {
     expect(yaml).toContain("url: http://tempo:3200");
     expect(yaml).toContain("url: http://loki:3100");
     expect(yaml).toContain("url: http://prometheus:9090");
+  });
+
+  it("provisions Pyroscope as a profiling datasource", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.datasources.data);
+    const yaml = data?.["datasources.yaml"] ?? "";
+    expect(yaml).toContain("type: grafana-pyroscope-datasource");
+    expect(yaml).toContain("uid: pyroscope");
+    expect(yaml).toContain("url: http://pyroscope:4040");
   });
 
   it("wires the Tempo→Loki trace-to-logs link, filtered by trace id", async () => {

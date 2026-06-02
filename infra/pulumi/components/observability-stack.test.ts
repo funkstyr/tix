@@ -79,6 +79,25 @@ describe("ObservabilityStack", () => {
 
     const lokiSpec = await promiseOf(stack.loki.deployment.spec);
     expect(lokiSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name).toBe(secretName);
+
+    const pyroscopeSpec = await promiseOf(stack.pyroscope.deployment.spec);
+    expect(pyroscopeSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name).toBe(
+      secretName,
+    );
+  });
+
+  it("creates the Pyroscope Garage bucket in the bootstrap Job", async () => {
+    // The buckets list is a literal passed into GarageBuckets, surfaced in the rendered init
+    // script (one grant block per bucket). Asserting on the script proves the Job actually
+    // creates + grants the pyroscope bucket, not just that the type permits the name.
+    const data = await promiseOf(stack.buckets.configMap.data);
+    const script = data?.["garage-init.sh"] ?? "";
+    expect(script).toContain("create_or_get_bucket pyroscope");
+  });
+
+  it("stands up Pyroscope on its own Garage bucket", async () => {
+    const spec = await promiseOf(stack.pyroscope.service.spec);
+    expect((spec.ports ?? []).map((p) => p.port)).toContain(4040);
   });
 
   it("stands up the log sink and provisions Grafana alerting when alerting is enabled", async () => {
