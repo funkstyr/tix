@@ -4,7 +4,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { AuthRouterClient } from "@tix/contracts/auth";
 import type { OrdersRouterClient } from "@tix/contracts/orders";
 import type { PaymentsRouterClient } from "@tix/contracts/payments";
-import { RPC_PREFIX } from "@tix/contracts/rpc";
+import { joinRpcUrl } from "@tix/contracts/rpc";
 import type { TicketsRouterClient } from "@tix/contracts/tickets";
 
 // One typed oRPC client per router, each pointed at an explicit base URL so the same flow runs
@@ -25,16 +25,16 @@ export type SagaClientUrls = {
 
 export function makeSagaClients(urls: SagaClientUrls): SagaClients {
   const auth: AuthRouterClient = createORPCClient(
-    new RPCLink({ url: `${urls.authBaseUrl}${RPC_PREFIX}` }),
+    new RPCLink({ url: joinRpcUrl(urls.authBaseUrl) }),
   );
   const tickets: TicketsRouterClient = createORPCClient(
-    new RPCLink({ url: `${urls.ticketsBaseUrl}${RPC_PREFIX}` }),
+    new RPCLink({ url: joinRpcUrl(urls.ticketsBaseUrl) }),
   );
   const orders: OrdersRouterClient = createORPCClient(
-    new RPCLink({ url: `${urls.ordersBaseUrl}${RPC_PREFIX}` }),
+    new RPCLink({ url: joinRpcUrl(urls.ordersBaseUrl) }),
   );
   const payments: PaymentsRouterClient = createORPCClient(
-    new RPCLink({ url: `${urls.paymentsBaseUrl}${RPC_PREFIX}` }),
+    new RPCLink({ url: joinRpcUrl(urls.paymentsBaseUrl) }),
   );
 
   return { auth, tickets, orders, payments };
