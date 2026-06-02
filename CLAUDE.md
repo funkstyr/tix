@@ -14,10 +14,12 @@ tix/
 │   ├── expiration/   # BullMQ delayed-job worker; auto-cancels Orders
 │   ├── gateway/      # Edge HTTP/oRPC ingress; auth fan-out
 │   ├── web/          # React 19 SPA (buyer/seller UI)
+│   ├── synthetic/    # Headless buyer-journey probe; runs as a K8s CronJob — see its CLAUDE.md
 │   ├── api-e2e/      # Cross-service integration suite (vitest) — see its CLAUDE.md
 │   └── web-e2e/      # Browser e2e (Playwright + testcontainers) — see its CLAUDE.md
 ├── packages/
 │   ├── contracts/         # arktype schemas + oRPC routers (tickets, orders, subjects)
+│   ├── saga-client/       # shared buyer-journey saga driver (used by api-e2e + synthetic)
 │   ├── db-core/           # drizzle + postgres client (per-service schema; ADR-0003)
 │   ├── messaging/         # NATS JetStream + BullMQ wrappers, outbox/inbox helpers
 │   ├── observability/     # Effect Logger + OpenTelemetry/OTLP wiring (ADR-0009)
