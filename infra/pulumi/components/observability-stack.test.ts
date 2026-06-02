@@ -14,6 +14,9 @@ function build(args?: { alertingEnabled?: boolean }): ObservabilityStack {
     garageS3AccessKey: ACCESS_KEY,
     garageS3SecretKey: "0".repeat(64),
     traceSamplingPercent: 100,
+    metricsRetention: "15d",
+    tracesRetention: "360h",
+    logsRetention: "360h",
     ...args,
   });
 }

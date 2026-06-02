@@ -10,6 +10,7 @@ function build(): TempoBackend {
     bucket: "tempo",
     credentialsSecretName: "garage-credentials",
     storage: "1Gi",
+    blockRetention: "360h",
   });
 }
 
@@ -24,6 +25,15 @@ describe("TempoBackend", () => {
     expect(config).toContain("bucket: tempo");
     expect(config).toContain("forcepathstyle: true");
     expect(config).toContain("insecure: true");
+  });
+
+  it("compacts blocks past the configured retention so old traces age out of Garage", async () => {
+    const tempo = build();
+
+    const data = await promiseOf(tempo.config.data);
+    const config = data?.["tempo.yaml"] ?? "";
+    expect(config).toContain("compactor:");
+    expect(config).toContain("block_retention: 360h");
   });
 
   it("receives OTLP gRPC and serves the search API", async () => {

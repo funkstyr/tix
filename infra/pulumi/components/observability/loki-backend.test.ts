@@ -9,6 +9,7 @@ function build(): LokiBackend {
     s3Endpoint: "garage:3900",
     bucket: "loki",
     credentialsSecretName: "garage-credentials",
+    retentionPeriod: "360h",
   });
 }
 
@@ -30,6 +31,15 @@ describe("LokiBackend", () => {
 
     const data = await promiseOf(loki.config.data);
     expect(data?.["loki.yaml"] ?? "").toContain("allow_structured_metadata: true");
+  });
+
+  it("enables the compactor retention so old log chunks age out of Garage", async () => {
+    const loki = build();
+
+    const data = await promiseOf(loki.config.data);
+    const config = data?.["loki.yaml"] ?? "";
+    expect(config).toContain("retention_period: 360h");
+    expect(config).toContain("retention_enabled: true");
   });
 
   it("serves on the HTTP port", async () => {

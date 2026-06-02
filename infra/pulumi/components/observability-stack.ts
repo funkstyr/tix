@@ -50,6 +50,12 @@ export type ObservabilityStackArgs = {
   // Tail-sampling baseline kept on the path to Tempo (errors + slow traces always kept).
   // Env-driven: dev passes 100 (keep every trace), prod a lower rate.
   traceSamplingPercent: number;
+  // Backend retention windows, threaded into each store (ADR-0011 Tier 3). Without them every
+  // backend grows unbounded. Dev-small / prod-larger. Prometheus takes a Prometheus duration
+  // (e.g. `15d`); Tempo/Loki take Go durations (e.g. `360h`).
+  metricsRetention: string;
+  tracesRetention: string;
+  logsRetention: string;
 };
 
 // Stands up the discrete in-cluster OpenTelemetry stack (ADR-0009): Garage
@@ -115,6 +121,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
         bucket: TEMPO_BUCKET,
         credentialsSecretName,
         storage: "1Gi",
+        blockRetention: args.tracesRetention,
       },
       { parent: this, dependsOn: this.buckets },
     );
@@ -126,6 +133,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
         s3Endpoint: GARAGE_S3_ENDPOINT,
         bucket: LOKI_BUCKET,
         credentialsSecretName,
+        retentionPeriod: args.logsRetention,
       },
       { parent: this, dependsOn: this.buckets },
     );
@@ -133,7 +141,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
     // Prometheus uses a local TSDB, so it depends on nothing but the namespace.
     this.prometheus = new PrometheusBackend(
       `${name}-prometheus`,
-      { namespace, storage: "1Gi" },
+      { namespace, storage: "1Gi", retention: args.metricsRetention },
       childOpts,
     );
 

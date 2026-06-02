@@ -11,6 +11,10 @@ const HTTP_PORT = 9090;
 export type PrometheusBackendArgs = {
   namespace: pulumi.Input<string>;
   storage: string;
+  // TSDB retention window (Prometheus duration, e.g. `15d`). Bounds local disk:
+  // without it Prometheus keeps samples until the PVC fills. Parameterized
+  // dev-small / prod-larger so a dev box isn't sized for prod's history.
+  retention: string;
 };
 
 // Prometheus metrics backend. The gateway collector pushes OTLP metrics to
@@ -67,6 +71,7 @@ export class PrometheusBackend extends pulumi.ComponentResource {
                   args: [
                     "--config.file=/etc/prometheus/prometheus.yml",
                     "--storage.tsdb.path=/prometheus",
+                    `--storage.tsdb.retention.time=${args.retention}`,
                     "--web.enable-otlp-receiver",
                     "--web.enable-lifecycle",
                     // Store exemplars so the span-derived `duration` histograms

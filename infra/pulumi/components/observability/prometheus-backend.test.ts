@@ -8,7 +8,7 @@ import {
 } from "./prometheus-backend.ts";
 
 function build(): PrometheusBackend {
-  return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi" });
+  return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi", retention: "15d" });
 }
 
 describe("PrometheusBackend", () => {
@@ -20,6 +20,14 @@ describe("PrometheusBackend", () => {
     expect(container?.args).toContain("--web.enable-otlp-receiver");
     expect(container?.args).toContain("--storage.tsdb.path=/prometheus");
     expect(spec.volumeClaimTemplates).toHaveLength(1);
+  });
+
+  it("caps the TSDB at the configured retention so disk usage is bounded", async () => {
+    const prometheus = build();
+
+    const spec = await promiseOf(prometheus.statefulSet.spec);
+    const container = spec.template.spec?.containers[0];
+    expect(container?.args).toContain("--storage.tsdb.retention.time=15d");
   });
 
   it("enables exemplar storage so span-derived histograms can drill to traces", async () => {
