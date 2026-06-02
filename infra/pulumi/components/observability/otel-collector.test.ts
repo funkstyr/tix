@@ -42,7 +42,31 @@ describe("OtelCollector", () => {
     expect(meta.name).toBe("otel-collector");
 
     const spec = await promiseOf(collector.service.spec);
-    expect((spec.ports ?? []).map((p) => p.port)).toEqual([4317, 4318, 8888]);
+    expect((spec.ports ?? []).map((p) => p.port)).toEqual([4317, 4318, 8888, 8090]);
+  });
+
+  it("accepts browser RUM via a faro receiver on :8090, exposed on the service", async () => {
+    const collector = build();
+
+    const data = await promiseOf(collector.config.data);
+    const config = data?.["config.yaml"] ?? "";
+    expect(config).toContain("faro:");
+    expect(config).toContain("0.0.0.0:8090");
+
+    const spec = await promiseOf(collector.service.spec);
+    expect((spec.ports ?? []).map((p) => p.port)).toContain(8090);
+  });
+
+  it("fans the faro receiver into the same trace + log pipelines as OTLP", async () => {
+    const collector = build();
+
+    const data = await promiseOf(collector.config.data);
+    const config = data?.["config.yaml"] ?? "";
+    // Browser fetch spans must reach both the RED connectors and Tempo, and browser
+    // errors/web-vitals must reach Loki — so faro joins all three pipelines' receivers.
+    expect(config).toMatch(/traces\/metrics:[\s\S]*receivers: \[otlp, faro\]/);
+    expect(config).toMatch(/traces\/store:[\s\S]*receivers: \[otlp, faro\]/);
+    expect(config).toMatch(/logs:[\s\S]*receivers: \[otlp, faro\]/);
   });
 
   it("points the collector at its mounted config file", async () => {

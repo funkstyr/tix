@@ -11,6 +11,7 @@ const app = createGatewayApp({
   runtime,
   webOrigin: env.webOrigin,
   authBaseUrl: env.authBaseUrl,
+  faroCollectorUrl: env.faroCollectorUrl,
 });
 
 // The boot program acquires the HTTP server as a scoped resource, then parks on

@@ -44,6 +44,8 @@ catalog:
   "@opentelemetry/sdk-metrics": ^2.7.1
   "@opentelemetry/resources": ^2.7.1
   "@opentelemetry/semantic-conventions": ^1.41.1
+  "@grafana/faro-web-sdk": ^2.7.0
+  "@grafana/faro-web-tracing": ^2.7.0
   "@grafana/grafana-foundation-sdk": ^0.0.13
   postgres: ^3.4.9
   react: ^19.2.6
