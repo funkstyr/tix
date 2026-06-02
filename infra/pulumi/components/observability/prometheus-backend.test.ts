@@ -95,6 +95,13 @@ describe("prometheus recording rules", () => {
     expect(rules).toContain("record: saga:reserved_per_created:ratio_rate5m");
     expect(rules).toContain("record: saga:paid_per_reserved:ratio_rate5m");
   });
+
+  it("records the per-service error-budget consumed fraction (current ratio / budget)", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("record: slo:error_budget_consumed:ratio");
+    expect(rules).toContain('service:request_errors:ratio_rate1h{service="gateway"} / 0.01');
+    expect(rules).toContain('service:request_errors:ratio_rate1h{service="auth"} / 0.01');
+  });
 });
 
 describe("prometheus scrape_configs", () => {

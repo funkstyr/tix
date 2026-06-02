@@ -1,3 +1,4 @@
+import { SLOS, fastBurnThreshold, slowBurnThreshold, type Slo } from "../slo.ts";
 import { alertRule } from "./alert-rule.ts";
 
 // Grafana-managed alert rules provisioned as-code (ADR-0010), rendered to JSON and mounted at
@@ -13,12 +14,10 @@ const FOLDER = "tix Alerts";
 // a moving wiki. Per-alert filenames live alongside the rules below.
 const RUNBOOK_BASE = "https://github.com/funkstyr/tix/blob/main/docs/runbooks";
 
-// 99% availability SLO → a 1% error budget. The multi-window multi-burn-rate thresholds are
-// the Google SRE workbook values: 14.4× budget over the fast (1h+5m) pair pages, 6× over the
-// slow (6h+30m) pair tickets. Held as literals (not `14.4 * BUDGET`) so the rendered PromQL
-// reads `0.144`, not a float-noise `0.14400000000000002`.
-const FAST_BURN = 0.144;
-const SLOW_BURN = 0.06;
+// Render a derived threshold the way the hand-tuned literal read (3 dp, no float noise,
+// no trailing zeros) so the provisioned PromQL stays `0.144` / `0.06`, not `0.144000000…`.
+// `fastBurnThreshold` is `14.4 * (1 - 0.99)` = `0.14400000000000013` raw (slo.ts).
+const fmt = (n: number) => String(Number(n.toFixed(3)));
 
 export function alertRulesJson(): string {
   const config = {
@@ -29,7 +28,7 @@ export function alertRulesJson(): string {
         name: "slo_burn_rate",
         folder: FOLDER,
         interval: "1m",
-        rules: [...burnRate("gateway"), ...burnRate("auth")],
+        rules: SLOS.flatMap(burnRate),
       },
       {
         orgId: 1,
@@ -56,14 +55,17 @@ export function alertRulesJson(): string {
 // long window confirms a sustained burn, the short one confirms it's still happening — so a
 // transient blip doesn't page. The `and` yields the long-window series only when both exceed,
 // and the threshold (`gt 0`) fires on any returned series.
-function burnRate(service: "gateway" | "auth"): Array<Record<string, unknown>> {
+function burnRate(slo: Slo): Array<Record<string, unknown>> {
+  const service = slo.service;
+  const fast = fastBurnThreshold(slo);
+  const slow = slowBurnThreshold(slo);
   const ratio = (win: string) => `service:request_errors:ratio_rate${win}{service="${service}"}`;
 
   return [
     alertRule({
       uid: `${service}-burn-fast`,
       title: `${service} error-budget burn (fast)`,
-      expr: `${ratio("1h")} > ${FAST_BURN} and ${ratio("5m")} > ${FAST_BURN}`,
+      expr: `${ratio("1h")} > ${fmt(fast)} and ${ratio("5m")} > ${fmt(fast)}`,
       threshold: 0,
       condition: "gt",
       pending: "2m",
@@ -75,7 +77,7 @@ function burnRate(service: "gateway" | "auth"): Array<Record<string, unknown>> {
     alertRule({
       uid: `${service}-burn-slow`,
       title: `${service} error-budget burn (slow)`,
-      expr: `${ratio("6h")} > ${SLOW_BURN} and ${ratio("30m")} > ${SLOW_BURN}`,
+      expr: `${ratio("6h")} > ${fmt(slow)} and ${ratio("30m")} > ${fmt(slow)}`,
       threshold: 0,
       condition: "gt",
       pending: "15m",

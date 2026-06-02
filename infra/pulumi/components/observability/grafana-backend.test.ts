@@ -154,6 +154,7 @@ describe("GrafanaBackend", () => {
     expect(JSON.parse(data?.["expiration-worker.json"] ?? "{}").uid).toBe("expiration-worker");
     expect(JSON.parse(data?.["saturation.json"] ?? "{}").uid).toBe("saturation");
     expect(JSON.parse(data?.["platform-o11y.json"] ?? "{}").uid).toBe("platform-o11y");
+    expect(JSON.parse(data?.["slo-budget.json"] ?? "{}").uid).toBe("slo-budget");
   });
 
   it("projects each board into its folder's subdirectory", async () => {
@@ -174,6 +175,7 @@ describe("GrafanaBackend", () => {
     expect(paths).toContain("domain/expiration-worker.json");
     expect(paths).toContain("domain/saturation.json");
     expect(paths).toContain("platform/platform-o11y.json");
+    expect(paths).toContain("platform/slo-budget.json");
   });
 
   it("mounts the dashboards ConfigMap into the provisioning path", async () => {
