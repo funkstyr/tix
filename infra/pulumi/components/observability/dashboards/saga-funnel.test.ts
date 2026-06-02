@@ -43,6 +43,7 @@ describe("sagaFunnelDashboardJson", () => {
 
     const deploys = dashboard.annotations.list.find((a: { name: string }) => a.name === "Deploys");
 
+    expect(deploys, "deploy annotation layer not found in annotations.list").toBeDefined();
     expect(deploys.datasource).toEqual({ type: "grafana", uid: "-- Grafana --" });
     expect(deploys.target.tags).toEqual(["deploy"]);
   });
