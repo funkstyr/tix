@@ -5,7 +5,8 @@ packages:
   - "scripts"
 
 allowBuilds:
-  "@datadog/pprof": false
+  # native profiler addon; built so @pyroscope/nodejs works when PROFILING_ENABLED
+  "@datadog/pprof": true
   "@pulumi/kubernetes": false
   cpu-features: false
   esbuild: true
