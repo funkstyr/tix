@@ -12,6 +12,7 @@ import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts
 import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
 import { StreamBootstrap } from "./components/stream-bootstrap.ts";
+import { SyntheticCronJob } from "./components/synthetic-cronjob.ts";
 
 const POSTGRES_PORT = 5432;
 const POSTGRES_DATABASE = "tix";
@@ -66,6 +67,10 @@ const paymentsImage = config.get("paymentsImage") ?? "tix-payments:dev";
 const expirationImage = config.get("expirationImage") ?? "tix-expiration:dev";
 const gatewayImage = config.get("gatewayImage") ?? "tix-gateway:dev";
 const webImage = config.get("webImage") ?? "tix-web:dev";
+// The synthetic probe runs from its own monorepo image (`apps/synthetic`, D4) via
+// `pnpm -F @tix/synthetic probe`. Mirrors the per-service image config keys; the kind
+// smoke builds + loads `tix-synthetic:dev` like the rest.
+const syntheticImage = config.get("syntheticImage") ?? "tix-synthetic:dev";
 const imagePullPolicy = config.get("imagePullPolicy") ?? "Never";
 
 // Dev-only in-cluster k6 load generator (ADR-0010). Off by default and absent from
@@ -108,6 +113,20 @@ const logLevel = config.get("logLevel") ?? (stack === "prod" ? "warn" : "info");
 // TODO(prod): supply the cluster CA bundle when a real cluster is wired — until then prod renders
 // insecure, consistent with the other prod stubs (garageS3AccessKey, grafana anonymousAccess).
 const kubeletCaBundle = config.get("kubeletCaBundle");
+
+// Standing-account credentials for the synthetic buyer-journey probe (ADR-0011 Tier 3, D5).
+// The probe signs in as a long-lived seller + buyer and pays with a Stripe test token, so these
+// are operational config, not per-run secrets. Dev fallbacks let the kind smoke / dev stack run
+// out of the box; the passwords are config *secrets* (so a real deploy can rotate them without
+// touching this file) but default to dev placeholders. `pm_card_visa` is Stripe's always-succeeds
+// test PaymentMethod token. Override per stack via `pulumi config set [--secret] tix:synthetic…`.
+const syntheticSellerEmail = config.get("syntheticSellerEmail") ?? "synthetic-seller@tix.test";
+const syntheticSellerPassword =
+  config.getSecret("syntheticSellerPassword") ?? pulumi.secret("synthetic-seller-dev");
+const syntheticBuyerEmail = config.get("syntheticBuyerEmail") ?? "synthetic-buyer@tix.test";
+const syntheticBuyerPassword =
+  config.getSecret("syntheticBuyerPassword") ?? pulumi.secret("synthetic-buyer-dev");
+const syntheticPaymentMethodId = config.get("syntheticPaymentMethodId") ?? "pm_card_visa";
 
 // Git SHA of the deploy being applied (ADR-0010 deploy markers). Supplied by the deploy
 // invocation: `pulumi config set tix:gitSha <sha>` or the GIT_SHA env. Absent → no marker.
@@ -230,6 +249,19 @@ const expirationSecret = new k8s.core.v1.Secret("expiration-credentials", {
   stringData: {
     EXPIRATION_PASSWORD: expirationPassword,
     DATABASE_URL: buildDatabaseUrl("expiration", expirationPassword),
+  },
+});
+
+// Standing-account credentials for the synthetic probe (D5). Injected into the CronJob via
+// `envFrom: secretRef`, so the five keys land as env vars the probe reads (SYNTHETIC_*).
+const syntheticSecret = new k8s.core.v1.Secret("synthetic-credentials", {
+  metadata: { name: "synthetic-credentials", namespace: namespace.metadata.name },
+  stringData: {
+    SYNTHETIC_SELLER_EMAIL: syntheticSellerEmail,
+    SYNTHETIC_SELLER_PASSWORD: syntheticSellerPassword,
+    SYNTHETIC_BUYER_EMAIL: syntheticBuyerEmail,
+    SYNTHETIC_BUYER_PASSWORD: syntheticBuyerPassword,
+    SYNTHETIC_PAYMENT_METHOD_ID: syntheticPaymentMethodId,
   },
 });
 
@@ -596,6 +628,26 @@ if (loadgenEnabled) {
   loadgenDeploymentName = loadgen.deployment.metadata.name;
 }
 
+// Synthetic buyer-journey probe on a schedule (ADR-0011 Tier 3, D5). Always-on (dev AND prod),
+// like the blackbox exporter — outside-in liveness shouldn't be a dev-only signal. Drives the live
+// gateway saga end-to-end every 2 minutes and exports its own probe metrics to the collector
+// before exiting; a failed journey marks the Job failed and feeds the probe-failure alert +
+// synthetics board. Depends on the gateway (the surface it drives) and the collector (its export
+// target). Concurrency Forbid keeps a slow run from overlapping the next tick.
+const synthetic = new SyntheticCronJob(
+  "tix-synthetic",
+  {
+    namespace: namespace.metadata.name,
+    image: syntheticImage,
+    imagePullPolicy,
+    schedule: "*/2 * * * *",
+    gatewayUrl: `http://gateway:${GATEWAY_PORT}`,
+    otelEndpoint: "http://otel-collector:4318",
+    credentialsSecretName: syntheticSecret.metadata.name,
+  },
+  { dependsOn: [gatewayDeployment, observability.collector] },
+);
+
 export const namespaceName = namespace.metadata.name;
 export const postgresService = infra.postgres.metadata.name;
 export const natsService = infra.nats.metadata.name;
@@ -626,6 +678,8 @@ export const nodeExporterService = observability.nodeExporter.service.metadata.n
 export const kubeStateMetricsService = observability.kubeStateMetrics.service.metadata.name;
 // Present only when `alertingEnabled` (dev); undefined elsewhere, so prod gets no such output.
 export const alertLogSinkService = observability.logSink?.service.metadata.name;
+// Always-on synthetic buyer-journey CronJob (ADR-0011 Tier 3, D5).
+export const syntheticCronJob = synthetic.cronJob.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;
 // Present only when `loadgenEnabled` (dev); undefined elsewhere, so it simply doesn't
