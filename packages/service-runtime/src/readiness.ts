@@ -1,4 +1,4 @@
-import { Duration, Effect, ManagedRuntime } from "effect";
+import { Duration, Effect, Exit, ManagedRuntime } from "effect";
 
 // Dependency-aware readiness (ADR-0011 Tier 1). Framework-agnostic on purpose: it returns
 // a `{ status, body }` pair so each Hono app can `c.json(body, status)` without this package
@@ -6,6 +6,10 @@ import { Duration, Effect, ManagedRuntime } from "effect";
 // reachable and fails otherwise; every check is bounded by `timeoutMs` so a hung dependency
 // fails fast rather than stalling the probe. A single failed check flips the whole report to
 // 503 — Kubernetes then sheds traffic from this pod until the dependency returns.
+//
+// Each check is reduced through `Effect.exit` so BOTH a typed failure and an unexpected defect
+// (a check that throws synchronously rather than failing) collapse to "failed" — the probe
+// always returns a report and never rejects, so a buggy check can't turn into an unhandled 500.
 
 export type ReadinessCheck<R> = {
   readonly name: string;
@@ -36,10 +40,10 @@ export async function runReadiness<R>(
           duration: Duration.millis(timeoutMs),
           onTimeout: () => new Error(`${check.name} timed out`),
         }),
-        Effect.match({
-          onFailure: () => [check.name, "failed"] as const,
-          onSuccess: () => [check.name, "ok"] as const,
-        }),
+        Effect.exit,
+        Effect.map(
+          (exit) => [check.name, Exit.isSuccess(exit) ? "ok" : "failed"] as const,
+        ),
       ),
     { concurrency: "unbounded" },
   );

@@ -40,4 +40,19 @@ describe("runReadiness", () => {
     expect(result.status).toBe(503);
     expect(result.body.checks.db).toBe("failed");
   });
+
+  it("treats a check that dies (throws) as failed rather than rejecting", async () => {
+    const result = await runReadiness(runtime, "orders", [
+      { name: "db", effect: Effect.void },
+      {
+        name: "nats",
+        effect: Effect.sync(() => {
+          throw new Error("synchronous defect");
+        }),
+      },
+    ]);
+    expect(result.status).toBe(503);
+    expect(result.body.checks.db).toBe("ok");
+    expect(result.body.checks.nats).toBe("failed");
+  });
 });
