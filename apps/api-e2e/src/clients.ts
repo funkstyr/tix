@@ -11,25 +11,23 @@ import { env } from "./env.ts";
 // api-e2e drives each service on its own localhost port (no gateway) and never charges, so the
 // shared factory is pointed at the per-service URLs; the payments client is unused here, so its
 // base URL is a harmless placeholder (env has no PAYMENTS_BASE_URL).
-function clients() {
-  return makeSagaClients({
-    authBaseUrl: env.AUTH_BASE_URL,
-    ticketsBaseUrl: env.TICKETS_BASE_URL,
-    ordersBaseUrl: env.ORDERS_BASE_URL,
-    paymentsBaseUrl: env.ORDERS_BASE_URL,
-  });
-}
+const sagaClients = makeSagaClients({
+  authBaseUrl: env.AUTH_BASE_URL,
+  ticketsBaseUrl: env.TICKETS_BASE_URL,
+  ordersBaseUrl: env.ORDERS_BASE_URL,
+  paymentsBaseUrl: env.ORDERS_BASE_URL,
+});
 
 export function authClient(): AuthRouterClient {
-  return clients().auth;
+  return sagaClients.auth;
 }
 
 export function ticketsClient(): TicketsRouterClient {
-  return clients().tickets;
+  return sagaClients.tickets;
 }
 
 export function ordersClient(): OrdersRouterClient {
-  return clients().orders;
+  return sagaClients.orders;
 }
 
 export async function pollTicketRestored(
