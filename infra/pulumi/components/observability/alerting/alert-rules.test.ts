@@ -47,7 +47,7 @@ function threshold(rule: Rule): { type: string; params: number[] } {
 }
 
 describe("alertRulesJson", () => {
-  it("renders parseable provisioning JSON with the eight rule groups", () => {
+  it("renders parseable provisioning JSON with the ten rule groups", () => {
     const config = JSON.parse(alertRulesJson());
 
     expect(config.apiVersion).toBe(1);
@@ -58,6 +58,8 @@ describe("alertRulesJson", () => {
       "domain_alerts",
       "stripe_alerts",
       "capacity_alerts",
+      "datastore_health",
+      "cluster_use",
       "platform_alerts",
       "watchdog",
     ]);
@@ -186,6 +188,28 @@ describe("alertRulesJson", () => {
 
     expect(queryExpr(ruleByUid("order-rate-drop"))).toContain("order:created:rate10m");
     expect(ruleByUid("order-rate-drop").labels.severity).toBe("page");
+  });
+
+  it("pages on the data-loss datastore failures and tickets the trends (Tier 2)", () => {
+    expect(ruleByUid("pg-pool-exhaustion").labels.severity).toBe("page");
+    expect(ruleByUid("redis-eviction").labels.severity).toBe("page");
+    expect(ruleByUid("jetstream-lost-messages").labels.severity).toBe("page");
+    expect(ruleByUid("jetstream-consumer-lag").labels.severity).toBe("ticket");
+
+    expect(queryExpr(ruleByUid("jetstream-consumer-lag"))).toContain(
+      "jetstream_consumer_num_pending",
+    );
+    expect(queryExpr(ruleByUid("redis-eviction"))).toContain("redis_evicted_keys_total");
+  });
+
+  it("pages on OOMKill and node memory pressure, warns on restart spikes (Tier 2)", () => {
+    expect(queryExpr(ruleByUid("pod-oomkilled"))).toContain("OOMKilled");
+    expect(ruleByUid("pod-oomkilled").labels.severity).toBe("page");
+    expect(ruleByUid("node-memory-pressure").labels.severity).toBe("page");
+    expect(ruleByUid("pod-restart-spike").labels.severity).toBe("warning");
+
+    expect(queryExpr(ruleByUid("pvc-nearly-full"))).toContain("kubelet_volume_stats_used_bytes");
+    expect(threshold(ruleByUid("pvc-nearly-full"))).toEqual({ type: "gt", params: [0.85] });
   });
 
   it("provisions a constant-true dead-man's-switch watchdog", () => {

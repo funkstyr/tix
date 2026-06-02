@@ -36,6 +36,7 @@ RENDER_DIR="$(pwd)/rendered-tilt"
   set_secret ordersPassword tilt_orders
   set_secret paymentsPassword tilt_payments
   set_secret expirationPassword tilt_expiration
+  set_secret prometheusExporterPassword tilt_prometheus_exporter
   set_secret betterAuthSecret tilt_better_auth_secret_min_32_characters
   set_secret ticketsServiceToken tilt_tickets_service_token
   set_secret stripeKey sk_test_tilt_placeholder

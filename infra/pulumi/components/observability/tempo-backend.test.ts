@@ -32,7 +32,9 @@ describe("TempoBackend", () => {
 
     const data = await promiseOf(tempo.config.data);
     const config = data?.["tempo.yaml"] ?? "";
-    expect(config).toContain("compactor:");
+    // Tempo 3.0 moved retention under the backend scheduler's compaction provider (no more
+    // standalone compactor component).
+    expect(config).toContain("backend_scheduler:");
     expect(config).toContain("block_retention: 360h");
   });
 

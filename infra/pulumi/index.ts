@@ -5,6 +5,9 @@ import { IngressRoutes } from "./components/ingress-routes.ts";
 import { LoadGenerator } from "./components/load-generator.ts";
 import { MigrationJob } from "./components/migration-job.ts";
 import { ObservabilityStack } from "./components/observability-stack.ts";
+import { NatsExporter } from "./components/observability/nats-exporter.ts";
+import { PostgresExporter } from "./components/observability/postgres-exporter.ts";
+import { RedisExporter } from "./components/observability/redis-exporter.ts";
 import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts";
 import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
@@ -39,6 +42,10 @@ const ticketsPassword = config.requireSecret("ticketsPassword");
 const ordersPassword = config.requireSecret("ordersPassword");
 const paymentsPassword = config.requireSecret("paymentsPassword");
 const expirationPassword = config.requireSecret("expirationPassword");
+// Read-only `prometheus_exporter` role password (ADR-0012 Tier 2). postgres-exporter connects with
+// it; the PostgresRoles bootstrap grants it `pg_monitor`. A real secret, not a stub — the exporter
+// scrapes prod the same as dev.
+const prometheusExporterPassword = config.requireSecret("prometheusExporterPassword");
 const betterAuthSecret = config.requireSecret("betterAuthSecret");
 const ticketsServiceToken = config.requireSecret("ticketsServiceToken");
 const stripeKey = config.requireSecret("stripeKey");
@@ -90,6 +97,13 @@ const metricsRetention = config.get("metricsRetention") ?? (stack === "prod" ? "
 const tracesRetention = config.get("tracesRetention") ?? (stack === "prod" ? "2160h" : "360h");
 const logsRetention = config.get("logsRetention") ?? (stack === "prod" ? "2160h" : "360h");
 
+// CA bundle (PEM) that signs the apiserver serving cert, for the kubelet/cAdvisor scrape (ADR-0012
+// Tier 2). No default: dev/kind has no trustable serving cert so the scrape uses insecure_skip_verify;
+// prod sets this (`pulumi config set tix:kubeletCaBundle "$(cat ca.crt)"`) so the scrape verifies.
+// TODO(prod): supply the cluster CA bundle when a real cluster is wired — until then prod renders
+// insecure, consistent with the other prod stubs (garageS3AccessKey, grafana anonymousAccess).
+const kubeletCaBundle = config.get("kubeletCaBundle");
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -126,6 +140,7 @@ const observability = new ObservabilityStack(
     metricsRetention,
     tracesRetention,
     logsRetention,
+    ...(kubeletCaBundle ? { kubeletCaBundle } : {}),
   },
   { dependsOn: namespace },
 );
@@ -133,12 +148,19 @@ const observability = new ObservabilityStack(
 // URL-encode role passwords so reserved characters (`@ : / ? # %`) don't
 // corrupt the connection string and surface as opaque driver errors at
 // migration time.
-function buildDatabaseUrl(schema: string, password: pulumi.Output<string>): pulumi.Output<string> {
-  const user = `${schema}_user`;
+function buildPostgresUrl(
+  user: string,
+  password: pulumi.Output<string>,
+  query = "",
+): pulumi.Output<string> {
   return password.apply(
     (pw) =>
-      `postgres://${user}:${encodeURIComponent(pw)}@postgres:${POSTGRES_PORT}/${POSTGRES_DATABASE}`,
+      `postgres://${user}:${encodeURIComponent(pw)}@postgres:${POSTGRES_PORT}/${POSTGRES_DATABASE}${query}`,
   );
+}
+
+function buildDatabaseUrl(schema: string, password: pulumi.Output<string>): pulumi.Output<string> {
+  return buildPostgresUrl(`${schema}_user`, password);
 }
 
 const authSecret = new k8s.core.v1.Secret("auth-credentials", {
@@ -187,6 +209,23 @@ const expirationSecret = new k8s.core.v1.Secret("expiration-credentials", {
   },
 });
 
+// Read-only monitoring role (ADR-0012 Tier 2). The Secret carries both the password (consumed by
+// the PostgresRoles bootstrap Job to create the role) and the full DSN (consumed by
+// postgres-exporter). `sslmode=disable` is required — postgres-exporter's lib/pq driver defaults to
+// requiring TLS, which the in-cluster Postgres doesn't serve. The DSN user is the bare role name
+// `prometheus_exporter` (no `_user` suffix), matching the monitor role created in postgres-roles.ts.
+const prometheusExporterSecret = new k8s.core.v1.Secret("prometheus-exporter-credentials", {
+  metadata: { name: "prometheus-exporter-credentials", namespace: namespace.metadata.name },
+  stringData: {
+    PROMETHEUS_EXPORTER_PASSWORD: prometheusExporterPassword,
+    DATA_SOURCE_NAME: buildPostgresUrl(
+      "prometheus_exporter",
+      prometheusExporterPassword,
+      "?sslmode=disable",
+    ),
+  },
+});
+
 const roles: PostgresRole[] = [
   { schema: "auth", password: { name: authSecret.metadata.name, key: "AUTH_PASSWORD" } },
   { schema: "tickets", password: { name: ticketsSecret.metadata.name, key: "TICKETS_PASSWORD" } },
@@ -198,6 +237,10 @@ const roles: PostgresRole[] = [
   {
     schema: "expiration",
     password: { name: expirationSecret.metadata.name, key: "EXPIRATION_PASSWORD" },
+  },
+  {
+    monitor: "prometheus_exporter",
+    password: { name: prometheusExporterSecret.metadata.name, key: "PROMETHEUS_EXPORTER_PASSWORD" },
   },
 ];
 
@@ -212,6 +255,34 @@ const postgresRoles = new PostgresRoles(
     adminPassword: { name: "postgres-credentials", key: "POSTGRES_PASSWORD" },
     roles,
   },
+  { dependsOn: infra },
+);
+
+// Datastore exporters (substrate health, ADR-0012 Tier 2). Ungated/always-on like the blackbox
+// exporter — substrate health matters in dev AND prod. They live next to the datastores they watch
+// (not in ObservabilityStack) because postgres-exporter needs the DSN Secret + a dependsOn on the
+// role bootstrap, both in this file's scope. Prometheus scrapes them by ClusterIP DNS regardless.
+const postgresExporter = new PostgresExporter(
+  "tix-postgres-exporter",
+  {
+    namespace: namespace.metadata.name,
+    dataSourceSecret: {
+      name: prometheusExporterSecret.metadata.name,
+      key: "DATA_SOURCE_NAME",
+    },
+  },
+  { dependsOn: [infra, postgresRoles] },
+);
+
+const redisExporter = new RedisExporter(
+  "tix-redis-exporter",
+  { namespace: namespace.metadata.name, redisAddr: REDIS_URL },
+  { dependsOn: infra },
+);
+
+const natsExporter = new NatsExporter(
+  "tix-nats-exporter",
+  { namespace: namespace.metadata.name, natsMonitorUrl: "http://nats:8222" },
   { dependsOn: infra },
 );
 
@@ -516,6 +587,13 @@ export const tempoService = observability.tempo.service.metadata.name;
 export const lokiService = observability.loki.service.metadata.name;
 export const prometheusService = observability.prometheus.service.metadata.name;
 export const garageService = observability.garage.service.metadata.name;
+// Datastore exporters (ADR-0012 Tier 2): always-on substrate-health scrape targets.
+export const postgresExporterService = postgresExporter.service.metadata.name;
+export const redisExporterService = redisExporter.service.metadata.name;
+export const natsExporterService = natsExporter.service.metadata.name;
+// Cluster USE (ADR-0012 Tier 2): node-exporter (DaemonSet) + kube-state-metrics scrape targets.
+export const nodeExporterService = observability.nodeExporter.service.metadata.name;
+export const kubeStateMetricsService = observability.kubeStateMetrics.service.metadata.name;
 // Present only when `alertingEnabled` (dev); undefined elsewhere, so prod gets no such output.
 export const alertLogSinkService = observability.logSink?.service.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;

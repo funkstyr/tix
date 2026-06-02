@@ -4,6 +4,8 @@ import * as pulumi from "@pulumi/pulumi";
 import { alertRulesJson } from "./alerting/alert-rules.ts";
 import { contactPointsJson } from "./alerting/contact-points.ts";
 import { authDeepDiveDashboardJson } from "./dashboards/auth-deep-dive.ts";
+import { clusterUseDashboardJson } from "./dashboards/cluster-use.ts";
+import { datastoreHealthDashboardJson } from "./dashboards/datastore-health.ts";
 import { edgeAuthDashboardJson } from "./dashboards/edge-auth.ts";
 import { expirationWorkerDashboardJson } from "./dashboards/expiration-worker.ts";
 import { loadProfileDashboardJson } from "./dashboards/load-profile.ts";
@@ -123,9 +125,11 @@ export class GrafanaBackend extends pulumi.ComponentResource {
           "money-inventory.json": moneyInventoryDashboardJson(),
           "expiration-worker.json": expirationWorkerDashboardJson(),
           "saturation.json": saturationDashboardJson(),
+          "datastore-health.json": datastoreHealthDashboardJson(),
           "platform-o11y.json": platformO11yDashboardJson(),
           "slo-budget.json": sloBudgetDashboardJson(),
           "synthetics.json": syntheticsDashboardJson(),
+          "cluster-use.json": clusterUseDashboardJson(),
         },
       },
       childOpts,
@@ -173,9 +177,11 @@ export class GrafanaBackend extends pulumi.ComponentResource {
             { key: "money-inventory.json", path: "domain/money-inventory.json" },
             { key: "expiration-worker.json", path: "domain/expiration-worker.json" },
             { key: "saturation.json", path: "domain/saturation.json" },
+            { key: "datastore-health.json", path: "domain/datastore-health.json" },
             { key: "platform-o11y.json", path: "platform/platform-o11y.json" },
             { key: "slo-budget.json", path: "platform/slo-budget.json" },
             { key: "synthetics.json", path: "platform/synthetics.json" },
+            { key: "cluster-use.json", path: "platform/cluster-use.json" },
           ],
         },
       },
