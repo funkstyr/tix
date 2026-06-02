@@ -27,3 +27,10 @@ export const expiryJobLatencyMs = Metric.histogram(
   MetricBoundaries.exponential({ start: 1, factor: 2, count: 12 }),
   "BullMQ expire-order job execution latency in milliseconds.",
 );
+
+// Polled saturation gauge (ADR-0011 Tier 1): a 15s fiber reads the BullMQ queue via
+// Scheduler.counts() and sets this to waiting + delayed + active. A rising trend means the
+// worker is falling behind enqueued expirations.
+export const queueDepthGauge = Metric.gauge("expiration_queue_depth", {
+  description: "BullMQ waiting + delayed + active jobs.",
+});

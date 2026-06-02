@@ -6,6 +6,7 @@ import { startExpireOrderWorker } from "./expire/expire-order.worker.ts";
 import { createExpirationHealthApp } from "./health-app.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makeExpirationRuntime } from "./runtime/runtime.ts";
+import { expirationSaturationPoller } from "./runtime/saturation.ts";
 import { Nats } from "./runtime/services.ts";
 
 const env = parseEnv();
@@ -43,6 +44,10 @@ const program = Effect.gen(function* () {
         server.close((err) => resume(err ? Effect.die(err) : Effect.void));
       }),
   );
+
+  // Tier 1 saturation poller (ADR-0011): forked into the boot scope so it is interrupted
+  // alongside the worker/consumer/server when the fiber is torn down.
+  yield* Effect.forkScoped(expirationSaturationPoller);
 
   yield* Effect.logInfo("expiration health listening").pipe(
     Effect.annotateLogs({ port: env.port }),
