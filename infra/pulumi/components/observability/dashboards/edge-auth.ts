@@ -1,5 +1,6 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 
+import { deployAnnotationLayer } from "./_deploy-annotation-layer.ts";
 import { exemplarLatencyPanel } from "./_exemplar.ts";
 import { redRow } from "./red-row.ts";
 
@@ -17,7 +18,8 @@ export function edgeAuthDashboardJson(): string {
       "RED (request rate, error %, latency) for the gateway and auth services, by op. Hand-rolled Effect.Metric series — not span-derived (ADR-0010).",
     )
     .tags(["services", "red"])
-    .refresh("30s");
+    .refresh("30s")
+    .annotation(deployAnnotationLayer());
 
   for (const panel of redRow("gateway", { y: 0 })) {
     dashboard = dashboard.withPanel(panel);

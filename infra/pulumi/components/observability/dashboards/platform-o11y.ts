@@ -2,6 +2,7 @@ import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 import * as stat from "@grafana/grafana-foundation-sdk/stat";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
+import { deployAnnotationLayer } from "./_deploy-annotation-layer.ts";
 import { statPanel, tsPanel } from "./_shared.ts";
 
 // Platform / o11y board (ADR-0010): the backends watching themselves, fed by the Prometheus
@@ -24,6 +25,7 @@ export function platformO11yDashboardJson(): string {
     )
     .tags(["platform", "o11y"])
     .refresh("30s")
+    .annotation(deployAnnotationLayer())
     .withPanel(backendUp())
     .withPanel(collectorThroughput())
     .withPanel(backendIngest())

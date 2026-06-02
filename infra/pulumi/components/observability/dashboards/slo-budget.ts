@@ -1,5 +1,6 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 
+import { deployAnnotationLayer } from "./_deploy-annotation-layer.ts";
 import { statPanel, tsPanel } from "./_shared.ts";
 
 // SLO error-budget burndown (ADR-0011 Tier 3; widened ADR-0012 Tier 1), Platform folder. Reads the
@@ -21,7 +22,8 @@ export function sloBudgetDashboardJson(): string {
       "Error-budget burndown: current error ratio over each service's budget (ADR-0011 Tier 3).",
     )
     .tags(["platform", "slo"])
-    .refresh("30s");
+    .refresh("30s")
+    .annotation(deployAnnotationLayer());
 
   for (const panel of [
     statPanel("Error budget consumed (1h)", "percentunit", { h: 8, w: 12, x: 0, y: 0 }, [

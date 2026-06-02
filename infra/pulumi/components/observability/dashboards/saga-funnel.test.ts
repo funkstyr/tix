@@ -37,4 +37,13 @@ describe("sagaFunnelDashboardJson", () => {
 
     expect(json).toContain('"uid": "prometheus"');
   });
+
+  it("overlays a deploy-tagged annotation layer for deploy markers", () => {
+    const dashboard = JSON.parse(sagaFunnelDashboardJson());
+
+    const deploys = dashboard.annotations.list.find((a: { name: string }) => a.name === "Deploys");
+
+    expect(deploys.datasource).toEqual({ type: "grafana", uid: "-- Grafana --" });
+    expect(deploys.target.tags).toEqual(["deploy"]);
+  });
 });
