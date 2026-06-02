@@ -98,7 +98,9 @@ function chargeLatency(): timeseries.PanelBuilder {
 function seatChurn(): timeseries.PanelBuilder {
   return tsPanel("Reserved vs released", "reqps", { h: 8, w: 24, x: 0, y: 15 }, [
     { expr: "sum(rate(tickets_reserved_total[$__rate_interval]))", legend: "reserved" },
-    { expr: "sum(rate(tickets_reservations_released_total[$__rate_interval]))", legend: "released" },
+    {
+      expr: "sum(rate(tickets_reservations_released_total[$__rate_interval]))",
+      legend: "released",
+    },
   ]);
 }
-

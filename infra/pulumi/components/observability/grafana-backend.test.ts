@@ -6,7 +6,7 @@ import { edgeAuthDashboardJson } from "./dashboards/edge-auth.ts";
 import { expirationWorkerDashboardJson } from "./dashboards/expiration-worker.ts";
 import { moneyInventoryDashboardJson } from "./dashboards/money-inventory.ts";
 import { platformO11yDashboardJson } from "./dashboards/platform-o11y.ts";
-import { GrafanaBackend, __renderDashboardProviderForTest as renderProvider } from "./grafana-backend.ts";
+import { GrafanaBackend, renderDashboardProvider as renderProvider } from "./grafana-backend.ts";
 
 function build(args?: { anonymousAccess?: boolean }): GrafanaBackend {
   return new GrafanaBackend("test", {

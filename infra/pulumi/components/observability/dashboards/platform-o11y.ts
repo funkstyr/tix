@@ -50,8 +50,13 @@ function collectorThroughput(): timeseries.PanelBuilder {
 // Tempo + Loki ingest rates — is signal actually landing. Best-effort names.
 function backendIngest(): timeseries.PanelBuilder {
   return tsPanel("Tempo / Loki ingest", "reqps", { h: 8, w: 12, x: 12, y: 6 }, [
-    { expr: "sum(rate(tempo_distributor_spans_received_total[$__rate_interval]))", legend: "tempo spans" },
-    { expr: "sum(rate(loki_distributor_lines_received_total[$__rate_interval]))", legend: "loki lines" },
+    {
+      expr: "sum(rate(tempo_distributor_spans_received_total[$__rate_interval]))",
+      legend: "tempo spans",
+    },
+    {
+      expr: "sum(rate(loki_distributor_lines_received_total[$__rate_interval]))",
+      legend: "loki lines",
+    },
   ]);
 }
-

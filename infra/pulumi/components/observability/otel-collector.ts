@@ -144,7 +144,9 @@ export class OtelCollector extends pulumi.ComponentResource {
 // a trace id, which is what makes the duration histograms drill to a trace. The
 // hand-rolled Effect histograms cannot carry exemplars (ADR-0010), so the metric
 // →trace jump lives exclusively on these span-derived series.
-function renderCollectorConfig(
+// Exported (not module-private) so unit tests can assert on the rendered collector config
+// without standing up the component; the ConfigMap consumes the same function.
+export function renderCollectorConfig(
   tempoEndpoint: string,
   lokiLogsEndpoint: string,
   prometheusMetricsEndpoint: string,
@@ -208,6 +210,3 @@ service:
       exporters: [otlphttp/prometheus]
 `;
 }
-
-// Exported for unit assertions only (the ConfigMap consumes the same string).
-export const __renderCollectorConfigForTest = renderCollectorConfig;

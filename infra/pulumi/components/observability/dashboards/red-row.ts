@@ -64,4 +64,3 @@ export function redRow(service: RedService, opts: RedRowOpts): timeseries.PanelB
 
   return [rate, errorPct, latency];
 }
-

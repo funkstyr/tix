@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { promiseOf } from "../pulumi-mocks.ts";
 import {
   OtelCollector,
-  __renderCollectorConfigForTest as render,
+  renderCollectorConfig as render,
   type OtlpGrpcEndpoint,
   type OtlpHttpLogsEndpoint,
   type OtlpHttpMetricsEndpoint,

@@ -76,4 +76,3 @@ function throughput(): timeseries.PanelBuilder {
     { expr: "sum(rate(k6_checks_total[$__rate_interval]))", legend: "Checks" },
   ]);
 }
-

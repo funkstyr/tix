@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { promiseOf } from "../pulumi-mocks.ts";
-import { __renderPrometheusConfigForTest as render, PrometheusBackend } from "./prometheus-backend.ts";
+import { PrometheusBackend, renderPrometheusConfig as render } from "./prometheus-backend.ts";
 
 function build(): PrometheusBackend {
   return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi" });

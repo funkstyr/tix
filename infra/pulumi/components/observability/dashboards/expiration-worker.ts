@@ -20,7 +20,10 @@ export function expirationWorkerDashboardJson(): string {
     .refresh("30s")
     .withPanel(
       tsPanel("Expirations processed", "reqps", { h: 8, w: 12, x: 0, y: 0 }, [
-        { expr: "sum(rate(expirations_processed_total[$__rate_interval]))", legend: "auto-cancels" },
+        {
+          expr: "sum(rate(expirations_processed_total[$__rate_interval]))",
+          legend: "auto-cancels",
+        },
       ]),
     )
     .withPanel(
@@ -50,4 +53,3 @@ export function expirationWorkerDashboardJson(): string {
 
   return JSON.stringify(dashboard, null, 2);
 }
-

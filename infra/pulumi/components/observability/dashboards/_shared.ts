@@ -11,7 +11,12 @@ import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 export const PROMETHEUS = { type: "prometheus", uid: "prometheus" } as const;
 
 export type Series = { readonly expr: string; readonly legend: string };
-export type GridPos = { readonly h: number; readonly w: number; readonly x: number; readonly y: number };
+export type GridPos = {
+  readonly h: number;
+  readonly w: number;
+  readonly x: number;
+  readonly y: number;
+};
 
 // Timeseries panel — RANGE queries; one series per entry in `series`.
 export function tsPanel(
@@ -20,7 +25,11 @@ export function tsPanel(
   gridPos: GridPos,
   series: readonly Series[],
 ): timeseries.PanelBuilder {
-  let built = new timeseries.PanelBuilder().title(title).datasource(PROMETHEUS).unit(unit).gridPos(gridPos);
+  let built = new timeseries.PanelBuilder()
+    .title(title)
+    .datasource(PROMETHEUS)
+    .unit(unit)
+    .gridPos(gridPos);
 
   for (const { expr, legend } of series) {
     built = built.withTarget(new DataqueryBuilder().expr(expr).legendFormat(legend));
@@ -37,7 +46,11 @@ export function statPanel(
   gridPos: GridPos,
   series: readonly Series[],
 ): stat.PanelBuilder {
-  let built = new stat.PanelBuilder().title(title).datasource(PROMETHEUS).unit(unit).gridPos(gridPos);
+  let built = new stat.PanelBuilder()
+    .title(title)
+    .datasource(PROMETHEUS)
+    .unit(unit)
+    .gridPos(gridPos);
 
   for (const { expr, legend } of series) {
     built = built.withTarget(new DataqueryBuilder().expr(expr).legendFormat(legend).instant());
