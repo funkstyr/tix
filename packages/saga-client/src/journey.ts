@@ -1,3 +1,5 @@
+import type { PaymentIntentStatus } from "@tix/contracts/payments";
+
 import type { SagaClients } from "./clients.ts";
 
 export type Credentials = { email: string; password: string };
@@ -17,7 +19,7 @@ export type BuyerJourneyResult = {
   steps: {
     ticketId?: string;
     orderId?: string;
-    charge?: string;
+    charge?: PaymentIntentStatus;
   };
   error?: string;
 };
@@ -34,6 +36,13 @@ export async function runBuyerJourney(opts: BuyerJourneyOptions): Promise<BuyerJ
 
   try {
     const seller = await clients.auth.signIn(opts.seller);
+    // NOTE: If the journey throws AFTER this point but BEFORE order creation (e.g. buyer
+    // sign-in fails), the synthetic ticket created here will remain listed. The tickets
+    // contract exposes no delete or cancel operation, so there is no clean way to remove
+    // it. This is accepted: the ticket is clearly named "synthetic probe", has 1 seat, and
+    // real buyers cannot complete a purchase against the synthetic seller account. The
+    // finally block below only cancels the order because that is the only cleanup path
+    // available via the contracts API.
     const ticket = await clients.tickets.create({
       token: seller.token,
       title: "synthetic probe",

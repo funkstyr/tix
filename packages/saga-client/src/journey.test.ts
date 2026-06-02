@@ -96,5 +96,9 @@ describe("runBuyerJourney", () => {
 
     expect(result.ok).toBe(false);
     expect(clients.orders.cancel).toHaveBeenCalledOnce();
+    expect(result.steps.ticketId).toBeDefined();
+    expect(result.steps.orderId).toBeDefined();
+    expect(result.steps.charge).toBe("requires_payment_method");
+    expect(result.error).toMatch(/charge status/);
   });
 });
