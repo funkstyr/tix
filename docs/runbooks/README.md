@@ -16,3 +16,4 @@ real incident, treat them as a starting point, not gospel.
 | `conflict-spike`                  | warning  | `saturation`    | [conflict-spike.md](./conflict-spike.md)         |
 | `expiry-duplicate-publish-spike`  | warning  | `expiration-worker` | [expiry-duplicate.md](./expiry-duplicate.md) |
 | `backend-down`                    | page     | `platform-o11y` | [backend-down.md](./backend-down.md)             |
+| `probe-failure`                   | page     | `synthetics`    | [probe-failure.md](./probe-failure.md)           |

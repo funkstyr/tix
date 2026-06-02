@@ -1,6 +1,7 @@
 import * as pulumi from "@pulumi/pulumi";
 
 import { AlertLogSink } from "./observability/alert-log-sink.ts";
+import { BlackboxExporter } from "./observability/blackbox-exporter.ts";
 import { GarageBackend } from "./observability/garage-backend.ts";
 import { GarageBuckets, type GarageBucketName } from "./observability/garage-buckets.ts";
 import { GrafanaBackend } from "./observability/grafana-backend.ts";
@@ -75,6 +76,8 @@ export class ObservabilityStack extends pulumi.ComponentResource {
   readonly prometheus: PrometheusBackend;
   readonly grafana: GrafanaBackend;
   readonly collector: OtelCollector;
+  // Always on (dev AND prod) — synthetics are valuable everywhere, unlike the dev-only loadgen.
+  readonly blackbox: BlackboxExporter;
   // Present only when `alertingEnabled` (dev); undefined otherwise.
   readonly logSink: AlertLogSink | undefined;
 
@@ -167,6 +170,11 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       { parent: this, dependsOn: backends },
     );
 
+    // Always-on blackbox synthetics (ADR-0011 Tier 3) — ungated, unlike the dev-only loadgen/alert
+    // sink: it probes the services from outside in both dev and prod. The Prometheus `blackbox`
+    // scrape job (deterministic probe-target constants in prometheus-backend.ts) drives it.
+    this.blackbox = new BlackboxExporter(`${name}-blackbox`, { namespace }, childOpts);
+
     this.collector = new OtelCollector(
       `${name}-collector`,
       {
@@ -187,6 +195,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       prometheus: this.prometheus,
       grafana: this.grafana,
       collector: this.collector,
+      blackbox: this.blackbox,
       logSink: this.logSink,
     });
   }

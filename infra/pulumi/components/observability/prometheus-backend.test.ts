@@ -124,4 +124,13 @@ describe("prometheus scrape_configs", () => {
       expect(config).toContain(target);
     }
   });
+
+  it("drives the blackbox exporter with the http_2xx module and the standard relabel pattern", () => {
+    const config = render();
+    expect(config).toContain("job_name: blackbox");
+    expect(config).toContain("module: [http_2xx]");
+    expect(config).toContain("target_label: __param_target");
+    expect(config).toContain("replacement: blackbox-exporter:9115");
+    expect(config).toContain("http://gateway:4000/health");
+  });
 });

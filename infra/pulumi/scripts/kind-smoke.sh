@@ -39,7 +39,7 @@ SERVICES=(auth tickets orders payments expiration gateway web)
 MIGRATED=(auth tickets orders payments expiration)
 # Discrete observability backends (ADR-0009). Split by workload kind so the
 # rollout waits use the right resource type; all are remote images (pulled).
-OBSERVABILITY_DEPLOYMENTS=(grafana loki)
+OBSERVABILITY_DEPLOYMENTS=(grafana loki blackbox-exporter)
 OBSERVABILITY_STATEFULSETS=(garage tempo prometheus otel-collector)
 OBSERVABILITY=("${OBSERVABILITY_DEPLOYMENTS[@]}" "${OBSERVABILITY_STATEFULSETS[@]}")
 

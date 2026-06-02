@@ -42,7 +42,7 @@ export function alertRulesJson(): string {
         name: "platform_alerts",
         folder: FOLDER,
         interval: "1m",
-        rules: [backendDown()],
+        rules: [backendDown(), probeFailure()],
       },
     ],
   };
@@ -161,5 +161,26 @@ function backendDown(): Record<string, unknown> {
     summary: "Observability backend {{ $labels.job }} is down (up == 0).",
     runbookUrl: `${RUNBOOK_BASE}/backend-down.md`,
     dashboardUid: "platform-o11y",
+  });
+}
+
+// Probe-failure: the always-on blackbox exporter (ADR-0011 Tier 3) couldn't get a 2xx from a tix
+// HTTP endpoint — `probe_success == 0`. This is the outside-in counterpart to backend-down: it
+// catches an ingress→service path that's broken even while the process reports itself `up`. One
+// alert fires per failing target (the series carries the probed URL as the `instance` label). Like
+// backendDown(): instant series per target, `lt 1` fires on a 0, and noDataState OK means a
+// not-yet-scraped target stays quiet.
+function probeFailure(): Record<string, unknown> {
+  return alertRule({
+    uid: "probe-failure",
+    title: "Synthetic probe failing",
+    expr: "probe_success",
+    threshold: 1,
+    condition: "lt",
+    pending: "2m",
+    severity: "page",
+    summary: "Synthetic probe {{ $labels.instance }} is failing (probe_success == 0) — page.",
+    runbookUrl: `${RUNBOOK_BASE}/probe-failure.md`,
+    dashboardUid: "synthetics",
   });
 }
