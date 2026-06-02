@@ -12,6 +12,11 @@ const OTLP_GRPC_PORT = 4317;
 const OTLP_HTTP_PORT = 4318;
 // Internal telemetry port: Prometheus scrapes the collector's own metrics here (ADR-0010).
 const TELEMETRY_PORT = 8888;
+// Faro receiver: browser RUM ingress. The SPA sends Grafana Faro's native payload here
+// (proxied through the gateway, ADR-0013); the contrib `faroreceiver` converts it to OTLP
+// traces + logs server-side and feeds the existing pipelines. Browser-only; backend apps
+// keep using the OTLP ports above.
+const FARO_PORT = 8090;
 
 const CONFIG_DIR = "/etc/otelcol";
 const CONFIG_FILE = "config.yaml";
@@ -105,6 +110,7 @@ export class OtelCollector extends pulumi.ComponentResource {
                     { name: "otlp-grpc", containerPort: OTLP_GRPC_PORT },
                     { name: "otlp-http", containerPort: OTLP_HTTP_PORT },
                     { name: "metrics", containerPort: TELEMETRY_PORT },
+                    { name: "faro", containerPort: FARO_PORT },
                   ],
                   volumeMounts: [
                     { name: "config", mountPath: CONFIG_DIR, readOnly: true },
@@ -140,6 +146,7 @@ export class OtelCollector extends pulumi.ComponentResource {
             { name: "otlp-grpc", port: OTLP_GRPC_PORT, targetPort: OTLP_GRPC_PORT },
             { name: "otlp-http", port: OTLP_HTTP_PORT, targetPort: OTLP_HTTP_PORT },
             { name: "metrics", port: TELEMETRY_PORT, targetPort: TELEMETRY_PORT },
+            { name: "faro", port: FARO_PORT, targetPort: FARO_PORT },
           ],
         },
       },
@@ -188,6 +195,8 @@ receivers:
         endpoint: 0.0.0.0:${OTLP_GRPC_PORT}
       http:
         endpoint: 0.0.0.0:${OTLP_HTTP_PORT}
+  faro:
+    endpoint: 0.0.0.0:${FARO_PORT}
 
 # file_storage persists the Tempo sending queue to a PVC-backed directory so a
 # collector restart resumes its in-flight trace batches instead of dropping them
@@ -264,15 +273,15 @@ service:
     # service graph from the *unsampled* stream (so span-derived metrics stay accurate),
     # traces/store tail-samples before persisting to Tempo (keep errors/slow, sample the rest).
     traces/metrics:
-      receivers: [otlp]
+      receivers: [otlp, faro]
       processors: [batch]
       exporters: [spanmetrics, servicegraph]
     traces/store:
-      receivers: [otlp]
+      receivers: [otlp, faro]
       processors: [batch, tail_sampling]
       exporters: [otlp/tempo]
     logs:
-      receivers: [otlp]
+      receivers: [otlp, faro]
       processors: [batch]
       exporters: [otlphttp/loki]
     metrics:
