@@ -19,9 +19,9 @@ describe("buildFaroConfig", () => {
   });
 
   it("carries the session sampling rate", () => {
-    expect(buildFaroConfig({ ...base, sessionSampleRate: 0.25 }).sessionTracking?.samplingRate).toBe(
-      0.25,
-    );
+    expect(
+      buildFaroConfig({ ...base, sessionSampleRate: 0.25 }).sessionTracking?.samplingRate,
+    ).toBe(0.25);
   });
 
   it("includes at least one instrumentation (web instrumentations + tracing)", () => {

@@ -45,15 +45,15 @@
       "import": "./dist/web-rum.js"
     }
   },
-  "dependencies": {
-    "@grafana/faro-web-sdk": "catalog:",
-    "@grafana/faro-web-tracing": "catalog:"
-  },
   "scripts": {
     "build": "tsdown",
     "check-types": "tsgo --build",
     "dev": "tsdown --watch",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@grafana/faro-web-sdk": "catalog:",
+    "@grafana/faro-web-tracing": "catalog:"
   },
   "devDependencies": {
     "@effect/opentelemetry": "catalog:",

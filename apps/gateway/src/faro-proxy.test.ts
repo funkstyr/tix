@@ -6,7 +6,8 @@ const COLLECTOR = "http://otel-collector:8090/";
 
 describe("createFaroProxy", () => {
   it("forwards the POST body and content-type to the collector", async () => {
-    const captured: { url: string; method: string; contentType: string | null; body: string }[] = [];
+    const captured: { url: string; method: string; contentType: string | null; body: string }[] =
+      [];
     const stub: typeof globalThis.fetch = async (input, init) => {
       const req = new Request(input as Request | URL | string, init);
       captured.push({
@@ -17,7 +18,11 @@ describe("createFaroProxy", () => {
       });
       return new Response(null, { status: 202 });
     };
-    const proxy = createFaroProxy({ faroCollectorUrl: COLLECTOR, fetch: stub, maxBodyBytes: 1_000_000 });
+    const proxy = createFaroProxy({
+      faroCollectorUrl: COLLECTOR,
+      fetch: stub,
+      maxBodyBytes: 1_000_000,
+    });
 
     const res = await proxy(
       new Request("http://gateway.test/otel/v1/faro", {

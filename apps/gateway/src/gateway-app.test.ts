@@ -6,7 +6,10 @@ import { createGatewayTestRuntime } from "./gateway-test-runtime.ts";
 
 const WEB_ORIGIN = "https://app.tix.test";
 
-function buildApp(opts?: { authFetch?: typeof globalThis.fetch; faroFetch?: typeof globalThis.fetch }) {
+function buildApp(opts?: {
+  authFetch?: typeof globalThis.fetch;
+  faroFetch?: typeof globalThis.fetch;
+}) {
   const clients = createDownstreamClients(
     {
       ticketsBaseUrl: "http://tickets.test",

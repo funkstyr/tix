@@ -41,8 +41,8 @@ describe("parseEnv faroCollectorUrl", () => {
   });
 
   it("honours an override", () => {
-    expect(parseEnv({ ...baseEnv, FARO_COLLECTOR_URL: "http://collector:8090/" }).faroCollectorUrl).toBe(
-      "http://collector:8090/",
-    );
+    expect(
+      parseEnv({ ...baseEnv, FARO_COLLECTOR_URL: "http://collector:8090/" }).faroCollectorUrl,
+    ).toBe("http://collector:8090/");
   });
 });
