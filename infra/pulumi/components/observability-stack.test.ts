@@ -24,7 +24,8 @@ describe("ObservabilityStack", () => {
     expect(meta.name).toBe("otel-collector");
 
     const spec = await promiseOf(stack.collector.service.spec);
-    expect((spec.ports ?? []).map((p) => p.port)).toEqual([4317, 4318]);
+    // 4317 = gRPC OTLP, 4318 = HTTP OTLP, 8888 = internal telemetry/metrics port scraped by Prometheus (ADR-0010)
+    expect((spec.ports ?? []).map((p) => p.port)).toEqual([4317, 4318, 8888]);
   });
 
   it("exposes Grafana as the UI service the ingress routes to", async () => {
