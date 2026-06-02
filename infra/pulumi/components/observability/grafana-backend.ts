@@ -16,6 +16,7 @@ import { sagaFunnelDashboardJson } from "./dashboards/saga-funnel.ts";
 import { saturationDashboardJson } from "./dashboards/saturation.ts";
 import { sloBudgetDashboardJson } from "./dashboards/slo-budget.ts";
 import { syntheticsDashboardJson } from "./dashboards/synthetics.ts";
+import { webRumDashboardJson } from "./dashboards/web-rum.ts";
 
 // Grafana (UI). Datasources are provisioned from a ConfigMap, so a fresh pod
 // re-wires Tempo/Loki/Prometheus on every boot and needs no persistent volume
@@ -132,6 +133,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
           "synthetics.json": syntheticsDashboardJson(),
           "cluster-use.json": clusterUseDashboardJson(),
           "logs-overview.json": logsOverviewDashboardJson(),
+          "web-rum.json": webRumDashboardJson(),
         },
       },
       childOpts,
@@ -185,6 +187,7 @@ export class GrafanaBackend extends pulumi.ComponentResource {
             { key: "synthetics.json", path: "platform/synthetics.json" },
             { key: "cluster-use.json", path: "platform/cluster-use.json" },
             { key: "logs-overview.json", path: "platform/logs-overview.json" },
+            { key: "web-rum.json", path: "platform/web-rum.json" },
           ],
         },
       },
