@@ -13,9 +13,11 @@ export const CURL_IMAGE = "curlimages/curl:8.20.0";
 // resource name (e.g. `otel-collector`).
 const JOB_NAME = "garage-buckets";
 
-// The buckets Tempo/Loki store into. A closed set so a typo is a compile error
-// and Tempo/Loki can only ask for a bucket this Job actually creates.
-export type GarageBucketName = "tempo" | "loki";
+// The buckets Tempo/Loki/Pyroscope store into. A closed set so a typo is a
+// compile error and a backend can only ask for a bucket this Job actually
+// creates. (C4 wires the `pyroscope` bucket's actual creation + grant into the
+// bootstrap Job; the type is widened here so PyroscopeBackend can name it.)
+export type GarageBucketName = "tempo" | "loki" | "pyroscope";
 
 export type GarageBucketsArgs = {
   namespace: pulumi.Input<string>;
