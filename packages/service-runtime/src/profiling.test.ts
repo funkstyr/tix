@@ -7,14 +7,20 @@ import { startProfiling } from "./profiling.ts";
 // asserts the init args (appName + tags) without loading native profiling.
 describe("startProfiling", () => {
   it("does nothing when PROFILING_ENABLED is unset", () => {
-    const pyro = { init: vi.fn(), start: vi.fn() };
+    const pyro = {
+      init: vi.fn<(config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void>(),
+      start: vi.fn<() => void>(),
+    };
     startProfiling({ serviceName: "orders", version: "abc", env: {}, pyroscope: pyro });
     expect(pyro.init).not.toHaveBeenCalled();
     expect(pyro.start).not.toHaveBeenCalled();
   });
 
   it("initializes with service + version tags and starts when enabled", () => {
-    const pyro = { init: vi.fn(), start: vi.fn() };
+    const pyro = {
+      init: vi.fn<(config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void>(),
+      start: vi.fn<() => void>(),
+    };
     startProfiling({
       serviceName: "orders",
       version: "abc123",
@@ -30,7 +36,10 @@ describe("startProfiling", () => {
   });
 
   it("does not start when enabled but no server address is configured", () => {
-    const pyro = { init: vi.fn(), start: vi.fn() };
+    const pyro = {
+      init: vi.fn<(config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void>(),
+      start: vi.fn<() => void>(),
+    };
     startProfiling({
       serviceName: "orders",
       version: "abc",

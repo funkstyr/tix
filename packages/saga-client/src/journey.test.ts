@@ -29,27 +29,27 @@ function stubClients(): { clients: SagaClients; calls: string[] } {
   };
   const clients: SagaClients = {
     auth: {
-      signIn: vi.fn(() => { calls.push("signIn"); return Promise.resolve(credential); }),
-      signUp: vi.fn(() => Promise.resolve(credential)),
-      signOut: vi.fn(() => Promise.resolve({ ok: true as const })),
-      getSession: vi.fn(() => Promise.resolve(null)),
+      signIn: vi.fn<() => Promise<typeof credential>>(() => { calls.push("signIn"); return Promise.resolve(credential); }),
+      signUp: vi.fn<() => Promise<typeof credential>>(() => Promise.resolve(credential)),
+      signOut: vi.fn<() => Promise<{ ok: true }>>(() => Promise.resolve({ ok: true as const })),
+      getSession: vi.fn<() => Promise<null>>(() => Promise.resolve(null)),
     } as unknown as SagaClients["auth"],
     tickets: {
-      create: vi.fn(() => { calls.push("ticket.create"); return Promise.resolve(ticket); }),
-      update: vi.fn(),
-      reserve: vi.fn(),
-      getById: vi.fn(() => Promise.resolve(ticket)),
-      list: vi.fn(),
-      listMine: vi.fn(),
+      create: vi.fn<() => Promise<typeof ticket>>(() => { calls.push("ticket.create"); return Promise.resolve(ticket); }),
+      update: vi.fn<() => void>(),
+      reserve: vi.fn<() => void>(),
+      getById: vi.fn<() => Promise<typeof ticket>>(() => Promise.resolve(ticket)),
+      list: vi.fn<() => void>(),
+      listMine: vi.fn<() => void>(),
     } as unknown as SagaClients["tickets"],
     orders: {
-      create: vi.fn(() => { calls.push("order.create"); return Promise.resolve(order); }),
-      getById: vi.fn(() => Promise.resolve(order)),
-      list: vi.fn(),
-      cancel: vi.fn(() => { calls.push("order.cancel"); return Promise.resolve(order); }),
+      create: vi.fn<() => Promise<typeof order>>(() => { calls.push("order.create"); return Promise.resolve(order); }),
+      getById: vi.fn<() => Promise<typeof order>>(() => Promise.resolve(order)),
+      list: vi.fn<() => void>(),
+      cancel: vi.fn<() => Promise<typeof order>>(() => { calls.push("order.cancel"); return Promise.resolve(order); }),
     } as unknown as SagaClients["orders"],
     payments: {
-      create: vi.fn(() => {
+      create: vi.fn<() => Promise<{ id: string; status: "succeeded" }>>(() => {
         calls.push("payment.create");
         return Promise.resolve({ id: "33333333-3333-4333-8333-333333333333", status: "succeeded" as const });
       }),
@@ -83,7 +83,7 @@ describe("runBuyerJourney", () => {
 
   it("reports failure (and still attempts cleanup) when the charge does not succeed", async () => {
     const { clients } = stubClients();
-    clients.payments.create = vi.fn(() =>
+    clients.payments.create = vi.fn<() => Promise<{ id: string; status: "requires_payment_method" }>>(() =>
       Promise.resolve({ id: "33333333-3333-4333-8333-333333333333", status: "requires_payment_method" as const }),
     ) as unknown as SagaClients["payments"]["create"];
 
