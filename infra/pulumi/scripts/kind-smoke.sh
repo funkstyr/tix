@@ -37,11 +37,20 @@ TEARDOWN=""
 SKIP_BUILD=""
 SERVICES=(auth tickets orders payments expiration gateway web)
 MIGRATED=(auth tickets orders payments expiration)
-# Discrete observability backends (ADR-0009). Split by workload kind so the
-# rollout waits use the right resource type; all are remote images (pulled).
-OBSERVABILITY_DEPLOYMENTS=(grafana loki blackbox-exporter)
+# Discrete observability backends (ADR-0009) + substrate-health exporters (ADR-0012 Tier 2). Split
+# by workload kind so the rollout waits use the right resource type; all are remote images (pulled).
+OBSERVABILITY_DEPLOYMENTS=(
+  grafana loki blackbox-exporter
+  postgres-exporter redis-exporter nats-exporter kube-state-metrics
+)
 OBSERVABILITY_STATEFULSETS=(garage tempo prometheus otel-collector)
-OBSERVABILITY=("${OBSERVABILITY_DEPLOYMENTS[@]}" "${OBSERVABILITY_STATEFULSETS[@]}")
+# node-exporter is a DaemonSet (one pod per node) — waited on separately.
+OBSERVABILITY_DAEMONSETS=(node-exporter)
+OBSERVABILITY=(
+  "${OBSERVABILITY_DEPLOYMENTS[@]}"
+  "${OBSERVABILITY_STATEFULSETS[@]}"
+  "${OBSERVABILITY_DAEMONSETS[@]}"
+)
 
 # Pinned remote images for the synthetic-span e2e check (pulled inside the
 # cluster, not kind-loaded). telemetrygen tracks the collector minor.
@@ -229,6 +238,7 @@ set_secret ticketsPassword tickets_dev
 set_secret ordersPassword orders_dev
 set_secret paymentsPassword payments_dev
 set_secret expirationPassword expiration_dev
+set_secret prometheusExporterPassword prometheus_exporter_dev
 set_secret betterAuthSecret "$(openssl rand -hex 32)"
 set_secret ticketsServiceToken "$(openssl rand -hex 32)"
 set_secret stripeKey sk_test_placeholder
@@ -280,6 +290,10 @@ done
 for s in "${OBSERVABILITY_STATEFULSETS[@]}"; do
   kubectl -n "$NAMESPACE" rollout status "statefulset/$s" --timeout=180s >/dev/null
   ok "statefulset/$s ready"
+done
+for d in "${OBSERVABILITY_DAEMONSETS[@]}"; do
+  kubectl -n "$NAMESPACE" rollout status "daemonset/$d" --timeout=180s >/dev/null
+  ok "daemonset/$d ready"
 done
 
 # 7. probe through the ingress. Routing can lag a few seconds after the Ingress
@@ -352,4 +366,29 @@ done
 [[ -n "$found" ]] || die "synthetic span never appeared in Tempo (collector -> tempo path broken)"
 ok "synthetic span visible in Tempo"
 
-log "✓ smoke passed — services + observability Ready, gateway /health ok, SPA + Grafana served through the ingress, synthetic span reached Tempo"
+# 9. substrate-health scrape targets up (ADR-0012 Tier 2). Query Prometheus for `up{job=X}==1`
+#    per new target; a non-empty result array means that target is being scraped successfully. This
+#    is the layer that proves the exporters serve, the cluster RBAC works (SD + nodes/proxy), and
+#    the kubelet TLS toggle is correct end-to-end — none of which `pulumi preview` can catch.
+log "asserting the Tier 2 scrape targets are up"
+assert_target_up() {
+  local job="$1" query result
+  query="up%7Bjob%3D%22${job}%22%7D%3D%3D1"
+  for i in $(seq 1 45); do
+    if result="$(kubectl -n "$NAMESPACE" run "up-probe-${job}-$i" --rm -i --restart=Never --quiet \
+      --image="$CURL_IMAGE" -- \
+      curl -fsS "http://prometheus:9090/api/v1/query?query=${query}" 2>/dev/null)" \
+      && printf '%s' "$result" | grep -q '"result":\[{'; then
+      ok "target up: $job"
+      return 0
+    fi
+    sleep 4
+  done
+  die "scrape target '$job' never reported up==1 (last: ${result:-<none>})"
+}
+for job in postgres-exporter redis-exporter nats node-exporter kube-state-metrics \
+  kubelet-cadvisor kubelet; do
+  assert_target_up "$job"
+done
+
+log "✓ smoke passed — services + observability Ready, gateway /health ok, SPA + Grafana served through the ingress, synthetic span reached Tempo, Tier 2 substrate-health targets up"

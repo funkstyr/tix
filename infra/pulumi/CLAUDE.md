@@ -214,6 +214,8 @@ curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-aut
 | `ordersPassword`       | secret | —                         | `orders_user` role password.                                                                                                                                                                                                          |
 | `paymentsPassword`     | secret | —                         | `payments_user` role password.                                                                                                                                                                                                        |
 | `expirationPassword`   | secret | —                         | `expiration_user` role password.                                                                                                                                                                                                      |
+| `prometheusExporterPassword` | secret | —                   | Read-only `prometheus_exporter` (pg_monitor) role password; postgres-exporter connects with it (ADR-0012 Tier 2).                                                                                                                    |
+| `kubeletCaBundle`      | string | — (dev insecure)          | PEM CA bundle for the kubelet/cAdvisor scrape TLS (ADR-0012 Tier 2). Unset → `insecure_skip_verify` (dev/kind); set in prod so the scrape verifies. `TODO(prod)`.                                                                     |
 | `betterAuthSecret`     | secret | —                         | better-auth signing secret.                                                                                                                                                                                                           |
 | `ticketsServiceToken`  | secret | —                         | Shared HMAC token for tickets ↔ orders service calls.                                                                                                                                                                                 |
 | `stripeKey`            | secret | —                         | Stripe API key (payments).                                                                                                                                                                                                            |
@@ -362,6 +364,53 @@ coverage + three latency). The burn-rate thresholds in `burn-alerts.ts`, the cov
 business-level recording rules and the `slo:error_budget_consumed:ratio` rule in
 `prometheus-backend.ts`, and the `slo-budget` burndown board all derive from it — change an objective,
 they follow. The cardinality rule holds: only low-cardinality `slo`/`service` labels reach metrics.
+
+## Substrate health (ADR-0012 Tier 2)
+
+The first tier that deploys new workloads and the **first to introduce cluster RBAC** and a real prod
+kubelet-TLS path. Five new always-on components (ungated, dev AND prod — like `BlackboxExporter`):
+
+| Component          | File                                            | Emits / role                                                                                                                                                                  |
+| ------------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PostgresExporter` | `components/observability/postgres-exporter.ts` | `postgres-exporter` Deployment + Service (:9187). Connects via the `DATA_SOURCE_NAME` Secret as the read-only `prometheus_exporter` (pg_monitor) role. Wired in `index.ts`.   |
+| `RedisExporter`    | `components/observability/redis-exporter.ts`    | `redis-exporter` Deployment + Service (:9121). `REDIS_ADDR=redis://redis:6379` (no auth). Wired in `index.ts`.                                                                |
+| `NatsExporter`     | `components/observability/nats-exporter.ts`     | `nats-exporter` Deployment + Service (:7777). `prometheus-nats-exporter` reads NATS `:8222` JSON and re-exposes Prometheus — see the deviation note below. Wired in `index.ts`. |
+| `NodeExporter`     | `components/observability/node-exporter.ts`     | `node-exporter` **DaemonSet** (:9100) + headless Service. host CPU/mem/disk/net. Tolerates the control-plane taint so it schedules on kind. In `ObservabilityStack`.          |
+| `KubeStateMetrics` | `components/observability/kube-state-metrics.ts` | `kube-state-metrics` Deployment (:8080/:8081) + ServiceAccount + **least-privilege ClusterRole** + binding (pod/PVC/restart/OOMKill state). In `ObservabilityStack`.          |
+
+- **Datastore exporters** (postgres/redis/nats) are constructed in `index.ts` next to `StatefulInfra`
+  /`PostgresRoles`, not in `ObservabilityStack`: postgres-exporter needs the DSN Secret + a
+  `dependsOn` on the role bootstrap, both in `index.ts` scope. Prometheus scrapes all three by static
+  Service DNS (`prometheus-backend.ts`); the `nats` job targets the exporter, not NATS `:8222`.
+- **`prometheus_exporter` role** is a new `monitor`-flavoured `PostgresRole` (postgres-roles.ts):
+  `GRANT pg_monitor`, no schema, no DDL grant — read-only stats access, the cluster-wide read the
+  schema-scoped service roles deliberately lack.
+- **First cluster RBAC.** kube-state-metrics gets its own SA + ClusterRole (list/watch only on
+  pods/nodes/PVCs + apps/batch workloads; **no secrets/configmaps**). Prometheus gets a SA +
+  ClusterRole (`prometheus-rbac.ts`): SD list/watch on nodes/endpoints/services/pods + `nodes/proxy:get`
+  for cAdvisor (**not** `nodes/metrics`). Both rule sets are pinned by unit tests so an over-broad
+  grant fails CI. `serviceAccountName` on the Prometheus pod is what makes `kubernetes_sd_configs`
+  authenticate.
+- **kubelet/cAdvisor scrape** goes through the apiserver proxy (`__address__ →
+  kubernetes.default.svc:443`, `__metrics_path__ → /api/v1/nodes/<n>/proxy/metrics/cadvisor`) so it
+  needs only `nodes/proxy` and no node-network reachability. cAdvisor series are scoped to
+  `namespace="tix"` via `metric_relabel_configs` (the cardinality gate); the `tix_cluster_use`
+  recording group rolls them to pod/node scope so the prod 90d TSDB stays bounded. A second `kubelet`
+  job (path `/metrics`, volume-stats only) feeds the PVC-fill alert.
+- **kubelet TLS** is dev-insecure / prod-verifying via the `kubeletCaBundle` config (mirrors
+  `traceSamplingPercent`): unset → `insecure_skip_verify: true`; set → a mounted CA + `ca_file`. The
+  apiserver-proxy endpoint's cert is signed by the cluster CA, so the same bundle verifies it.
+- **Boards + alerts:** `datastore-health` (Domain) + `cluster-use` (Platform) boards; `datastore_health`
+  + `cluster_use` alert groups (now ten groups in `alert-rules.ts`); one runbook per alert in
+  `docs/runbooks/`. The smoke asserts every new target `up==1` (the only layer that proves RBAC +
+  TLS + SD work end-to-end).
+
+> **Deviation from the ADR's NATS wording.** ADR-0012 says JetStream lag is "scraped directly from
+> NATS `:8222`, no exporter." Vanilla `nats:2.10-alpine` serves **JSON** on `:8222` (`/varz`, `/jsz`,
+> `/healthz`), not Prometheus exposition — Prometheus can't scrape it and the target never comes up.
+> `prometheus-nats-exporter` reads that JSON and re-exposes Prometheus on `:7777`. It's a standalone
+> Deployment, not a sidecar in the NATS pod, so "one scrape job, no sidecar" still holds; only the
+> "no exporter" claim doesn't, because it can't.
 
 ## Notes
 
