@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { DeployAnnotation } from "./deploy-annotation.ts";
 import { promiseOf } from "../pulumi-mocks.ts";
+import { DeployAnnotation } from "./deploy-annotation.ts";
 
 describe("DeployAnnotation", () => {
   let annotation: DeployAnnotation;

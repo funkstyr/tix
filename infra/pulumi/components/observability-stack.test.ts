@@ -107,9 +107,9 @@ describe("ObservabilityStack", () => {
     // `pulumi.com/skipAwait`, so a renamed/broken Secret would fail silently at deploy time —
     // lock in the wiring by asserting the secretRef name the envFrom resolves to.
     const jobSpec = await promiseOf(shaStack.deployAnnotation!.job.spec);
-    expect(
-      jobSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name,
-    ).toBe("grafana-annotation");
+    expect(jobSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name).toBe(
+      "grafana-annotation",
+    );
   });
 
   it("omits the deploy annotation when no SHA is supplied", () => {

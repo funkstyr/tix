@@ -18,8 +18,7 @@ export function stripeAlertRules(): Array<Record<string, unknown>> {
 // so `card_declined` — expected buyer behavior — no longer pages; a decline spike is investigated on
 // the money-inventory board, not via this alert. Denominator stays total charge attempts.
 function chargeErrorRate(): Record<string, unknown> {
-  const ourSide =
-    "^(api_error|rate_limited|authentication_error|network|idempotency_error)$";
+  const ourSide = "^(api_error|rate_limited|authentication_error|network|idempotency_error)$";
   const failedOurSide = `sum(rate(payments_failed_total{reason=~"${ourSide}"}[5m]))`;
   const failed = "sum(rate(payments_failed_total[5m]))";
   const all = `clamp_min(${failed} + sum(rate(payments_succeeded_total[5m])), 1)`;
