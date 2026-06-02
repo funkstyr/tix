@@ -15,6 +15,7 @@ import {
   ticketUpdateInput,
 } from "@tix/contracts/tickets";
 import { reserveTicketInput, reserveTicketOutput } from "@tix/contracts/tickets-reserve";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withResilience } from "@tix/observability/resilience";
 
@@ -75,6 +76,13 @@ export function createTicketsRouter(runtime: TicketsRuntime) {
           "reserve",
           context,
           Effect.gen(function* () {
+            yield* Effect.annotateCurrentSpan(
+              domainAttributes({
+                [SpanAttr.ticketId]: input.ticketId,
+                [SpanAttr.quantity]: input.quantity,
+              }),
+            );
+
             const env = yield* TicketsConfig;
             if (context.serviceToken !== env.serviceToken) {
               return yield* Effect.fail(
