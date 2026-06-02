@@ -4,8 +4,9 @@ import { alertRule } from "./alert-rule.ts";
 // stripe_alerts (ADR-0012 Tier 1): Stripe is a hard external dependency on the money path we can't
 // scrape, so we give it its own error-rate + latency alerts off the counters we already emit —
 // separating "Stripe's fault" from the `saga-stall` heuristic's "our payment code broke", so the 3am
-// "is Stripe down?" question is a board, not a log-dive. Per-reason decline tagging (declined /
-// network / rate-limit) needs an app change and is out of scope here.
+// "is Stripe down?" question is a board, not a log-dive. The charge error-rate numerator filters to
+// our-side reasons via the `reason` label `payments_failed_total` now carries (classifyStripeError),
+// so `card_declined` — expected buyer behavior — no longer pages.
 
 export function stripeAlertRules(): Array<Record<string, unknown>> {
   return [chargeErrorRate(), chargeLatency(), failureStepChange()];
