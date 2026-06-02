@@ -190,4 +190,15 @@ describe("prometheus scrape_configs", () => {
     // expiration is a worker but serves a health surface (ADR-0011 Tier 1), so it's probed too.
     expect(config).toContain("http://expiration:4500/health");
   });
+
+  it("scrapes the datastore exporters (ADR-0012 Tier 2)", () => {
+    const config = render();
+    expect(config).toContain("job_name: postgres-exporter");
+    expect(config).toContain("postgres-exporter:9187");
+    expect(config).toContain("job_name: redis-exporter");
+    expect(config).toContain("redis-exporter:9121");
+    // The `nats` job points at the exporter, not NATS :8222 (which is JSON, not Prometheus).
+    expect(config).toContain("job_name: nats");
+    expect(config).toContain("nats-exporter:7777");
+  });
 });

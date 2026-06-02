@@ -214,6 +214,18 @@ scrape_configs:
   - job_name: garage
     static_configs:
       - targets: ["garage:3903"]
+  # Datastore exporters (substrate health, ADR-0012 Tier 2): each watches its engine and exposes
+  # Prometheus on a static ClusterIP Service DNS, like the LGTM self-scrape jobs. The nats job
+  # points at the nats-exporter (NATS :8222 is JSON, not Prometheus — see nats-exporter.ts).
+  - job_name: postgres-exporter
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+  - job_name: nats
+    static_configs:
+      - targets: ["nats-exporter:7777"]
   - job_name: blackbox
     metrics_path: /probe
     params:
