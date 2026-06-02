@@ -11,16 +11,12 @@ import { tsPanel } from "./_shared.ts";
 
 // Services whose RED comes from hand-rolled duration histograms (tagged by `op`). tickets/
 // orders/payments are intentionally excluded — they emit no duration histogram, so their RED
-// would come from span-derived series and no board in this slice covers them (the `by` knob
-// leaves that door open without reworking the factory).
+// would come from span-derived series, and no board in this slice covers them.
 export type RedService = "gateway" | "auth";
 
 export type RedRowOpts = {
   // Vertical offset for the row, so callers can stack multiple services.
   readonly y: number;
-  // Label to break the **rate and error-%** panels down by (defaults to `op`). The latency
-  // panel always aggregates across this label — quantiles group only by `le`.
-  readonly by?: string;
 };
 
 const QUANTILES = [
@@ -31,8 +27,7 @@ const QUANTILES = [
 
 // The three RED panels for one service, laid out as a row at offset `y` (8/8/8 across the
 // 24-col grid, each 9 high).
-export function redRow(service: RedService, opts: RedRowOpts): timeseries.PanelBuilder[] {
-  const by = opts.by ?? "op";
+export function redRow(service: RedService, opts: RedRowOpts): readonly timeseries.PanelBuilder[] {
   const { y } = opts;
 
   const requests = `${service}_requests_total`;
@@ -40,15 +35,15 @@ export function redRow(service: RedService, opts: RedRowOpts): timeseries.PanelB
   const buckets = `${service}_request_duration_ms_bucket`;
 
   const rate = tsPanel(`${service} — request rate`, "reqps", { h: 9, w: 8, x: 0, y }, [
-    { expr: `sum(rate(${requests}[$__rate_interval])) by (${by})`, legend: `{{${by}}}` },
+    { expr: `sum(rate(${requests}[$__rate_interval])) by (op)`, legend: "{{op}}" },
   ]);
 
   const errorPct = tsPanel(`${service} — error %`, "percentunit", { h: 9, w: 8, x: 8, y }, [
     {
       expr:
-        `sum(rate(${errors}[$__rate_interval])) by (${by})` +
-        ` / clamp_min(sum(rate(${requests}[$__rate_interval])) by (${by}), 1)`,
-      legend: `{{${by}}}`,
+        `sum(rate(${errors}[$__rate_interval])) by (op)` +
+        ` / clamp_min(sum(rate(${requests}[$__rate_interval])) by (op), 1)`,
+      legend: "{{op}}",
     },
   ]);
 
