@@ -4,6 +4,15 @@ import { contactPointsJson } from "./contact-points.ts";
 
 const SINK_URL = "http://alert-log-sink:8080/";
 
+// A severity child route under the root policy. `object_matchers` is Grafana's
+// [label, operator, value] tuple shape (provisioning apiVersion 1).
+type Route = {
+  receiver: string;
+  object_matchers: Array<[string, string, string]>;
+  group_wait: string;
+  repeat_interval: string;
+};
+
 function config() {
   return JSON.parse(contactPointsJson(SINK_URL));
 }
@@ -35,34 +44,36 @@ describe("contactPointsJson", () => {
 
   it("has one severity child route per page/ticket/warning, each → log-sink", () => {
     const { policies } = config();
-    const routes = policies[0].routes;
+    const routes = policies[0].routes as Route[];
 
     expect(routes).toHaveLength(3);
 
-    const bySeverity = new Map(
-      routes.map((route: { object_matchers: [string, string, string][] }) => {
-        const [[label, op, value]] = route.object_matchers;
-        expect(label).toBe("severity");
-        expect(op).toBe("=");
-        return [value, route];
-      }),
-    );
+    const bySeverity = new Map<string, Route>();
+    for (const route of routes) {
+      const matcher = route.object_matchers[0];
+      expect(matcher).toBeDefined();
+      const [label, op, value] = matcher as [string, string, string];
+      expect(label).toBe("severity");
+      expect(op).toBe("=");
+      bySeverity.set(value, route);
+    }
 
     for (const severity of ["page", "ticket", "warning"]) {
       const route = bySeverity.get(severity);
       expect(route, `expected a route for severity=${severity}`).toBeDefined();
       // Dev: every leaf routes to the same sink; prod swaps these without touching the tree.
-      expect(route.receiver).toBe("log-sink");
+      expect(route?.receiver).toBe("log-sink");
     }
   });
 
   it("gives page the shortest group_wait so a page fires immediately", () => {
     const { policies } = config();
-    const waitBy = (severity: string) =>
-      policies[0].routes.find(
-        (route: { object_matchers: [string, string, string][] }) =>
-          route.object_matchers[0][2] === severity,
-      ).group_wait;
+    const routes = policies[0].routes as Route[];
+    const waitBy = (severity: string) => {
+      const route = routes.find((r) => r.object_matchers[0]?.[2] === severity);
+      if (route === undefined) throw new Error(`no route for severity=${severity}`);
+      return route.group_wait;
+    };
 
     expect(waitBy("page")).toBe("0s");
     expect(waitBy("ticket")).toBe("30s");
