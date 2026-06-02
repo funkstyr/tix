@@ -16,6 +16,12 @@ const TELEMETRY_PORT = 8888;
 const CONFIG_DIR = "/etc/otelcol";
 const CONFIG_FILE = "config.yaml";
 
+// On-disk directory backing the Tempo sending queue (file_storage extension). A
+// PVC is mounted here so a collector restart resumes its in-flight trace batches
+// instead of dropping them — the collector is the single OTLP ingress, so a lost
+// in-memory queue is a lost slice of every service's traces.
+const QUEUE_DIR = "/var/lib/otelcol/queue";
+
 // The three fan-out endpoints are all strings of three *different*, non-
 // interchangeable shapes (bare gRPC host:port vs. signal-specific OTLP/HTTP
 // URLs). Branding them keeps the metrics URL from being passed where the logs
@@ -45,7 +51,10 @@ export type OtelCollectorArgs = {
 // logs to Loki (HTTP), metrics to Prometheus (HTTP).
 export class OtelCollector extends pulumi.ComponentResource {
   readonly config: k8s.core.v1.ConfigMap;
-  readonly deployment: k8s.apps.v1.Deployment;
+  // A StatefulSet (not a Deployment) because it owns a PVC for the durable
+  // sending queue: the file_storage-backed queue must survive a pod restart so
+  // in-flight traces aren't dropped, and that requires stable per-replica storage.
+  readonly statefulSet: k8s.apps.v1.StatefulSet;
   readonly service: k8s.core.v1.Service;
 
   constructor(name: string, args: OtelCollectorArgs, opts?: pulumi.ComponentResourceOptions) {
@@ -75,11 +84,12 @@ export class OtelCollector extends pulumi.ComponentResource {
       childOpts,
     );
 
-    this.deployment = new k8s.apps.v1.Deployment(
-      `${name}-deployment`,
+    this.statefulSet = new k8s.apps.v1.StatefulSet(
+      `${name}-set`,
       {
         metadata: { name: "otel-collector", namespace },
         spec: {
+          serviceName: "otel-collector",
           replicas: 1,
           selector: { matchLabels: labels },
           template: {
@@ -96,12 +106,25 @@ export class OtelCollector extends pulumi.ComponentResource {
                     { name: "otlp-http", containerPort: OTLP_HTTP_PORT },
                     { name: "metrics", containerPort: TELEMETRY_PORT },
                   ],
-                  volumeMounts: [{ name: "config", mountPath: CONFIG_DIR, readOnly: true }],
+                  volumeMounts: [
+                    { name: "config", mountPath: CONFIG_DIR, readOnly: true },
+                    // The durable sending queue lives here (file_storage extension).
+                    { name: "queue", mountPath: QUEUE_DIR },
+                  ],
                 },
               ],
               volumes: [{ name: "config", configMap: { name: this.config.metadata.name } }],
             },
           },
+          volumeClaimTemplates: [
+            {
+              metadata: { name: "queue" },
+              spec: {
+                accessModes: ["ReadWriteOnce"],
+                resources: { requests: { storage: "1Gi" } },
+              },
+            },
+          ],
         },
       },
       childOpts,
@@ -125,7 +148,7 @@ export class OtelCollector extends pulumi.ComponentResource {
 
     this.registerOutputs({
       config: this.config,
-      deployment: this.deployment,
+      statefulSet: this.statefulSet,
       service: this.service,
     });
   }
@@ -165,6 +188,14 @@ receivers:
         endpoint: 0.0.0.0:${OTLP_GRPC_PORT}
       http:
         endpoint: 0.0.0.0:${OTLP_HTTP_PORT}
+
+# file_storage persists the Tempo sending queue to a PVC-backed directory so a
+# collector restart resumes its in-flight trace batches instead of dropping them
+# (this collector is the cluster's single OTLP ingress — a lost in-memory queue
+# loses a slice of every service's traces). Registered under service.extensions.
+extensions:
+  file_storage:
+    directory: ${QUEUE_DIR}
 
 processors:
   batch: {}
@@ -206,12 +237,18 @@ exporters:
     endpoint: ${tempoEndpoint}
     tls:
       insecure: true
+    # Back the Tempo queue with file_storage so unsent batches survive a restart.
+    sending_queue:
+      enabled: true
+      storage: file_storage
   otlphttp/loki:
     logs_endpoint: ${lokiLogsEndpoint}
   otlphttp/prometheus:
     metrics_endpoint: ${prometheusMetricsEndpoint}
 
 service:
+  # Enable the durable-queue extension; without this registration file_storage is inert.
+  extensions: [file_storage]
   # Expose internal collector metrics on 0.0.0.0:${TELEMETRY_PORT} so Prometheus can
   # scrape the collector's own health (ADR-0010). The default bind is localhost-only.
   telemetry:

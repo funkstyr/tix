@@ -48,7 +48,7 @@ describe("OtelCollector", () => {
   it("points the collector at its mounted config file", async () => {
     const collector = build();
 
-    const spec = await promiseOf(collector.deployment.spec);
+    const spec = await promiseOf(collector.statefulSet.spec);
     const container = spec.template.spec?.containers[0];
     expect(container?.args).toContain("--config=/etc/otelcol/config.yaml");
   });
@@ -56,9 +56,35 @@ describe("OtelCollector", () => {
   it("runs the contrib distro (spanmetrics + servicegraph connectors ship there, not in core)", async () => {
     const collector = build();
 
-    const spec = await promiseOf(collector.deployment.spec);
+    const spec = await promiseOf(collector.statefulSet.spec);
     const container = spec.template.spec?.containers[0];
     expect(container?.image).toContain("opentelemetry-collector-contrib");
+  });
+
+  it("owns a durable queue PVC so a restart doesn't drop in-flight traces", async () => {
+    const collector = build();
+
+    const spec = await promiseOf(collector.statefulSet.spec);
+    const claim = (spec.volumeClaimTemplates ?? []).find((c) => c.metadata?.name === "queue");
+    expect(claim).toBeDefined();
+
+    const container = spec.template.spec?.containers[0];
+    const mount = (container?.volumeMounts ?? []).find((m) => m.name === "queue");
+    expect(mount?.mountPath).toBe("/var/lib/otelcol/queue");
+  });
+
+  it("persists the Tempo sending queue to disk via the file_storage extension", async () => {
+    const collector = build();
+
+    const data = await promiseOf(collector.config.data);
+    const config = data?.["config.yaml"] ?? "";
+    expect(config).toContain("file_storage");
+    // The on-disk queue hangs off the Tempo exporter, not the others.
+    expect(config).toMatch(
+      /otlp\/tempo:[\s\S]*sending_queue:[\s\S]*enabled: true[\s\S]*storage: file_storage/,
+    );
+    // The extension must be registered under service.extensions or it's inert.
+    expect(config).toMatch(/service:[\s\S]*extensions: \[file_storage\]/);
   });
 
   it("derives span metrics + the service graph and carries trace exemplars on the duration histograms", async () => {

@@ -8,7 +8,7 @@ import {
 } from "./prometheus-backend.ts";
 
 function build(): PrometheusBackend {
-  return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi" });
+  return new PrometheusBackend("test", { namespace: "tix", storage: "1Gi", retention: "15d" });
 }
 
 describe("PrometheusBackend", () => {
@@ -20,6 +20,14 @@ describe("PrometheusBackend", () => {
     expect(container?.args).toContain("--web.enable-otlp-receiver");
     expect(container?.args).toContain("--storage.tsdb.path=/prometheus");
     expect(spec.volumeClaimTemplates).toHaveLength(1);
+  });
+
+  it("caps the TSDB at the configured retention so disk usage is bounded", async () => {
+    const prometheus = build();
+
+    const spec = await promiseOf(prometheus.statefulSet.spec);
+    const container = spec.template.spec?.containers[0];
+    expect(container?.args).toContain("--storage.tsdb.retention.time=15d");
   });
 
   it("enables exemplar storage so span-derived histograms can drill to traces", async () => {
@@ -87,6 +95,13 @@ describe("prometheus recording rules", () => {
     expect(rules).toContain("record: saga:reserved_per_created:ratio_rate5m");
     expect(rules).toContain("record: saga:paid_per_reserved:ratio_rate5m");
   });
+
+  it("records the per-service error-budget consumed fraction (current ratio / budget)", () => {
+    const rules = renderRecordingRules();
+    expect(rules).toContain("record: slo:error_budget_consumed:ratio");
+    expect(rules).toContain('service:request_errors:ratio_rate1h{service="gateway"} / 0.01');
+    expect(rules).toContain('service:request_errors:ratio_rate1h{service="auth"} / 0.01');
+  });
 });
 
 describe("prometheus scrape_configs", () => {
@@ -108,5 +123,16 @@ describe("prometheus scrape_configs", () => {
     ]) {
       expect(config).toContain(target);
     }
+  });
+
+  it("drives the blackbox exporter with the http_2xx module and the standard relabel pattern", () => {
+    const config = render();
+    expect(config).toContain("job_name: blackbox");
+    expect(config).toContain("module: [http_2xx]");
+    expect(config).toContain("target_label: __param_target");
+    expect(config).toContain("replacement: blackbox-exporter:9115");
+    expect(config).toContain("http://gateway:4000/health");
+    // expiration is a worker but serves a health surface (ADR-0011 Tier 1), so it's probed too.
+    expect(config).toContain("http://expiration:4500/health");
   });
 });

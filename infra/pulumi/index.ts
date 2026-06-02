@@ -81,6 +81,15 @@ const alertingEnabled = config.getBoolean("alertingEnabled") ?? false;
 const traceSamplingPercent =
   config.getNumber("traceSamplingPercent") ?? (stack === "prod" ? 10 : 100);
 
+// Backend retention windows (ADR-0011 Tier 3): how long metrics/traces/logs are kept before
+// each store ages them out. Without these every backend grows unbounded. Dev keeps a short
+// window (15d) — a dev box shouldn't be sized for prod's history — while prod keeps a quarter
+// (90d). Prometheus accepts day units (`15d`); Tempo/Loki take Go-duration hour strings, so the
+// same windows are spelled `360h` / `2160h`. Overridable per stack via `pulumi config set`.
+const metricsRetention = config.get("metricsRetention") ?? (stack === "prod" ? "90d" : "15d");
+const tracesRetention = config.get("tracesRetention") ?? (stack === "prod" ? "2160h" : "360h");
+const logsRetention = config.get("logsRetention") ?? (stack === "prod" ? "2160h" : "360h");
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -114,6 +123,9 @@ const observability = new ObservabilityStack(
     garageS3SecretKey,
     alertingEnabled,
     traceSamplingPercent,
+    metricsRetention,
+    tracesRetention,
+    logsRetention,
   },
   { dependsOn: namespace },
 );

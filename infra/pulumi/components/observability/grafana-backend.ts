@@ -11,6 +11,8 @@ import { moneyInventoryDashboardJson } from "./dashboards/money-inventory.ts";
 import { platformO11yDashboardJson } from "./dashboards/platform-o11y.ts";
 import { sagaFunnelDashboardJson } from "./dashboards/saga-funnel.ts";
 import { saturationDashboardJson } from "./dashboards/saturation.ts";
+import { sloBudgetDashboardJson } from "./dashboards/slo-budget.ts";
+import { syntheticsDashboardJson } from "./dashboards/synthetics.ts";
 
 // Grafana (UI). Datasources are provisioned from a ConfigMap, so a fresh pod
 // re-wires Tempo/Loki/Prometheus on every boot and needs no persistent volume
@@ -122,6 +124,8 @@ export class GrafanaBackend extends pulumi.ComponentResource {
           "expiration-worker.json": expirationWorkerDashboardJson(),
           "saturation.json": saturationDashboardJson(),
           "platform-o11y.json": platformO11yDashboardJson(),
+          "slo-budget.json": sloBudgetDashboardJson(),
+          "synthetics.json": syntheticsDashboardJson(),
         },
       },
       childOpts,
@@ -170,6 +174,8 @@ export class GrafanaBackend extends pulumi.ComponentResource {
             { key: "expiration-worker.json", path: "domain/expiration-worker.json" },
             { key: "saturation.json", path: "domain/saturation.json" },
             { key: "platform-o11y.json", path: "platform/platform-o11y.json" },
+            { key: "slo-budget.json", path: "platform/slo-budget.json" },
+            { key: "synthetics.json", path: "platform/synthetics.json" },
           ],
         },
       },

@@ -121,6 +121,12 @@ describe("alertRulesJson", () => {
     expect(threshold(rule)).toEqual({ type: "lt", params: [1] });
   });
 
+  it("pages when a synthetic probe fails (probe_success == 0)", () => {
+    const rule = ruleByUid("probe-failure");
+    expect(queryExpr(rule)).toContain("probe_success");
+    expect(threshold(rule)).toEqual({ type: "lt", params: [1] });
+  });
+
   it("points every Prometheus query at the prometheus datasource and a threshold expression", () => {
     for (const rule of allRules()) {
       expect(rule.condition).toBe("C");
