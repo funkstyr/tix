@@ -23,3 +23,7 @@ export const paymentChargeLatencyMs = Metric.histogram(
   MetricBoundaries.exponential({ start: 10, factor: 2, count: 12 }),
   "Stripe PaymentIntent confirmation latency in milliseconds.",
 );
+
+export const outboxLagGauge = Metric.gauge("payments_outbox_lag", {
+  description: "Un-relayed outbox rows (sentAt IS NULL).",
+});

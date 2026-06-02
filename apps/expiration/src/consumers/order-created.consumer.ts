@@ -5,6 +5,7 @@ import { orderCreatedV1 } from "@tix/contracts/orders";
 import { ORDER_CREATED_V1 } from "@tix/contracts/subjects";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -81,7 +82,11 @@ export async function startExpirationConsumer(
         }).pipe(
           Effect.withSpan("expiration.consume.order_created", {
             parent: externalParent(traceContext),
-            attributes: { orderId: payload.orderId },
+            attributes: domainAttributes({
+              [SpanAttr.orderId]: payload.orderId,
+              [SpanAttr.messageId]: eventId,
+              [SpanAttr.destination]: subject,
+            }),
           }),
         ),
     }),

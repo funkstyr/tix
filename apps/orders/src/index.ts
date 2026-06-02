@@ -13,6 +13,7 @@ import { ordersOutbox } from "./domain/schema.ts";
 import { createOrdersApp } from "./http/app.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makeOrdersRuntime } from "./runtime/runtime.ts";
+import { ordersSaturationPoller } from "./runtime/saturation.ts";
 import { Database, EventPublisher, Nats } from "./runtime/services.ts";
 
 const env = parseEnv();
@@ -29,6 +30,8 @@ const program = Effect.gen(function* () {
   const nats = yield* Nats;
 
   yield* Effect.forkScoped(outboxRelay(db.db, ordersOutbox, publisher.publish));
+
+  yield* Effect.forkScoped(ordersSaturationPoller);
 
   yield* Effect.acquireRelease(
     Effect.promise(() => startOrdersExpiredConsumer({ runtime, nats, stream: env.stream })),

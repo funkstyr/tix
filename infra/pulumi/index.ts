@@ -17,6 +17,7 @@ const AUTH_PORT = 4001;
 const TICKETS_PORT = 4002;
 const ORDERS_PORT = 4003;
 const PAYMENTS_PORT = 4004;
+const EXPIRATION_PORT = 4500;
 const GATEWAY_PORT = 4000;
 const WEB_PORT = 80;
 const GRAFANA_PORT = 3000;
@@ -231,6 +232,8 @@ const authDeployment = new ServiceDeployment(
     imagePullPolicy,
     port: AUTH_PORT,
     replicas: 1,
+    healthPath: "/health",
+    readinessPath: "/ready",
     env: {
       AUTH_HTTP_PORT: String(AUTH_PORT),
       AUTH_BASE_URL,
@@ -265,6 +268,8 @@ const ticketsDeployment = new ServiceDeployment(
     imagePullPolicy,
     port: TICKETS_PORT,
     replicas: 1,
+    healthPath: "/health",
+    readinessPath: "/ready",
     env: {
       TICKETS_HTTP_PORT: String(TICKETS_PORT),
       AUTH_BASE_URL,
@@ -303,6 +308,8 @@ const ordersDeployment = new ServiceDeployment(
     imagePullPolicy,
     port: ORDERS_PORT,
     replicas: 1,
+    healthPath: "/health",
+    readinessPath: "/ready",
     env: {
       ORDERS_HTTP_PORT: String(ORDERS_PORT),
       AUTH_BASE_URL,
@@ -342,6 +349,8 @@ const paymentsDeployment = new ServiceDeployment(
     imagePullPolicy,
     port: PAYMENTS_PORT,
     replicas: 1,
+    healthPath: "/health",
+    readinessPath: "/ready",
     env: {
       PAYMENTS_HTTP_PORT: String(PAYMENTS_PORT),
       AUTH_BASE_URL,
@@ -368,8 +377,9 @@ const expirationMigration = new MigrationJob(
   { dependsOn: postgresRoles },
 );
 
-// Expiration is a BullMQ worker with no HTTP server, so `port` is omitted —
-// no Service, no probes, Ready as soon as the container starts.
+// Expiration is a BullMQ worker that now also serves a Hono health app on
+// `EXPIRATION_PORT` (ADR-0011 Tier 1): liveness on `/health`, readiness on
+// `/ready`. `PORT` env tells the in-process server which port to bind.
 const expiration = new ServiceDeployment(
   "expiration",
   {
@@ -377,8 +387,12 @@ const expiration = new ServiceDeployment(
     name: "expiration",
     image: expirationImage,
     imagePullPolicy,
+    port: EXPIRATION_PORT,
     replicas: 1,
+    healthPath: "/health",
+    readinessPath: "/ready",
     env: {
+      PORT: String(EXPIRATION_PORT),
       NATS_URL,
       REDIS_URL,
       LOG_LEVEL: "info",
@@ -402,6 +416,8 @@ const gatewayDeployment = new ServiceDeployment("gateway", {
   imagePullPolicy,
   port: GATEWAY_PORT,
   replicas: 1,
+  healthPath: "/health",
+  readinessPath: "/ready",
   env: {
     GATEWAY_HTTP_PORT: String(GATEWAY_PORT),
     WEB_ORIGIN: webOrigin,
@@ -463,8 +479,8 @@ export const natsService = infra.nats.metadata.name;
 export const redisService = infra.redis.metadata.name;
 // Every HTTP-shaped deployment below is constructed with an explicit `port`,
 // so `ServiceDeployment.service` is guaranteed populated and the non-null
-// assertion is safe. The headless `expiration` worker has no Service, so it
-// exports its Deployment name instead.
+// assertion is safe. The `expiration` worker now exposes a health port too, but
+// we keep exporting its Deployment name (its Service is an internal probe target).
 export const authService = authDeployment.service!.metadata.name;
 export const ticketsService = ticketsDeployment.service!.metadata.name;
 export const ordersService = ordersDeployment.service!.metadata.name;

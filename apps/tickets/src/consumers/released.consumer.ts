@@ -7,6 +7,7 @@ import { ORDER_RESERVATION_RELEASED_V1 } from "@tix/contracts/subjects";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -115,6 +116,12 @@ export async function startTicketsReleasedConsumer(
         }).pipe(
           Effect.withSpan("tickets.consume.reservation_released", {
             parent: externalParent(traceContext),
+            attributes: domainAttributes({
+              [SpanAttr.ticketId]: payload.ticketId,
+              [SpanAttr.orderId]: payload.orderId,
+              [SpanAttr.messageId]: eventId,
+              [SpanAttr.destination]: subject,
+            }),
           }),
         ),
     }),

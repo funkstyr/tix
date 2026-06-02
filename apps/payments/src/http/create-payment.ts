@@ -3,6 +3,7 @@ import { Clock, Effect, Metric } from "effect";
 
 import { requireSession } from "@tix/contracts/auth-client";
 import { paymentCreateInput } from "@tix/contracts/payments";
+import { SpanAttr } from "@tix/observability/attributes";
 import { withResilience, withTimeout } from "@tix/observability/resilience";
 
 import {
@@ -29,6 +30,8 @@ const PAYABLE_ORDER_STATUS: OrderReadModelStatus = "created";
 // the live runtime.
 export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
   return Effect.gen(function* () {
+    yield* Effect.annotateCurrentSpan(SpanAttr.orderId, input.orderId);
+
     const authClient = yield* AuthClient;
     const db = yield* Database;
     const paymentIntentClient = yield* PaymentIntents;
@@ -106,6 +109,9 @@ export function createPaymentProgram(input: typeof paymentCreateInput.infer) {
     );
 
     yield* Metric.increment(paymentsSucceededTotal);
+
+    yield* Effect.annotateCurrentSpan(SpanAttr.paymentId, recorded.id);
+    yield* Effect.annotateCurrentSpan(SpanAttr.valueCents, order.priceCents);
 
     return { id: recorded.id, status: recorded.status };
   });

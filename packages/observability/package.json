@@ -31,6 +31,10 @@
     "./resilience": {
       "types": "./dist/resilience.d.ts",
       "import": "./dist/resilience.js"
+    },
+    "./attributes": {
+      "types": "./dist/attributes.d.ts",
+      "import": "./dist/attributes.js"
     }
   },
   "scripts": {

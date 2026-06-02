@@ -8,6 +8,10 @@
   ],
   "type": "module",
   "exports": {
+    "./readiness": {
+      "types": "./dist/readiness.d.ts",
+      "import": "./dist/readiness.js"
+    },
     "./tags": {
       "types": "./dist/tags.d.ts",
       "import": "./dist/tags.js"

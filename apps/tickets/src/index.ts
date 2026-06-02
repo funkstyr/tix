@@ -8,6 +8,7 @@ import { ticketsOutbox } from "./domain/schema.ts";
 import { createTicketsApp } from "./http/app.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makeTicketsRuntime } from "./runtime/runtime.ts";
+import { ticketsSaturationPoller } from "./runtime/saturation.ts";
 import { Database, EventPublisher, Nats } from "./runtime/services.ts";
 
 const env = parseEnv();
@@ -24,6 +25,8 @@ const program = Effect.gen(function* () {
   const nats = yield* Nats;
 
   yield* Effect.forkScoped(outboxRelay(db.db, ticketsOutbox, publisher.publish));
+
+  yield* Effect.forkScoped(ticketsSaturationPoller);
 
   yield* Effect.acquireRelease(
     Effect.promise(() => startTicketsReleasedConsumer({ runtime, nats, stream: env.ordersStream })),

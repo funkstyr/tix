@@ -4,6 +4,7 @@ import type { UnknownException } from "effect/Cause";
 
 import { ORDER_EXPIRED_V1 } from "@tix/contracts/subjects";
 import { createWorker } from "@tix/messaging/jobs";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -42,6 +43,7 @@ export function startExpireOrderWorker(
       Effect.gen(function* () {
         const publisher = yield* EventPublisher;
         const msgId = `expired:${orderId}`;
+        yield* Effect.annotateCurrentSpan(SpanAttr.messageId, msgId);
 
         const startMs = yield* Clock.currentTimeMillis;
         const { ack } = yield* withTimeout(
@@ -62,7 +64,7 @@ export function startExpireOrderWorker(
       }).pipe(
         Effect.withSpan("expiration.job.expire_order", {
           parent: externalParent(jobTraceContext(traceparent)),
-          attributes: { orderId },
+          attributes: domainAttributes({ [SpanAttr.orderId]: orderId }),
         }),
       ),
   });

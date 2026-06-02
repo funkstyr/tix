@@ -51,12 +51,16 @@ function makeTestEnv(): ExpirationEnv {
     redis: { host: "localhost", port: 6379 },
     stream: "ORDERS",
     otelEndpoint: "http://otel.test:4318",
+    port: 4500,
   };
 }
 
 function throwingScheduler(): DelayedScheduler<ExpireOrderPayload> {
   return {
     scheduleDelayed: () => {
+      throw new Error("Scheduler not provided to test runtime");
+    },
+    counts: () => {
       throw new Error("Scheduler not provided to test runtime");
     },
     close: () => {

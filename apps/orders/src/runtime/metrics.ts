@@ -22,3 +22,11 @@ export const orderValueCents = Metric.histogram(
   MetricBoundaries.exponential({ start: 100, factor: 2, count: 16 }),
   "Order total value in cents.",
 );
+
+export const outboxLagGauge = Metric.gauge("orders_outbox_lag", {
+  description: "Un-relayed outbox rows (sentAt IS NULL).",
+});
+
+export const pendingOrdersGauge = Metric.gauge("orders_pending_count", {
+  description: "Orders in the `created` state awaiting reserve/pay/expire.",
+});

@@ -25,6 +25,9 @@ export type ServiceDeploymentArgs = {
   secrets?: Record<string, SecretRef>;
   imagePullPolicy?: pulumi.Input<string>;
   healthPath?: string;
+  // Liveness uses `healthPath`; readiness uses this when set (ADR-0011 Tier 1). Defaults to
+  // `healthPath` so callers that pass only `healthPath` keep the old single-probe behaviour.
+  readinessPath?: string;
 };
 
 // Emits a Deployment + ClusterIP Service for a long-running tix service.
@@ -42,7 +45,8 @@ export class ServiceDeployment extends pulumi.ComponentResource {
 
     const childOpts: pulumi.ResourceOptions = { parent: this };
     const { namespace } = args;
-    const healthPath = args.healthPath ?? "/health";
+    const livenessPath = args.healthPath ?? "/health";
+    const readinessPath = args.readinessPath ?? livenessPath;
 
     const labels = {
       "app.kubernetes.io/name": args.name,
@@ -84,12 +88,12 @@ export class ServiceDeployment extends pulumi.ComponentResource {
         ? {}
         : {
             readinessProbe: {
-              httpGet: { path: healthPath, port },
+              httpGet: { path: readinessPath, port },
               initialDelaySeconds: 3,
               periodSeconds: 5,
             },
             livenessProbe: {
-              httpGet: { path: healthPath, port },
+              httpGet: { path: livenessPath, port },
               initialDelaySeconds: 15,
               periodSeconds: 10,
             },

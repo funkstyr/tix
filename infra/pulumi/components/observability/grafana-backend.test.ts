@@ -6,6 +6,7 @@ import { edgeAuthDashboardJson } from "./dashboards/edge-auth.ts";
 import { expirationWorkerDashboardJson } from "./dashboards/expiration-worker.ts";
 import { moneyInventoryDashboardJson } from "./dashboards/money-inventory.ts";
 import { platformO11yDashboardJson } from "./dashboards/platform-o11y.ts";
+import { saturationDashboardJson } from "./dashboards/saturation.ts";
 import { GrafanaBackend, renderDashboardProvider as renderProvider } from "./grafana-backend.ts";
 
 function build(args?: {
@@ -151,6 +152,7 @@ describe("GrafanaBackend", () => {
     expect(JSON.parse(data?.["auth-deep-dive.json"] ?? "{}").uid).toBe("auth-deep-dive");
     expect(JSON.parse(data?.["money-inventory.json"] ?? "{}").uid).toBe("money-inventory");
     expect(JSON.parse(data?.["expiration-worker.json"] ?? "{}").uid).toBe("expiration-worker");
+    expect(JSON.parse(data?.["saturation.json"] ?? "{}").uid).toBe("saturation");
     expect(JSON.parse(data?.["platform-o11y.json"] ?? "{}").uid).toBe("platform-o11y");
   });
 
@@ -170,6 +172,7 @@ describe("GrafanaBackend", () => {
     expect(paths).toContain("services/auth-deep-dive.json");
     expect(paths).toContain("domain/money-inventory.json");
     expect(paths).toContain("domain/expiration-worker.json");
+    expect(paths).toContain("domain/saturation.json");
     expect(paths).toContain("platform/platform-o11y.json");
   });
 
@@ -247,6 +250,7 @@ describe("GrafanaBackend dashboard registration", () => {
     expect(JSON.parse(authDeepDiveDashboardJson()).uid).toBe("auth-deep-dive");
     expect(JSON.parse(moneyInventoryDashboardJson()).uid).toBe("money-inventory");
     expect(JSON.parse(expirationWorkerDashboardJson()).uid).toBe("expiration-worker");
+    expect(JSON.parse(saturationDashboardJson()).uid).toBe("saturation");
     expect(JSON.parse(platformO11yDashboardJson()).uid).toBe("platform-o11y");
   });
 });

@@ -23,6 +23,7 @@ import {
   ticketsListOutput,
   ticketUpdateInput,
 } from "@tix/contracts/tickets";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -38,6 +39,7 @@ import { Downstream } from "./gateway-services.ts";
 export type GatewayRequestContext = {
   cookieHeader: string | null;
   otelParent: OtelContext;
+  method: string;
 };
 
 // One root ingress span per fan-out call, parented onto the inbound trace context when
@@ -49,7 +51,13 @@ function withRequest<A, E, R>(
   program: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> {
   return program.pipe(
-    Effect.withSpan(`gateway.rpc.${op}`, { parent: externalParent(context.otelParent) }),
+    Effect.withSpan(`gateway.rpc.${op}`, {
+      parent: externalParent(context.otelParent),
+      attributes: domainAttributes({
+        [SpanAttr.httpMethod]: context.method,
+        [SpanAttr.httpRoute]: op,
+      }),
+    }),
     instrumentEdge(op),
   );
 }

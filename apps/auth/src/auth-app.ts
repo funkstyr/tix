@@ -3,13 +3,15 @@ import { Effect } from "effect";
 import { Hono } from "hono";
 
 import { RPC_PREFIX } from "@tix/contracts/rpc";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { extractTraceparent } from "@tix/observability/otel-http";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
+import { runReadiness } from "@tix/service-runtime/readiness";
 
 import { instrumentAuth } from "./auth-metrics.ts";
 import type { AuthRuntime } from "./auth-runtime.ts";
-import { Auth } from "./auth-services.ts";
+import { Auth, Database } from "./auth-services.ts";
 import { type AuthRequestContext, createAuthRouter } from "./router.ts";
 
 export type CreateAuthAppDeps = {
@@ -26,6 +28,22 @@ export function createAuthApp(deps: CreateAuthAppDeps): Hono {
   // around the better-auth handler below) replaces it, and its logs/timing land in Tempo
   // correlated by trace id (ADR-0009). /health stays untraced.
   app.get("/health", (c) => c.json({ service: "auth", ok: true }));
+
+  // Readiness (ADR-0011 Tier 1). Auth is the issuer and has no NATS, so the only dependency
+  // probed is Postgres — a `select 1` against the live pool. A failed/timed-out check flips
+  // the report to 503 so Kubernetes sheds traffic until the db returns.
+  app.get("/ready", async (c) => {
+    const report = await runReadiness(deps.runtime, "auth", [
+      {
+        name: "db",
+        effect: Effect.gen(function* () {
+          const db = yield* Database;
+          yield* Effect.tryPromise(() => db.sql`select 1`);
+        }),
+      },
+    ]);
+    return c.json(report.body, report.status);
+  });
 
   app.all("/api/auth/*", (c) => {
     // The native better-auth endpoints (used by the SPA) run inside a root span on the
@@ -44,7 +62,13 @@ export function createAuthApp(deps: CreateAuthAppDeps): Hono {
         Effect.promise(() => auth.handler(c.req.raw)),
       );
     }).pipe(
-      Effect.withSpan("auth.handler", { parent: externalParent(otelParent) }),
+      Effect.withSpan("auth.handler", {
+        parent: externalParent(otelParent),
+        attributes: domainAttributes({
+          [SpanAttr.httpMethod]: c.req.method,
+          [SpanAttr.httpRoute]: "/api/auth/*",
+        }),
+      }),
       instrumentAuth("native"),
     );
 

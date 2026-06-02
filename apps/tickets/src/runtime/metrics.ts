@@ -19,3 +19,11 @@ export const reservationsReleasedTotal = Metric.counter("tickets_reservations_re
   description: "Release events that restored seat inventory.",
   incremental: true,
 });
+
+export const outboxLagGauge = Metric.gauge("tickets_outbox_lag", {
+  description: "Un-relayed outbox rows (sentAt IS NULL).",
+});
+
+export const availableInventoryGauge = Metric.gauge("tickets_available_inventory", {
+  description: "Sum of available ticket quantity across active tickets.",
+});

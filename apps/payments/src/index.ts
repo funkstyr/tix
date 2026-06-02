@@ -11,6 +11,7 @@ import { paymentsOutbox } from "./domain/schema.ts";
 import { createPaymentsApp } from "./http/app.ts";
 import { parseEnv } from "./runtime/config.ts";
 import { makePaymentsRuntime } from "./runtime/runtime.ts";
+import { paymentsSaturationPoller } from "./runtime/saturation.ts";
 import { Database, EventPublisher, Nats } from "./runtime/services.ts";
 
 const env = parseEnv();
@@ -27,6 +28,8 @@ const program = Effect.gen(function* () {
   const nats = yield* Nats;
 
   yield* Effect.forkScoped(outboxRelay(db.db, paymentsOutbox, publisher.publish));
+
+  yield* Effect.forkScoped(paymentsSaturationPoller);
 
   yield* Effect.acquireRelease(
     Effect.promise(() => startPaymentsOrderCreatedConsumer({ runtime, nats, stream: env.stream })),

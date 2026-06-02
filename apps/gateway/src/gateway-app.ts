@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 
 import { AUTH_PROXY_PREFIX } from "@tix/contracts/auth";
 import { RPC_PREFIX } from "@tix/contracts/rpc";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { extractTraceparent } from "@tix/observability/otel-http";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
@@ -44,6 +45,11 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
   // correlated by trace id (ADR-0009). /health stays untraced.
   app.get("/health", (c) => c.json({ service: "gateway", ok: true }));
 
+  // Gateway has no DB/NATS of its own; readiness is deliberately NON-cascading — an upstream
+  // service blip must not take the edge out of rotation (that's the upstreams' own readiness
+  // job). So this is a cheap static OK (ADR-0011 Tier 1).
+  app.get("/ready", (c) => c.json({ service: "gateway", ready: true, checks: {} }, 200));
+
   app.all(`${AUTH_PROXY_PREFIX}/*`, (c) => {
     // Run the reverse proxy inside a root span on the runtime so the global context
     // manager makes the active span visible to `traceparentHeaders()` in auth-proxy.
@@ -53,7 +59,15 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
       withTimeout(
         "gateway.proxy.auth",
         Effect.promise(() => authProxy(c.req.raw)),
-      ).pipe(Effect.withSpan("gateway.proxy.auth.ingress", { parent: externalParent(otelParent) })),
+      ).pipe(
+        Effect.withSpan("gateway.proxy.auth.ingress", {
+          parent: externalParent(otelParent),
+          attributes: domainAttributes({
+            [SpanAttr.httpMethod]: c.req.method,
+            [SpanAttr.httpRoute]: "auth",
+          }),
+        }),
+      ),
     );
 
     return deps.runtime.runPromise(proxyProgram);
@@ -67,6 +81,7 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
     const context: GatewayRequestContext = {
       cookieHeader: req.headers.get("cookie"),
       otelParent: extractTraceparent(req.headers),
+      method: req.method,
     };
 
     const { matched, response } = await rpc.handle(req, { prefix: RPC_PREFIX, context });

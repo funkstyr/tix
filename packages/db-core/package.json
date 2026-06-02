@@ -24,6 +24,10 @@
       "types": "./dist/outbox.d.ts",
       "import": "./dist/outbox.js"
     },
+    "./outbox-lag": {
+      "types": "./dist/outbox-lag.d.ts",
+      "import": "./dist/outbox-lag.js"
+    },
     "./inbox": {
       "types": "./dist/inbox.d.ts",
       "import": "./dist/inbox.js"

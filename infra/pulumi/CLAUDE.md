@@ -93,9 +93,10 @@ The remaining boards have landed: a **Services** folder (file provider `tix-serv
 `/services` subdir) with `edge-auth.ts` (gateway+auth RED via the shared `red-row.ts`
 factory) and `auth-deep-dive.ts` (`auth_session_validations_total{result}`); the **Domain**
 folder gains `money-inventory.ts` (order-value heatmap + GMV/AOV, payment success/latency,
-reserved-vs-released churn) and `expiration-worker.ts`; the **Platform** folder gains
-`platform-o11y.ts`. All read the hand-rolled `Effect.Metric` series only (ADR-0010, no
-double-count).
+reserved-vs-released churn), `expiration-worker.ts`, and `saturation.ts` (Saturation &
+Backpressure — queue depth, outbox lag, available inventory, pending orders; ADR-0011 Tier 1);
+the **Platform** folder gains `platform-o11y.ts`. All read the hand-rolled `Effect.Metric`
+series only (ADR-0010, no double-count).
 
 Grafana is reachable through the ingress at `/grafana` — the container sets
 `GF_SERVER_ROOT_URL` + `GF_SERVER_SERVE_FROM_SUB_PATH=true` so it serves under

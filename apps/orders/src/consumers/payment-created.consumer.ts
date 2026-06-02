@@ -9,6 +9,7 @@ import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -143,6 +144,12 @@ export async function startOrdersPaymentCreatedConsumer(
         }).pipe(
           Effect.withSpan("orders.consume.payment_created", {
             parent: externalParent(traceContext),
+            attributes: domainAttributes({
+              [SpanAttr.orderId]: payload.orderId,
+              [SpanAttr.paymentId]: payload.id,
+              [SpanAttr.messageId]: eventId,
+              [SpanAttr.destination]: subject,
+            }),
           }),
         ),
     }),
