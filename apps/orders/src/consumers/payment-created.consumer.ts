@@ -10,6 +10,7 @@ import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { enqueueEvent } from "@tix/db-core/outbox";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
+import { dbSpan } from "@tix/observability/db-span";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -49,52 +50,56 @@ export async function startOrdersPaymentCreatedConsumer(
 
           // The transaction returns a discriminated outcome so the diagnostics that used
           // to log inside the (non-Effect) island now log through Effect — span-correlated.
-          const result = yield* withTimeout(
-            "orders.db.confirm_payment",
-            Effect.tryPromise(() =>
-              db.db.transaction((tx) =>
-                withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-                  const [order] = await tx
-                    .select()
-                    .from(orders)
-                    .where(eq(orders.id, payload.orderId));
-                  if (!order) return { kind: "unknown_order" as const };
+          const result = yield* dbSpan(
+            "consume_payment_created",
+            "orders.inbox",
+            withTimeout(
+              "orders.db.confirm_payment",
+              Effect.tryPromise(() =>
+                db.db.transaction((tx) =>
+                  withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                    const [order] = await tx
+                      .select()
+                      .from(orders)
+                      .where(eq(orders.id, payload.orderId));
+                    if (!order) return { kind: "unknown_order" as const };
 
-                  const next = transition(order.status, { kind: "payment_confirmed" });
-                  if (!next.ok) {
-                    return {
-                      kind: "fsm_ignored" as const,
-                      status: order.status,
-                      reason: next.reason,
-                    };
-                  }
+                    const next = transition(order.status, { kind: "payment_confirmed" });
+                    if (!next.ok) {
+                      return {
+                        kind: "fsm_ignored" as const,
+                        status: order.status,
+                        reason: next.reason,
+                      };
+                    }
 
-                  const nextVersion = order.version + 1;
-                  const updated = await updateVersioned(
-                    tx,
-                    orders,
-                    { id: order.id, version: order.version },
-                    { status: next.next },
-                  );
-                  if (updated.rowsAffected === 0) {
-                    // Order moved to a terminal state under us (e.g. expired right
-                    // before payment.created arrived). Inbox row commits regardless,
-                    // so the event won't be re-delivered.
-                    return { kind: "version_conflict" as const, version: order.version };
-                  }
+                    const nextVersion = order.version + 1;
+                    const updated = await updateVersioned(
+                      tx,
+                      orders,
+                      { id: order.id, version: order.version },
+                      { status: next.next },
+                    );
+                    if (updated.rowsAffected === 0) {
+                      // Order moved to a terminal state under us (e.g. expired right
+                      // before payment.created arrived). Inbox row commits regardless,
+                      // so the event won't be re-delivered.
+                      return { kind: "version_conflict" as const, version: order.version };
+                    }
 
-                  await enqueueEvent(tx, ordersOutbox, {
-                    subject: ORDER_COMPLETED_V1,
-                    eventId: uuidv7(),
-                    payload: {
-                      orderId: order.id,
-                      version: nextVersion,
-                      completedAt: new Date(nowMs).toISOString(),
-                    },
-                  });
+                    await enqueueEvent(tx, ordersOutbox, {
+                      subject: ORDER_COMPLETED_V1,
+                      eventId: uuidv7(),
+                      payload: {
+                        orderId: order.id,
+                        version: nextVersion,
+                        completedAt: new Date(nowMs).toISOString(),
+                      },
+                    });
 
-                  return { kind: "completed" as const };
-                }),
+                    return { kind: "completed" as const };
+                  }),
+                ),
               ),
             ),
           );

@@ -6,6 +6,7 @@ import { TICKETS_CREATED_V1, TICKETS_UPDATED_V1 } from "@tix/contracts/subjects"
 import { ticketCreatedV1, ticketUpdatedV1 } from "@tix/contracts/tickets";
 import { withInboxDedupe } from "@tix/db-core/inbox";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
+import { dbSpan } from "@tix/observability/db-span";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -45,24 +46,28 @@ export async function startTicketsCreatedConsumer(
         Effect.gen(function* () {
           const db = yield* Database;
 
-          const result = yield* withTimeout(
-            "orders.db.replicate_ticket_created",
-            Effect.tryPromise(() =>
-              db.db.transaction((tx) =>
-                withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-                  await tx
-                    .insert(ticketsReplica)
-                    .values({
-                      id: payload.ticketId,
-                      sellerId: payload.sellerId,
-                      title: payload.title,
-                      quantityTotal: payload.quantityTotal,
-                      unitPriceCents: payload.unitPriceCents,
-                      version: 1,
-                      createdAt: new Date(payload.createdAt),
-                    })
-                    .onConflictDoNothing();
-                }),
+          const result = yield* dbSpan(
+            "consume_tickets_created",
+            "orders.inbox",
+            withTimeout(
+              "orders.db.replicate_ticket_created",
+              Effect.tryPromise(() =>
+                db.db.transaction((tx) =>
+                  withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                    await tx
+                      .insert(ticketsReplica)
+                      .values({
+                        id: payload.ticketId,
+                        sellerId: payload.sellerId,
+                        title: payload.title,
+                        quantityTotal: payload.quantityTotal,
+                        unitPriceCents: payload.unitPriceCents,
+                        version: 1,
+                        createdAt: new Date(payload.createdAt),
+                      })
+                      .onConflictDoNothing();
+                  }),
+                ),
               ),
             ),
           );
@@ -104,28 +109,32 @@ export async function startTicketsUpdatedConsumer(
         Effect.gen(function* () {
           const db = yield* Database;
 
-          const result = yield* withTimeout(
-            "orders.db.replicate_ticket_updated",
-            Effect.tryPromise(() =>
-              db.db.transaction((tx) =>
-                withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
-                  const updated = await tx
-                    .update(ticketsReplica)
-                    .set({
-                      title: payload.title,
-                      unitPriceCents: payload.unitPriceCents,
-                      version: payload.version,
-                    })
-                    .where(
-                      and(
-                        eq(ticketsReplica.id, payload.ticketId),
-                        lt(ticketsReplica.version, payload.version),
-                      ),
-                    )
-                    .returning({ id: ticketsReplica.id });
+          const result = yield* dbSpan(
+            "consume_tickets_updated",
+            "orders.inbox",
+            withTimeout(
+              "orders.db.replicate_ticket_updated",
+              Effect.tryPromise(() =>
+                db.db.transaction((tx) =>
+                  withInboxDedupe(tx, ordersInbox, { eventId, subject }, async () => {
+                    const updated = await tx
+                      .update(ticketsReplica)
+                      .set({
+                        title: payload.title,
+                        unitPriceCents: payload.unitPriceCents,
+                        version: payload.version,
+                      })
+                      .where(
+                        and(
+                          eq(ticketsReplica.id, payload.ticketId),
+                          lt(ticketsReplica.version, payload.version),
+                        ),
+                      )
+                      .returning({ id: ticketsReplica.id });
 
-                  return { applied: updated.length > 0 };
-                }),
+                    return { applied: updated.length > 0 };
+                  }),
+                ),
               ),
             ),
           );
