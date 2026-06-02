@@ -10,6 +10,7 @@ import {
   signUpInput,
   tokenInput,
 } from "@tix/contracts/auth";
+import { SpanAttr } from "@tix/observability/attributes";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withResilience, withTimeout } from "@tix/observability/resilience";
 
@@ -138,6 +139,8 @@ export function createAuthRouter(runtime: AuthRuntime) {
 
             yield* recordSessionValidation(result !== null);
             if (result === null) return null;
+
+            yield* Effect.annotateCurrentSpan(SpanAttr.buyerId, result.user.id);
 
             return {
               user: { id: result.user.id, email: result.user.email, name: result.user.name },

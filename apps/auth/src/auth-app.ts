@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { Hono } from "hono";
 
 import { RPC_PREFIX } from "@tix/contracts/rpc";
+import { domainAttributes, SpanAttr } from "@tix/observability/attributes";
 import { extractTraceparent } from "@tix/observability/otel-http";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
@@ -44,7 +45,13 @@ export function createAuthApp(deps: CreateAuthAppDeps): Hono {
         Effect.promise(() => auth.handler(c.req.raw)),
       );
     }).pipe(
-      Effect.withSpan("auth.handler", { parent: externalParent(otelParent) }),
+      Effect.withSpan("auth.handler", {
+        parent: externalParent(otelParent),
+        attributes: domainAttributes({
+          [SpanAttr.httpMethod]: c.req.method,
+          [SpanAttr.httpRoute]: "/api/auth/*",
+        }),
+      }),
       instrumentAuth("native"),
     );
 
