@@ -2,16 +2,17 @@ import { FOLDER, runbook } from "./_shared.ts";
 import { alertRule } from "./alert-rule.ts";
 import { latencyBurnRules, sloBurnRules, sloCoverageRules } from "./burn-alerts.ts";
 import { capacityAlertRules } from "./capacity-alerts.ts";
+import { clusterAlertRules } from "./cluster-alerts.ts";
+import { datastoreAlertRules } from "./datastore-alerts.ts";
 import { stripeAlertRules } from "./stripe-alerts.ts";
 import { watchdogRules } from "./watchdog.ts";
 
 // Grafana-managed alert rules provisioned as-code (ADR-0010), rendered to JSON and mounted at
-// /etc/grafana/provisioning/alerting. ADR-0012 Tier 1 widens the set from three groups to eight: the
-// SLO burn groups (gateway/auth, coverage, latency) derive from the slo.ts union, and four new groups
-// (stripe / capacity / watchdog plus the existing domain/platform) close the external-dependency,
-// business-anomaly, and pipeline-liveness gaps. Per-concern rule builders live in sibling files; this
-// file only composes them into the provisioning document. All rules route to the in-cluster webhook
-// log sink (contact-points.ts).
+// /etc/grafana/provisioning/alerting. ADR-0012 Tier 1 widened the set from three groups to eight;
+// Tier 2 adds two substrate-health groups — `datastore_health` (Postgres/Redis/JetStream engines)
+// and `cluster_use` (node/pod/PVC USE) — for ten total. Per-concern rule builders live in sibling
+// files; this file only composes them into the provisioning document. All rules route to the
+// in-cluster webhook log sink (contact-points.ts).
 
 // Each group is one provisioning rule-group; group order here is the order Grafana lists them in.
 function ruleGroups(): Array<{ name: string; rules: Array<Record<string, unknown>> }> {
@@ -22,6 +23,8 @@ function ruleGroups(): Array<{ name: string; rules: Array<Record<string, unknown
     { name: "domain_alerts", rules: [sagaStall(), conflictSpike(), duplicatePublishSpike()] },
     { name: "stripe_alerts", rules: stripeAlertRules() },
     { name: "capacity_alerts", rules: capacityAlertRules() },
+    { name: "datastore_health", rules: datastoreAlertRules() },
+    { name: "cluster_use", rules: clusterAlertRules() },
     { name: "platform_alerts", rules: [backendDown(), probeFailure()] },
     { name: "watchdog", rules: watchdogRules() },
   ];

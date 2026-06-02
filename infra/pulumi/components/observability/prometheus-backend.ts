@@ -341,6 +341,30 @@ ${kubeletTlsConfig(kubeletCaBundlePath)}
       - source_labels: [namespace]
         regex: tix
         action: keep
+  # The kubelet's own /metrics (NOT cadvisor) carries PVC usage (kubelet_volume_stats_*), which the
+  # cluster-use PVC-fill alert needs. Same proxy + TLS path; metric_relabel keeps ONLY the volume
+  # stats so this job adds a handful of series, not the kubelet's whole surface.
+  - job_name: kubelet
+    scheme: https
+    metrics_path: /metrics
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    tls_config:
+${kubeletTlsConfig(kubeletCaBundlePath)}
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/\${1}/proxy/metrics
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: kubelet_volume_stats_.+
+        action: keep
 `;
 }
 

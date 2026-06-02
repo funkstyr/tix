@@ -156,6 +156,9 @@ describe("GrafanaBackend", () => {
     expect(JSON.parse(data?.["platform-o11y.json"] ?? "{}").uid).toBe("platform-o11y");
     expect(JSON.parse(data?.["slo-budget.json"] ?? "{}").uid).toBe("slo-budget");
     expect(JSON.parse(data?.["synthetics.json"] ?? "{}").uid).toBe("synthetics");
+    // ADR-0012 Tier 2 substrate-health boards.
+    expect(JSON.parse(data?.["datastore-health.json"] ?? "{}").uid).toBe("datastore-health");
+    expect(JSON.parse(data?.["cluster-use.json"] ?? "{}").uid).toBe("cluster-use");
   });
 
   it("projects each board into its folder's subdirectory", async () => {
@@ -178,6 +181,8 @@ describe("GrafanaBackend", () => {
     expect(paths).toContain("platform/platform-o11y.json");
     expect(paths).toContain("platform/slo-budget.json");
     expect(paths).toContain("platform/synthetics.json");
+    expect(paths).toContain("domain/datastore-health.json");
+    expect(paths).toContain("platform/cluster-use.json");
   });
 
   it("mounts the dashboards ConfigMap into the provisioning path", async () => {
