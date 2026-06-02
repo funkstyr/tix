@@ -45,6 +45,11 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
   // correlated by trace id (ADR-0009). /health stays untraced.
   app.get("/health", (c) => c.json({ service: "gateway", ok: true }));
 
+  // Gateway has no DB/NATS of its own; readiness is deliberately NON-cascading — an upstream
+  // service blip must not take the edge out of rotation (that's the upstreams' own readiness
+  // job). So this is a cheap static OK (ADR-0011 Tier 1).
+  app.get("/ready", (c) => c.json({ service: "gateway", ready: true, checks: {} }, 200));
+
   app.all(`${AUTH_PROXY_PREFIX}/*`, (c) => {
     // Run the reverse proxy inside a root span on the runtime so the global context
     // manager makes the active span visible to `traceparentHeaders()` in auth-proxy.
