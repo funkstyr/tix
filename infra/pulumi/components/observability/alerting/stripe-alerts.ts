@@ -19,7 +19,7 @@ export function stripeAlertRules(): Array<Record<string, unknown>> {
 // the money-inventory board, not via this alert. Denominator stays total charge attempts.
 function chargeErrorRate(): Record<string, unknown> {
   const ourSide =
-    "api_error|rate_limited|authentication_error|network|idempotency_error";
+    "^(api_error|rate_limited|authentication_error|network|idempotency_error)$";
   const failedOurSide = `sum(rate(payments_failed_total{reason=~"${ourSide}"}[5m]))`;
   const failed = "sum(rate(payments_failed_total[5m]))";
   const all = `clamp_min(${failed} + sum(rate(payments_succeeded_total[5m])), 1)`;

@@ -171,7 +171,7 @@ describe("alertRulesJson", () => {
     // The paging numerator filters to our-side reasons only — card_declined (expected buyer
     // behavior) is excluded so a decline spike no longer pages.
     const errorRate = queryExpr(ruleByUid("stripe-charge-error-rate"));
-    expect(errorRate).toContain('reason=~"api_error');
+    expect(errorRate).toContain('reason=~"^(api_error');
     expect(errorRate).not.toContain("card_declined");
 
     expect(queryExpr(ruleByUid("stripe-charge-latency"))).toContain(
