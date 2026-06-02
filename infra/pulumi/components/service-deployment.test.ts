@@ -51,6 +51,51 @@ describe("ServiceDeployment", () => {
     expect(container?.livenessProbe).toBeUndefined();
   });
 
+  it("splits liveness and readiness paths when readinessPath is set", async () => {
+    const dep = new ServiceDeployment("auth", {
+      namespace: "tix",
+      name: "auth",
+      image: "tix-auth:dev",
+      port: 4000,
+      replicas: 1,
+      healthPath: "/health",
+      readinessPath: "/ready",
+    });
+
+    const container = await firstContainer(dep);
+    expect(container?.livenessProbe?.httpGet?.path).toBe("/health");
+    expect(container?.readinessProbe?.httpGet?.path).toBe("/ready");
+  });
+
+  it("falls back to healthPath for readiness when readinessPath is absent", async () => {
+    const dep = new ServiceDeployment("auth", {
+      namespace: "tix",
+      name: "auth",
+      image: "tix-auth:dev",
+      port: 4000,
+      replicas: 1,
+      healthPath: "/health",
+    });
+
+    const container = await firstContainer(dep);
+    expect(container?.livenessProbe?.httpGet?.path).toBe("/health");
+    expect(container?.readinessProbe?.httpGet?.path).toBe("/health");
+  });
+
+  it("emits both probes for a worker given a health port", async () => {
+    const dep = new ServiceDeployment("expiration", {
+      namespace: "tix",
+      name: "expiration",
+      image: "tix-expiration:dev",
+      port: 4500,
+      replicas: 1,
+    });
+
+    const container = await firstContainer(dep);
+    expect(container?.livenessProbe).toBeDefined();
+    expect(container?.readinessProbe).toBeDefined();
+  });
+
   it("probes the configured healthPath", async () => {
     const dep = new ServiceDeployment("web", {
       namespace: "tix",
