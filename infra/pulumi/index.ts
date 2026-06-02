@@ -113,6 +113,19 @@ const kubeletCaBundle = config.get("kubeletCaBundle");
 // invocation: `pulumi config set tix:gitSha <sha>` or the GIT_SHA env. Absent → no marker.
 const gitSha = config.get("gitSha") ?? process.env["GIT_SHA"];
 
+// Continuous-profiling env for the six Node services (ADR-0009 addendum). The
+// `@tix/service-runtime` profiling hook only starts pushing pprof to Pyroscope
+// when `PROFILING_ENABLED === "true"` AND `PYROSCOPE_SERVER_ADDRESS` is set, so
+// this turns it on cluster-wide. `SERVICE_VERSION` reuses the deploy's `gitSha`
+// (shared with profiles/traces/deploy markers) and falls back to "dev" — the
+// same default the hook applies when the env is unset. Spread into each Node
+// service's `env` below; the static SPA `web` Deployment is excluded (no runtime).
+const profilingEnv = {
+  PROFILING_ENABLED: "true",
+  PYROSCOPE_SERVER_ADDRESS: "http://pyroscope:4040",
+  SERVICE_VERSION: gitSha ?? "dev",
+};
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -342,6 +355,7 @@ const authDeployment = new ServiceDeployment(
       AUTH_HTTP_PORT: String(AUTH_PORT),
       AUTH_BASE_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: authSecret.metadata.name, key: "DATABASE_URL" },
@@ -379,6 +393,7 @@ const ticketsDeployment = new ServiceDeployment(
       AUTH_BASE_URL,
       NATS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: ticketsSecret.metadata.name, key: "DATABASE_URL" },
@@ -420,6 +435,7 @@ const ordersDeployment = new ServiceDeployment(
       TICKETS_BASE_URL,
       NATS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: ordersSecret.metadata.name, key: "DATABASE_URL" },
@@ -460,6 +476,7 @@ const paymentsDeployment = new ServiceDeployment(
       AUTH_BASE_URL,
       NATS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: paymentsSecret.metadata.name, key: "DATABASE_URL" },
@@ -500,6 +517,7 @@ const expiration = new ServiceDeployment(
       NATS_URL,
       REDIS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: expirationSecret.metadata.name, key: "DATABASE_URL" },
@@ -530,6 +548,7 @@ const gatewayDeployment = new ServiceDeployment("gateway", {
     ORDERS_BASE_URL,
     PAYMENTS_BASE_URL,
     LOG_LEVEL: logLevel,
+    ...profilingEnv,
   },
   secrets: {
     BETTER_AUTH_SECRET: { name: authSecret.metadata.name, key: "BETTER_AUTH_SECRET" },
