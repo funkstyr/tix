@@ -1,7 +1,12 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import { authDeepDiveDashboardJson } from "./dashboards/auth-deep-dive.ts";
+import { edgeAuthDashboardJson } from "./dashboards/edge-auth.ts";
+import { expirationWorkerDashboardJson } from "./dashboards/expiration-worker.ts";
 import { loadProfileDashboardJson } from "./dashboards/load-profile.ts";
+import { moneyInventoryDashboardJson } from "./dashboards/money-inventory.ts";
+import { platformO11yDashboardJson } from "./dashboards/platform-o11y.ts";
 import { sagaFunnelDashboardJson } from "./dashboards/saga-funnel.ts";
 
 // Grafana (UI). Datasources are provisioned from a ConfigMap, so a fresh pod
@@ -39,6 +44,7 @@ export type GrafanaBackendArgs = {
 const DASHBOARDS_PATH = "/etc/grafana/provisioning/dashboards";
 const DOMAIN_DIR = `${DASHBOARDS_PATH}/domain`;
 const PLATFORM_DIR = `${DASHBOARDS_PATH}/platform`;
+const SERVICES_DIR = `${DASHBOARDS_PATH}/services`;
 
 export class GrafanaBackend extends pulumi.ComponentResource {
   readonly datasources: k8s.core.v1.ConfigMap;
@@ -96,6 +102,11 @@ export class GrafanaBackend extends pulumi.ComponentResource {
           "dashboards.yaml": renderDashboardProvider(),
           "saga-funnel.json": sagaFunnelDashboardJson(),
           "load-profile.json": loadProfileDashboardJson(),
+          "edge-auth.json": edgeAuthDashboardJson(),
+          "auth-deep-dive.json": authDeepDiveDashboardJson(),
+          "money-inventory.json": moneyInventoryDashboardJson(),
+          "expiration-worker.json": expirationWorkerDashboardJson(),
+          "platform-o11y.json": platformO11yDashboardJson(),
         },
       },
       childOpts,
@@ -151,6 +162,11 @@ export class GrafanaBackend extends pulumi.ComponentResource {
                       { key: "dashboards.yaml", path: "dashboards.yaml" },
                       { key: "saga-funnel.json", path: "domain/saga-funnel.json" },
                       { key: "load-profile.json", path: "platform/load-profile.json" },
+                      { key: "edge-auth.json", path: "services/edge-auth.json" },
+                      { key: "auth-deep-dive.json", path: "services/auth-deep-dive.json" },
+                      { key: "money-inventory.json", path: "domain/money-inventory.json" },
+                      { key: "expiration-worker.json", path: "domain/expiration-worker.json" },
+                      { key: "platform-o11y.json", path: "platform/platform-o11y.json" },
                     ],
                   },
                 },
@@ -288,5 +304,15 @@ providers:
     options:
       path: ${PLATFORM_DIR}
       foldersFromFilesStructure: false
+  - name: tix-services
+    type: file
+    folder: Services
+    allowUiUpdates: true
+    options:
+      path: ${SERVICES_DIR}
+      foldersFromFilesStructure: false
 `;
 }
+
+// Exported for unit assertions only (the ConfigMap consumes the same string).
+export const __renderDashboardProviderForTest = renderDashboardProvider;
