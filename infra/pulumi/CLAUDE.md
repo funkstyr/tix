@@ -404,6 +404,12 @@ kubelet-TLS path. Five new always-on components (ungated, dev AND prod — like 
   + `cluster_use` alert groups (now ten groups in `alert-rules.ts`); one runbook per alert in
   `docs/runbooks/`. The smoke asserts every new target `up==1` (the only layer that proves RBAC +
   TLS + SD work end-to-end).
+- **Dev-dormant signals** (wired + documented, fire only where the platform supplies the metric, like
+  `pg-replication-lag` without replicas): `pvc-nearly-full` reads `kubelet_volume_stats_*`, which
+  kind's `local-path` (hostPath) provisioner doesn't emit — it's prod-meaningful (CSI drivers do).
+  `jetstream-lost-messages` reads `jetstream_stream_lost_messages`, which prometheus-nats-exporter
+  v0.17.3 doesn't emit yet; the alert activates if a future build surfaces it. (JetStream consumer
+  metrics are prefixed `jetstream_`, not `nats_` — confirmed against the live exporter.)
 
 > **Deviation from the ADR's NATS wording.** ADR-0012 says JetStream lag is "scraped directly from
 > NATS `:8222`, no exporter." Vanilla `nats:2.10-alpine` serves **JSON** on `:8222` (`/varz`, `/jsz`,

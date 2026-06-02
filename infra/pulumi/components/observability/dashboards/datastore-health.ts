@@ -46,14 +46,15 @@ export function datastoreHealthDashboardJson(): string {
     ]),
     // JetStream column (x: 16).
     tsPanel("JetStream consumer pending", "short", { h: 8, w: 8, x: 16, y: 0 }, [
-      { expr: "max(nats_consumer_num_pending)", legend: "max pending" },
+      { expr: "max(jetstream_consumer_num_pending)", legend: "max pending" },
     ]),
     tsPanel("JetStream redelivered + ack pending", "short", { h: 8, w: 8, x: 16, y: 8 }, [
-      { expr: "max(nats_consumer_num_redelivered)", legend: "redelivered" },
-      { expr: "max(nats_consumer_num_ack_pending)", legend: "ack pending" },
+      { expr: "max(jetstream_consumer_num_redelivered)", legend: "redelivered" },
+      { expr: "max(jetstream_consumer_num_ack_pending)", legend: "ack pending" },
     ]),
+    // Dormant until the exporter emits a lost-messages series (see datastore-alerts.ts).
     tsPanel("JetStream lost messages", "short", { h: 8, w: 8, x: 16, y: 16 }, [
-      { expr: "sum(nats_stream_lost_messages)", legend: "lost" },
+      { expr: "sum(jetstream_stream_lost_messages)", legend: "lost" },
     ]),
   ]) {
     dashboard = dashboard.withPanel(panel);

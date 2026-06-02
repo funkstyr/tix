@@ -112,7 +112,7 @@ function jetstreamConsumerLag(): Record<string, unknown> {
   return alertRule({
     uid: "jetstream-consumer-lag",
     title: "JetStream consumer falling behind",
-    expr: "max(nats_consumer_num_pending)",
+    expr: "max(jetstream_consumer_num_pending)",
     threshold: 1000,
     condition: "gt",
     pending: "10m",
@@ -129,7 +129,7 @@ function jetstreamRedeliverySpike(): Record<string, unknown> {
   return alertRule({
     uid: "jetstream-redelivery-spike",
     title: "JetStream redelivery spike",
-    expr: "max(nats_consumer_num_redelivered)",
+    expr: "max(jetstream_consumer_num_redelivered)",
     threshold: 100,
     condition: "gt",
     pending: "5m",
@@ -141,11 +141,17 @@ function jetstreamRedeliverySpike(): Record<string, unknown> {
 }
 
 // Lost messages: JetStream reporting lost messages is data loss — a domain event vanished. Pages.
+//
+// DORMANT until the exporter surfaces it: prometheus-nats-exporter v0.17.3's `-jsz=all` emits
+// jetstream_stream_total_messages / first_seq / last_seq but NOT a lost-messages series, so this
+// alert reads a metric that isn't produced today (noDataState OK → silent). It is wired per the AC
+// and activates automatically if a future exporter/NATS build exposes `jetstream_stream_lost_messages`.
+// See docs/runbooks/jetstream-lost-messages.md.
 function jetstreamLostMessages(): Record<string, unknown> {
   return alertRule({
     uid: "jetstream-lost-messages",
     title: "JetStream lost messages",
-    expr: "sum(nats_stream_lost_messages)",
+    expr: "sum(jetstream_stream_lost_messages)",
     threshold: 0,
     condition: "gt",
     pending: "1m",

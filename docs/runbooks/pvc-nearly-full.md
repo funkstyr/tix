@@ -8,6 +8,11 @@ Alert: `pvc-nearly-full` (ticket). Dashboard: **cluster-use**.
 full. Postgres, NATS JetStream, Prometheus, Tempo's WAL, and the collector queue all run on PVCs; a
 full one means write failures and a wedged StatefulSet (lost data on the data stores).
 
+> **Dev-dormant on kind.** `kubelet_volume_stats_*` is emitted by the kubelet for CSI-backed volumes;
+> kind's `local-path` provisioner (hostPath-backed) reports none, so this alert/panel is empty on the
+> kind smoke. It is prod-meaningful — a real cluster's CSI driver (EBS/PD/etc.) populates the series —
+> the same dev-dormant posture as `pg-replication-lag` (no replicas in dev).
+
 ## Likely cause
 
 - Organic growth (DB tables, JetStream streams, Prometheus TSDB) toward the volume size.

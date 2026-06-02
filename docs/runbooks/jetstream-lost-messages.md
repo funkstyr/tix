@@ -4,10 +4,16 @@ Alert: `jetstream-lost-messages` (page). Dashboard: **datastore-health**.
 
 ## Symptom
 
-`sum(nats_stream_lost_messages) > 0` — JetStream reports messages it can no longer deliver: a
+`sum(jetstream_stream_lost_messages) > 0` — JetStream reports messages it can no longer deliver: a
 stream's persisted messages were lost (storage corruption, a too-aggressive retention/limit policy
 discarding un-acked messages, or a disk failure on the NATS PVC). This is **data loss** — a domain
 event (a reservation, payment, or expiration) has vanished, so the saga that depended on it stalls.
+
+> **Dormant until the exporter surfaces it.** `prometheus-nats-exporter` v0.17.3 does not emit a
+> `jetstream_stream_lost_messages` series, so this alert reads a metric that isn't produced today and
+> stays silent (noDataState OK). It is wired and ready, and activates automatically if a future
+> exporter/NATS build exposes the series. Until then, detect lost messages manually via
+> `nats stream info <STREAM>` (the `State.Lost` block).
 
 ## Likely cause
 
