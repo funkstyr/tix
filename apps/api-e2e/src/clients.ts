@@ -1,10 +1,9 @@
 import { setTimeout as delay } from "node:timers/promises";
 
-import { makeSagaClients } from "@tix/saga-client/clients";
-
 import type { AuthRouterClient } from "@tix/contracts/auth";
 import type { OrdersRouterClient } from "@tix/contracts/orders";
 import type { TicketsRouterClient } from "@tix/contracts/tickets";
+import { makeSagaClients } from "@tix/saga-client/clients";
 
 import { env } from "./env.ts";
 

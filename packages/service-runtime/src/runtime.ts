@@ -1,6 +1,5 @@
-import { createRequire } from "node:module";
-
 import { Layer, ManagedRuntime } from "effect";
+import { createRequire } from "node:module";
 
 import { makeObservabilityLayer } from "./layers.js";
 import { type PyroscopeLike, startProfiling } from "./profiling.js";

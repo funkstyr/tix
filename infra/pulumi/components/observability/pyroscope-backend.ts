@@ -72,10 +72,7 @@ export class PyroscopeBackend extends pulumi.ComponentResource {
                 {
                   name: "pyroscope",
                   image: PYROSCOPE_IMAGE,
-                  args: [
-                    "-config.file=/etc/pyroscope/pyroscope.yaml",
-                    "-config.expand-env=true",
-                  ],
+                  args: ["-config.file=/etc/pyroscope/pyroscope.yaml", "-config.expand-env=true"],
                   envFrom: [{ secretRef: { name: args.credentialsSecretName } }],
                   ports: [{ name: "http", containerPort: HTTP_PORT }],
                   volumeMounts: [{ name: "config", mountPath: "/etc/pyroscope", readOnly: true }],

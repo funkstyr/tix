@@ -1,11 +1,7 @@
 // Minimal surface of @pyroscope/nodejs we depend on. Declared locally so the unit test can
 // inject a stub and so a future SDK reshuffle is a one-line change here.
 export type PyroscopeLike = {
-  init: (config: {
-    appName: string;
-    serverAddress: string;
-    tags: Record<string, string>;
-  }) => void;
+  init: (config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void;
   start: () => void;
 };
 

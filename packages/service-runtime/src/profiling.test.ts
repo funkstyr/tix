@@ -8,7 +8,9 @@ import { startProfiling } from "./profiling.ts";
 describe("startProfiling", () => {
   it("does nothing when PROFILING_ENABLED is unset", () => {
     const pyro = {
-      init: vi.fn<(config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void>(),
+      init: vi.fn<
+        (config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void
+      >(),
       start: vi.fn<() => void>(),
     };
     startProfiling({ serviceName: "orders", version: "abc", env: {}, pyroscope: pyro });
@@ -18,7 +20,9 @@ describe("startProfiling", () => {
 
   it("initializes with service + version tags and starts when enabled", () => {
     const pyro = {
-      init: vi.fn<(config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void>(),
+      init: vi.fn<
+        (config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void
+      >(),
       start: vi.fn<() => void>(),
     };
     startProfiling({
@@ -37,7 +41,9 @@ describe("startProfiling", () => {
 
   it("does not start when enabled but no server address is configured", () => {
     const pyro = {
-      init: vi.fn<(config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void>(),
+      init: vi.fn<
+        (config: { appName: string; serverAddress: string; tags: Record<string, string> }) => void
+      >(),
       start: vi.fn<() => void>(),
     };
     startProfiling({

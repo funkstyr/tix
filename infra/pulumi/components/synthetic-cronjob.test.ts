@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { SyntheticCronJob } from "./synthetic-cronjob.ts";
 import { promiseOf } from "./pulumi-mocks.ts";
+import { SyntheticCronJob } from "./synthetic-cronjob.ts";
 
 describe("SyntheticCronJob", () => {
   let cron: SyntheticCronJob;
