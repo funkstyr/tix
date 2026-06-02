@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { promiseOf } from "../pulumi-mocks.ts";
-import { GrafanaBackend } from "./grafana-backend.ts";
+import { authDeepDiveDashboardJson } from "./dashboards/auth-deep-dive.ts";
+import { edgeAuthDashboardJson } from "./dashboards/edge-auth.ts";
+import { expirationWorkerDashboardJson } from "./dashboards/expiration-worker.ts";
+import { moneyInventoryDashboardJson } from "./dashboards/money-inventory.ts";
+import { platformO11yDashboardJson } from "./dashboards/platform-o11y.ts";
+import { GrafanaBackend, renderDashboardProvider as renderProvider } from "./grafana-backend.ts";
 
 function build(args?: { anonymousAccess?: boolean }): GrafanaBackend {
   return new GrafanaBackend("test", {
@@ -135,6 +140,17 @@ describe("GrafanaBackend", () => {
     expect(board.uid).toBe("load-profile");
   });
 
+  it("provisions the 5 new boards as ConfigMap data keys", async () => {
+    const grafana = build();
+
+    const data = await promiseOf(grafana.dashboards.data);
+    expect(JSON.parse(data?.["edge-auth.json"] ?? "{}").uid).toBe("edge-auth");
+    expect(JSON.parse(data?.["auth-deep-dive.json"] ?? "{}").uid).toBe("auth-deep-dive");
+    expect(JSON.parse(data?.["money-inventory.json"] ?? "{}").uid).toBe("money-inventory");
+    expect(JSON.parse(data?.["expiration-worker.json"] ?? "{}").uid).toBe("expiration-worker");
+    expect(JSON.parse(data?.["platform-o11y.json"] ?? "{}").uid).toBe("platform-o11y");
+  });
+
   it("projects each board into its folder's subdirectory", async () => {
     const grafana = build();
 
@@ -146,6 +162,12 @@ describe("GrafanaBackend", () => {
     expect(paths).toContain("domain/saga-funnel.json");
     expect(paths).toContain("platform/load-profile.json");
     expect(paths).toContain("dashboards.yaml");
+    // New boards
+    expect(paths).toContain("services/edge-auth.json");
+    expect(paths).toContain("services/auth-deep-dive.json");
+    expect(paths).toContain("domain/money-inventory.json");
+    expect(paths).toContain("domain/expiration-worker.json");
+    expect(paths).toContain("platform/platform-o11y.json");
   });
 
   it("mounts the dashboards ConfigMap into the provisioning path", async () => {
@@ -168,5 +190,21 @@ describe("GrafanaBackend", () => {
     expect(pod?.volumes?.length).toBeGreaterThan(0);
     expect(pod?.volumes?.every((v) => v.configMap !== undefined)).toBe(true);
     expect(pod?.volumes?.some((v) => v.persistentVolumeClaim !== undefined)).toBe(false);
+  });
+});
+
+describe("GrafanaBackend dashboard registration", () => {
+  it("declares the Services folder provider", () => {
+    const provider = renderProvider();
+    expect(provider).toContain("folder: Services");
+    expect(provider).toContain("/etc/grafana/provisioning/dashboards/services");
+  });
+
+  it("every new board renders parseable JSON with its uid", () => {
+    expect(JSON.parse(edgeAuthDashboardJson()).uid).toBe("edge-auth");
+    expect(JSON.parse(authDeepDiveDashboardJson()).uid).toBe("auth-deep-dive");
+    expect(JSON.parse(moneyInventoryDashboardJson()).uid).toBe("money-inventory");
+    expect(JSON.parse(expirationWorkerDashboardJson()).uid).toBe("expiration-worker");
+    expect(JSON.parse(platformO11yDashboardJson()).uid).toBe("platform-o11y");
   });
 });
