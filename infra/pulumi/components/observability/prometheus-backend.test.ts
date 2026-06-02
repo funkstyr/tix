@@ -132,5 +132,7 @@ describe("prometheus scrape_configs", () => {
     expect(config).toContain("target_label: __param_target");
     expect(config).toContain("replacement: blackbox-exporter:9115");
     expect(config).toContain("http://gateway:4000/health");
+    // expiration is a worker but serves a health surface (ADR-0011 Tier 1), so it's probed too.
+    expect(config).toContain("http://expiration:4500/health");
   });
 });

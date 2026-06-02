@@ -30,15 +30,15 @@ identifiers live in their files. Wire each service in `index.ts`.
 
 ## Services wired in `index.ts`
 
-| Service      | Port | Schema       | Migration? | Notes                                                                |
-| ------------ | ---- | ------------ | ---------- | -------------------------------------------------------------------- |
-| `auth`       | 4001 | `auth`       | yes        | better-auth issuer; consumes `BETTER_AUTH_SECRET`.                   |
-| `tickets`    | 4002 | `tickets`    | yes        | Owns `TICKETS_SERVICE_TOKEN`; shared with `orders`.                  |
-| `orders`     | 4003 | `orders`     | yes        | Calls tickets via `TICKETS_BASE_URL`; reads service token.           |
-| `payments`   | 4004 | `payments`   | yes        | Consumes `STRIPE_KEY`.                                               |
-| `expiration` | —    | `expiration` | yes        | BullMQ worker; no HTTP, so `ServiceDeployment` skips Service+probes. |
-| `gateway`    | 4000 | —            | no         | Receives downstream URLs as env vars; reads `BETTER_AUTH_SECRET`.    |
-| `web`        | 80   | —            | no         | nginx serving the Vite `dist/`; `healthPath: "/"` (no `/health`).    |
+| Service      | Port | Schema       | Migration? | Notes                                                                                                                                                                                      |
+| ------------ | ---- | ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auth`       | 4001 | `auth`       | yes        | better-auth issuer; consumes `BETTER_AUTH_SECRET`.                                                                                                                                         |
+| `tickets`    | 4002 | `tickets`    | yes        | Owns `TICKETS_SERVICE_TOKEN`; shared with `orders`.                                                                                                                                        |
+| `orders`     | 4003 | `orders`     | yes        | Calls tickets via `TICKETS_BASE_URL`; reads service token.                                                                                                                                 |
+| `payments`   | 4004 | `payments`   | yes        | Consumes `STRIPE_KEY`.                                                                                                                                                                     |
+| `expiration` | 4500 | `expiration` | yes        | BullMQ worker that also serves a health-only HTTP surface on `4500` (ADR-0011 Tier 1: `/health` = process up, `/ready` pings Redis), so it gets a Service + probes + a blackbox synthetic. |
+| `gateway`    | 4000 | —            | no         | Receives downstream URLs as env vars; reads `BETTER_AUTH_SECRET`.                                                                                                                          |
+| `web`        | 80   | —            | no         | nginx serving the Vite `dist/`; `healthPath: "/"` (no `/health`).                                                                                                                          |
 
 Service-to-service URLs are owned by `index.ts` (`http://<name>:<port>`) and
 injected as env vars — apps never hardcode hostnames.

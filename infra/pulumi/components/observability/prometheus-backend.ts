@@ -133,7 +133,9 @@ export class PrometheusBackend extends pulumi.ComponentResource {
 
 // Outside-in probe targets (ADR-0011 Tier 3): every tix HTTP service's liveness + readiness
 // endpoints, probed via the blackbox exporter. Deterministic in-cluster URLs, like the LGTM
-// self-scrape targets above. expiration is a port-less worker (no HTTP), so it has no probe.
+// self-scrape targets above. expiration is included too — though a BullMQ worker, it serves a
+// minimal health surface on its own port (ADR-0011 Tier 1: /health = process up, /ready pings
+// Redis), so synthetics cover it the same as the request-path services.
 const PROBE_TARGETS = [
   "http://gateway:4000/health",
   "http://gateway:4000/ready",
@@ -145,6 +147,8 @@ const PROBE_TARGETS = [
   "http://orders:4003/ready",
   "http://payments:4004/health",
   "http://payments:4004/ready",
+  "http://expiration:4500/health",
+  "http://expiration:4500/ready",
 ] as const;
 
 // App telemetry arrives via OTLP push; `scrape_configs` adds static jobs for
