@@ -4,7 +4,7 @@ import * as pulumi from "@pulumi/pulumi";
 // The Garage server image is a shell-less scratch image, so the bootstrap can't
 // run the `garage` CLI in a script there. Instead this Job drives Garage's
 // admin API (HTTP) with curl — `curlimages/curl` ships a busybox shell.
-const CURL_IMAGE = "curlimages/curl:8.20.0";
+export const CURL_IMAGE = "curlimages/curl:8.20.0";
 
 // Fixed k8s name for the bootstrap Job (and its script ConfigMap). The kind
 // smoke gates on `job/garage-buckets` by this exact name, so it must not inherit

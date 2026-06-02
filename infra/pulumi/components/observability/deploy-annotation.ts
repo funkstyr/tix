@@ -1,6 +1,8 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
+import { CURL_IMAGE } from "./garage-buckets.ts";
+
 export type DeployAnnotationArgs = {
   namespace: pulumi.Input<string>;
   // In-cluster Grafana base URL, e.g. "http://grafana:3000".
@@ -34,12 +36,16 @@ export class DeployAnnotation extends pulumi.ComponentResource {
 
     // curl basic-auths with the admin creds from the Secret; --fail makes a non-2xx exit the
     // Job non-zero so a broken annotation surfaces as a failed deploy step rather than silently.
+    // JSON.stringify doesn't escape single quotes; shell-escape the body and pass it via a
+    // variable so a stray quote in env/gitSha can't break out of the curl argument.
+    const shellSafeBody = body.replace(/'/g, "'\\''");
     const script = [
-      "set -euo pipefail",
+      "set -eu",
+      `BODY='${shellSafeBody}'`,
       `curl --fail --silent --show-error -u "$GRAFANA_USER:$GRAFANA_PASSWORD" ` +
         `-H 'Content-Type: application/json' ` +
         `-X POST '${args.grafanaUrl}/api/annotations' ` +
-        `-d '${body}'`,
+        `--data-raw "$BODY"`,
     ].join("\n");
 
     this.job = new k8s.batch.v1.Job(
@@ -61,7 +67,7 @@ export class DeployAnnotation extends pulumi.ComponentResource {
               containers: [
                 {
                   name: "annotate",
-                  image: "curlimages/curl:8.20.0",
+                  image: CURL_IMAGE,
                   command: ["sh", "-c"],
                   args: [script],
                   envFrom: [{ secretRef: { name: args.adminSecretName } }],

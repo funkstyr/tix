@@ -27,6 +27,7 @@ describe("DeployAnnotation", () => {
     const script = (container?.args ?? []).join(" ");
     expect(script).toContain("/api/annotations");
     expect(script).toContain('"deploy"');
+    expect(script).toContain("dev");
     expect(script).toContain("abc1234");
   });
 
