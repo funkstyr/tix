@@ -235,6 +235,7 @@ curl -H 'Host: localhost' http://<ingress-ip>/api/auth/...  # reaches better-aut
 | `metricsRetention`           | string | `15d` dev / `90d` prod    | Prometheus `--storage.tsdb.retention.time` (ADR-0011 Tier 3). Day-unit string; dev keeps a short window, prod a quarter. Defaulted per stack, overridable here.                                                                       |
 | `tracesRetention`            | string | `360h` dev / `2160h` prod | Tempo `compactor.compaction.block_retention` (ADR-0011 Tier 3). Go-duration hour string (Tempo/Loki don't take `d`). Defaulted per stack, overridable here.                                                                           |
 | `logsRetention`              | string | `360h` dev / `2160h` prod | Loki `limits_config.retention_period` + retention-enabled compactor (ADR-0011 Tier 3). Go-duration hour string. Defaulted per stack, overridable here.                                                                                |
+| `logLevel`                   | string | `info` dev / `warn` prod  | `LOG_LEVEL` env on every service; `@tix/service-runtime` gates all loggers (incl. OTLP export) at it (ADR-0012 Tier 3). Dev verbose, prod warn-and-up to bound Loki's bill. Defaulted per stack, overridable here.                    |
 | `garageRpcSecret`            | secret | —                         | Garage RPC secret (32-byte hex); required even single-node.                                                                                                                                                                           |
 | `garageAdminToken`           | secret | —                         | Garage admin API bearer token; used by the bucket bootstrap.                                                                                                                                                                          |
 | `garageS3AccessKey`          | string | `GK…` (dev default)       | Garage S3 access key (`GK`+24 hex); Tempo/Loki authenticate.                                                                                                                                                                          |
@@ -401,7 +402,7 @@ kubernetes.default.svc:443`, `__metrics_path__ → /api/v1/nodes/<n>/proxy/metri
   `traceSamplingPercent`): unset → `insecure_skip_verify: true`; set → a mounted CA + `ca_file`. The
   apiserver-proxy endpoint's cert is signed by the cluster CA, so the same bundle verifies it.
 - **Boards + alerts:** `datastore-health` (Domain) + `cluster-use` (Platform) boards; `datastore_health`
-  - `cluster_use` alert groups (now ten groups in `alert-rules.ts`); one runbook per alert in
+  - `cluster_use` alert groups (ten groups in `alert-rules.ts`; Tier 3 below makes eleven); one runbook per alert in
     `docs/runbooks/`. The smoke asserts every new target `up==1` (the only layer that proves RBAC +
     TLS + SD work end-to-end).
 - **Dev-dormant signals** (wired + documented, fire only where the platform supplies the metric, like
@@ -417,6 +418,38 @@ kubernetes.default.svc:443`, `__metrics_path__ → /api/v1/nodes/<n>/proxy/metri
 > `prometheus-nats-exporter` reads that JSON and re-exposes Prometheus on `:7777`. It's a standalone
 > Deployment, not a sidecar in the NATS pod, so "one scrape job, no sidecar" still holds; only the
 > "no exporter" claim doesn't, because it can't.
+
+## Structured-log activation (ADR-0012 Tier 3)
+
+The narrowest tier — the OTLP→Loki pipeline already worked; the gap was control, correlation, and
+surface. No new workload, no collector change.
+
+- **Log-level control.** `LOG_LEVEL` (default `info`) is read in `@tix/service-runtime`'s
+  observability layer (`packages/service-runtime/src/log-level.ts` → `Logger.minimumLogLevel` in
+  `layers.ts`), **not** per-app: reading the env synchronously there keeps the layer's error channel
+  `never` (booting never depends on a parseable env, matching the hard-set service name). Filtering
+  happens at the `Effect.log*` site, so a dropped line never reaches the OTLP exporter — Loki's bill
+  stays bounded. `index.ts` already sets `LOG_LEVEL: "info"` on every service; set `warn` for prod.
+- **Trace correlation — already wired, no code.** Loki 3.x's native OTLP ingestion _automatically_
+  promotes the LogRecord's native `TraceId`/`SpanId` to structured metadata keyed `trace_id` /
+  `span_id` (proven in Loki source; requires schema v13 + `allow_structured_metadata`, both already
+  set in `loki-backend.ts`), and `grafana-backend.ts` already provisions the Loki→Tempo derived field
+  (`matcherType: label`, `matcherRegex: trace_id`) + Tempo→logs `tracesToLogsV2`. So the logs↔traces
+  pivot needed **zero** new config. (Manual dev verify: click a recent-errors line → View trace.)
+- **Surface + alert.** `logs-overview.ts` (Platform board) reads the **Loki** datasource — volume by
+  service/level, error-log rate, and a recent-errors logs panel that drills to Tempo via the derived
+  field. `logs-alerts.ts` adds the `logs_alerts` group (eleventh): `error-log-rate` (warning) and
+  `logs-ingest-absent` (page). The error-rate rule is the stack's first **Loki-datasource** alert, so
+  it uses the new `lokiAlertRule()` factory — a 3-node shape (Loki instant metric query A →
+  `reduce last` B → `threshold` C) vs. the Prometheus `alertRule()` 2-node shape.
+
+> **Deviation from the ADR's Tier 3 wording.** ADR-0012 lists "a collector-side `attributes`/
+> `resource` step (or the export config)" promoting `trace_id`/`span_id` to Loki structured metadata.
+> No such step exists, because none is needed: Effect's OTLP exporter sets the ids as native
+> LogRecord trace-context fields (not attributes), and Loki promotes those to `trace_id`/`span_id`
+> structured metadata unconditionally on the `/otlp/v1/logs` path. An attributes/transform processor
+> would have been a no-op (the ids aren't attributes) — the correct mechanism was Loki-side, and it
+> already shipped with the datasource correlation links (ADR-0010).
 
 ## Notes
 

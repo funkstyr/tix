@@ -10,6 +10,7 @@ import { traceparentHeaders } from "@tix/observability/otel-http";
 import { otlpLayer } from "@tix/observability/otel-layer";
 import { withResilience } from "@tix/observability/resilience";
 
+import { logLevelFromEnv } from "./log-level.js";
 import { AuthClient, EventPublisher, Nats } from "./tags.js";
 
 // Generic over the per-service `Database` tag so each service keeps its typed
@@ -69,6 +70,11 @@ export function makeAuthClientLayer(opts: { authBaseUrl: string }): Layer.Layer<
 // depends on an env var. `globalContextManagerLayer` installs the async context manager that
 // lets the OTLP tracer's span bridge reach the outbox / NATS / outbound-HTTP propagation
 // paths. `Logger.pretty` is local-dev console only; OTLP log export lives inside `otlpLayer`.
+//
+// `Logger.minimumLogLevel` gates every logger (pretty AND the OTLP exporter) at the `LOG_LEVEL`
+// env (ADR-0012 Tier 3): dev runs verbose, prod warn-and-up — no code change, Loki's bill bounded.
+// Filtering happens at the `Effect.log*` site, so a dropped line never reaches the OTLP exporter.
+// `logLevelFromEnv` reads the env synchronously, so the layer's error channel stays `never`.
 export function makeObservabilityLayer(opts: {
   serviceName: string;
   otelEndpoint: string;
@@ -79,5 +85,6 @@ export function makeObservabilityLayer(opts: {
     ),
     globalContextManagerLayer,
     Logger.pretty,
+    Logger.minimumLogLevel(logLevelFromEnv(process.env["LOG_LEVEL"])),
   );
 }

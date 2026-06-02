@@ -11,7 +11,9 @@ real incident, treat them as a starting point, not gospel.
 The ADR-0012 Tier 1 additions widen the table: SLO coverage (checkout / payment), latency SLOs, the
 external-dependency (Stripe) alerts, business-anomaly + predictive-capacity alerts, and the
 dead-man's-switch watchdog. Tier 2 adds substrate health: the `datastore_health` group (Postgres /
-Redis / JetStream engines) and the `cluster_use` group (node / pod / PVC USE).
+Redis / JetStream engines) and the `cluster_use` group (node / pod / PVC USE). Tier 3 adds the
+`logs_alerts` group — the first rules reading the **Loki** datasource (error-log-rate spike) plus a
+logs-ingest-absent watchdog over Loki's own counter.
 
 | Alert (uid)                                       | Severity    | Dashboard                       | Runbook                                                          |
 | ------------------------------------------------- | ----------- | ------------------------------- | ---------------------------------------------------------------- |
@@ -44,4 +46,6 @@ Redis / JetStream engines) and the `cluster_use` group (node / pod / PVC USE).
 | `node-memory-pressure`                            | page        | `cluster-use`                   | [node-memory-pressure.md](./node-memory-pressure.md)             |
 | `backend-down`                                    | page        | `platform-o11y`                 | [backend-down.md](./backend-down.md)                             |
 | `probe-failure`                                   | page        | `synthetics`                    | [probe-failure.md](./probe-failure.md)                           |
+| `error-log-rate`                                  | warning     | `logs-overview`                 | [error-log-rate.md](./error-log-rate.md)                         |
+| `logs-ingest-absent`                              | page        | `logs-overview`                 | [logs-ingest-absent.md](./logs-ingest-absent.md)                 |
 | `watchdog`                                        | watchdog    | —                               | [watchdog.md](./watchdog.md)                                     |

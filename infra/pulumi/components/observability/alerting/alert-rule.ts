@@ -9,6 +9,7 @@
 // Datasource UIDs match the ones provisioned in grafana-backend.ts. `__expr__` is Grafana's
 // built-in server-side expression datasource.
 const PROMETHEUS_UID = "prometheus";
+const LOKI_UID = "loki";
 const EXPR_UID = "__expr__";
 
 // `gt` for "too high" alerts (error ratios, conflict/duplicate rates); `lt` for backend-down
@@ -85,6 +86,83 @@ export function alertRule(spec: AlertRuleSpec): Record<string, unknown> {
           datasource: { type: "__expr__", uid: EXPR_UID },
           type: "threshold",
           expression: "A",
+          conditions: [{ evaluator: { type: spec.condition, params: [spec.threshold] } }],
+        },
+      },
+    ],
+  };
+}
+
+// The logs pillar (ADR-0012 Tier 3) alerts on LogQL, not PromQL, so its rules read the Loki
+// datasource instead of Prometheus. Shape differs from `alertRule` in two ways: refId A is a Loki
+// *instant metric* query (`sum(rate(...))` — Loki rejects instant for raw log queries but allows
+// it for metric ones), and a `reduce` step (refId B) collapses the instant sample to a scalar
+// before the threshold (refId C) — the canonical Grafana-managed Loki alert shape. The threshold
+// reads B, so the rule's `condition` stays "C". Same severity/runbook/dashboard annotations as
+// `alertRule`, so notifications and the runbook deep-link behave identically.
+export type LokiAlertRuleSpec = {
+  readonly uid: string;
+  readonly title: string;
+  // Metric LogQL whose latest value the threshold tests (e.g. `sum(rate({…} | … [5m]))`).
+  readonly expr: string;
+  readonly threshold: number;
+  readonly condition: AlertCondition;
+  readonly pending: string;
+  readonly severity: AlertSeverity;
+  readonly summary: string;
+  readonly runbookUrl?: string;
+  readonly dashboardUid?: string;
+};
+
+export function lokiAlertRule(spec: LokiAlertRuleSpec): Record<string, unknown> {
+  return {
+    uid: spec.uid,
+    title: spec.title,
+    condition: "C",
+    for: spec.pending,
+    labels: { severity: spec.severity },
+    annotations: {
+      summary: spec.summary,
+      ...(spec.runbookUrl ? { runbook_url: spec.runbookUrl } : {}),
+      ...(spec.dashboardUid ? { __dashboardUid__: spec.dashboardUid } : {}),
+    },
+    noDataState: "OK",
+    execErrState: "Error",
+    data: [
+      {
+        refId: "A",
+        relativeTimeRange: { from: 600, to: 0 },
+        datasourceUid: LOKI_UID,
+        model: {
+          refId: "A",
+          datasource: { type: "loki", uid: LOKI_UID },
+          expr: spec.expr,
+          queryType: "instant",
+          intervalMs: 1000,
+          maxDataPoints: 43200,
+        },
+      },
+      {
+        refId: "B",
+        relativeTimeRange: { from: 600, to: 0 },
+        datasourceUid: EXPR_UID,
+        model: {
+          refId: "B",
+          datasource: { type: "__expr__", uid: EXPR_UID },
+          type: "reduce",
+          reducer: "last",
+          expression: "A",
+        },
+      },
+      {
+        refId: "C",
+        relativeTimeRange: { from: 0, to: 0 },
+        datasourceUid: EXPR_UID,
+        model: {
+          refId: "C",
+          datasource: { type: "__expr__", uid: EXPR_UID },
+          type: "threshold",
+          expression: "B",
           conditions: [{ evaluator: { type: spec.condition, params: [spec.threshold] } }],
         },
       },
