@@ -27,6 +27,6 @@ Prometheus's self-scrape, not OTLP-pushed series.
 
 - Restart / fix the down backend (correct the config, bump resources if OOMKilled, fix the PVC).
 - If Garage is the root cause, restore it; Tempo/Loki recover once S3 is reachable.
-- Note: with a backend down, the telemetry feeding the *other* alerts may be degraded — treat
+- Note: with a backend down, the telemetry feeding the _other_ alerts may be degraded — treat
   backend-down as a meta-incident and restore observability before trusting the domain boards.
 - Confirm `up == 1` for every target on the platform-o11y board.

@@ -135,11 +135,16 @@ export class PrometheusBackend extends pulumi.ComponentResource {
 // endpoints, probed via the blackbox exporter. Deterministic in-cluster URLs, like the LGTM
 // self-scrape targets above. expiration is a port-less worker (no HTTP), so it has no probe.
 const PROBE_TARGETS = [
-  "http://gateway:4000/health", "http://gateway:4000/ready",
-  "http://auth:4001/health", "http://auth:4001/ready",
-  "http://tickets:4002/health", "http://tickets:4002/ready",
-  "http://orders:4003/health", "http://orders:4003/ready",
-  "http://payments:4004/health", "http://payments:4004/ready",
+  "http://gateway:4000/health",
+  "http://gateway:4000/ready",
+  "http://auth:4001/health",
+  "http://auth:4001/ready",
+  "http://tickets:4002/health",
+  "http://tickets:4002/ready",
+  "http://orders:4003/health",
+  "http://orders:4003/ready",
+  "http://payments:4004/health",
+  "http://payments:4004/ready",
 ] as const;
 
 // App telemetry arrives via OTLP push; `scrape_configs` adds static jobs for

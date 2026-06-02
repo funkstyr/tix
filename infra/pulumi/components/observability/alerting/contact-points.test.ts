@@ -17,6 +17,12 @@ function config() {
   return JSON.parse(contactPointsJson(SINK_URL));
 }
 
+// Grafana `group_wait` durations are short strings like "0s" / "30s" / "1m" — parse to
+// seconds so the page-is-tightest ordering can be asserted numerically.
+function toSeconds(wait: string): number {
+  return wait.endsWith("m") ? Number.parseInt(wait, 10) * 60 : Number.parseInt(wait, 10);
+}
+
 describe("contactPointsJson", () => {
   it("provisions a single webhook contact point at the given log-sink URL", () => {
     const { contactPoints } = config();
@@ -80,8 +86,6 @@ describe("contactPointsJson", () => {
     expect(waitBy("warning")).toBe("1m");
 
     // page is delivered with the tightest wait of the three.
-    const toSeconds = (wait: string) =>
-      wait.endsWith("m") ? Number.parseInt(wait, 10) * 60 : Number.parseInt(wait, 10);
     expect(toSeconds(waitBy("page"))).toBeLessThan(toSeconds(waitBy("ticket")));
     expect(toSeconds(waitBy("page"))).toBeLessThan(toSeconds(waitBy("warning")));
   });
