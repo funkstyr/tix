@@ -7,6 +7,7 @@ import { withInboxDedupe } from "@tix/db-core/inbox";
 import { updateVersioned } from "@tix/db-core/optimistic-version";
 import { consumer, runScopedConsumer, type RunningConsumer } from "@tix/messaging/jetstream";
 import { SpanAttr, domainAttributes } from "@tix/observability/attributes";
+import { dbSpan } from "@tix/observability/db-span";
 import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
@@ -48,27 +49,31 @@ export async function startPaymentsOrderCreatedConsumer(
         Effect.gen(function* () {
           const db = yield* Database;
 
-          const result = yield* withTimeout(
-            "payments.db.project_order_created",
-            Effect.tryPromise(() =>
-              db.db.transaction((tx) =>
-                withInboxDedupe(tx, paymentsInbox, { eventId, subject }, async () => {
-                  // Inbox dedupe above is the primary guard. `onConflictDoNothing` is a
-                  // belt-and-suspenders for the case where the inbox and the projection
-                  // get out of sync (e.g. a test truncating only the inbox).
-                  await tx
-                    .insert(orderReadModel)
-                    .values({
-                      id: payload.orderId,
-                      // `created` is the first state, so version starts at 1; later
-                      // order.* events bump it via updateVersioned.
-                      version: 1,
-                      userId: payload.buyerId,
-                      priceCents: payload.priceCents,
-                      status: "created",
-                    })
-                    .onConflictDoNothing({ target: orderReadModel.id });
-                }),
+          const result = yield* dbSpan(
+            "consume_order_created",
+            "payments.inbox",
+            withTimeout(
+              "payments.db.project_order_created",
+              Effect.tryPromise(() =>
+                db.db.transaction((tx) =>
+                  withInboxDedupe(tx, paymentsInbox, { eventId, subject }, async () => {
+                    // Inbox dedupe above is the primary guard. `onConflictDoNothing` is a
+                    // belt-and-suspenders for the case where the inbox and the projection
+                    // get out of sync (e.g. a test truncating only the inbox).
+                    await tx
+                      .insert(orderReadModel)
+                      .values({
+                        id: payload.orderId,
+                        // `created` is the first state, so version starts at 1; later
+                        // order.* events bump it via updateVersioned.
+                        version: 1,
+                        userId: payload.buyerId,
+                        priceCents: payload.priceCents,
+                        status: "created",
+                      })
+                      .onConflictDoNothing({ target: orderReadModel.id });
+                  }),
+                ),
               ),
             ),
           );
@@ -116,20 +121,24 @@ export async function startPaymentsOrderCancelledConsumer(
         Effect.gen(function* () {
           const db = yield* Database;
 
-          const result = yield* withTimeout(
-            "payments.db.project_order_cancelled",
-            Effect.tryPromise(() =>
-              db.db.transaction((tx) =>
-                withInboxDedupe(tx, paymentsInbox, { eventId, subject }, async () => {
-                  const updated = await updateVersioned(
-                    tx,
-                    orderReadModel,
-                    { id: payload.orderId, version: payload.version - 1 },
-                    { status: "cancelled" },
-                  );
+          const result = yield* dbSpan(
+            "consume_order_cancelled",
+            "payments.inbox",
+            withTimeout(
+              "payments.db.project_order_cancelled",
+              Effect.tryPromise(() =>
+                db.db.transaction((tx) =>
+                  withInboxDedupe(tx, paymentsInbox, { eventId, subject }, async () => {
+                    const updated = await updateVersioned(
+                      tx,
+                      orderReadModel,
+                      { id: payload.orderId, version: payload.version - 1 },
+                      { status: "cancelled" },
+                    );
 
-                  return { applied: updated.rowsAffected > 0 };
-                }),
+                    return { applied: updated.rowsAffected > 0 };
+                  }),
+                ),
               ),
             ),
           );
