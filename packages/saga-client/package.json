@@ -11,6 +11,10 @@
     "./clients": {
       "types": "./dist/clients.d.ts",
       "import": "./dist/clients.js"
+    },
+    "./journey": {
+      "types": "./dist/journey.d.ts",
+      "import": "./dist/journey.js"
     }
   },
   "scripts": {
