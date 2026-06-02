@@ -22,9 +22,9 @@ describe("SpanAttr", () => {
 
 describe("domainAttributes", () => {
   it("drops undefined values so a span never carries an empty key", () => {
-    expect(
-      domainAttributes({ [SpanAttr.orderId]: "o1", [SpanAttr.buyerId]: undefined }),
-    ).toEqual({ [SpanAttr.orderId]: "o1" });
+    expect(domainAttributes({ [SpanAttr.orderId]: "o1", [SpanAttr.buyerId]: undefined })).toEqual({
+      [SpanAttr.orderId]: "o1",
+    });
   });
 
   it("keeps falsy-but-defined values (0, false, empty string)", () => {
