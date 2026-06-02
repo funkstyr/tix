@@ -121,11 +121,11 @@ export class PyroscopeBackend extends pulumi.ComponentResource {
 // the S3 bucket grows without bound (window is dev-small / prod-larger, ADR-0011
 // Tier 3).
 //
-// NOTE: these keys target grafana/pyroscope:1.14.0. The S3 storage block + the
-// `limits.retention_period` key should be validated against the pinned image's
-// config reference when the stack is actually deployed (this mirrors how
-// tempo-backend.ts documents version-specific config). The component shape +
-// tests are what this task locks in; exact config keys can be tuned at deploy time.
+// NOTE: version-sensitive keys for grafana/pyroscope:1.14.0 — confirm against
+// the pinned image's config reference before bumping: `storage.backend`,
+// `storage.s3.bucket_name`, `insecure`, `force_path_style`, and
+// `limits.retention_period`. The kind smoke is the layer that proves Pyroscope
+// actually boots and writes profile blocks to Garage.
 function renderPyroscopeConfig(
   s3Endpoint: string,
   bucket: string,
