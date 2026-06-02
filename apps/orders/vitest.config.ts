@@ -1,3 +1,3 @@
-import { nodePreset } from "@tix/config/vitest";
+import { integrationPreset } from "@tix/config/vitest";
 
-export default nodePreset();
+export default integrationPreset();
