@@ -52,7 +52,7 @@ const program = Effect.gen(function* () {
 // One shot: run the journey, dispose the runtime (flushes OTLP exporters), exit non-zero on
 // failure so the CronJob surfaces a bad run.
 runtime
-  .runPromise(Effect.scoped(program))
+  .runPromise(program)
   .then((ok) => runtime.dispose().then(() => process.exit(ok ? 0 : 1)))
   .catch((err: unknown) => {
     console.error("synthetic probe crashed", { err });
