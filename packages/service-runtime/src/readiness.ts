@@ -41,9 +41,7 @@ export async function runReadiness<R>(
           onTimeout: () => new Error(`${check.name} timed out`),
         }),
         Effect.exit,
-        Effect.map(
-          (exit) => [check.name, Exit.isSuccess(exit) ? "ok" : "failed"] as const,
-        ),
+        Effect.map((exit) => [check.name, Exit.isSuccess(exit) ? "ok" : "failed"] as const),
       ),
     { concurrency: "unbounded" },
   );
