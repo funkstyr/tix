@@ -238,6 +238,7 @@ export async function startCanaryStack(
     runtime: gatewayRuntime,
     webOrigin: options.webOrigin ?? WEB_ORIGIN,
     authBaseUrl,
+    faroCollectorUrl: "http://otel-collector:8090/",
   });
   const { server: gatewayServer, baseUrl: gatewayBaseUrl } = await listen(gatewayAppHono);
 

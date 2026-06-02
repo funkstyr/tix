@@ -11,6 +11,7 @@ import { externalParent } from "@tix/observability/otel-trace";
 import { withTimeout } from "@tix/observability/resilience";
 
 import { createAuthProxy } from "./auth-proxy.ts";
+import { createFaroProxy } from "./faro-proxy.ts";
 import { instrumentEdge } from "./gateway-metrics.ts";
 import { createGatewayRouter, type GatewayRequestContext } from "./gateway-router.ts";
 import type { GatewayRuntime } from "./gateway-runtime.ts";
@@ -19,7 +20,10 @@ export type GatewayAppDeps = {
   runtime: GatewayRuntime;
   webOrigin: string;
   authBaseUrl: string;
+  faroCollectorUrl: string;
   fetch?: typeof globalThis.fetch;
+  // Separate from `fetch` (the auth proxy's): lets tests stub the RUM upstream independently.
+  faroFetch?: typeof globalThis.fetch;
 };
 
 export function createGatewayApp(deps: GatewayAppDeps): Hono {
@@ -29,6 +33,12 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
     authBaseUrl: deps.authBaseUrl,
     fetch: deps.fetch ?? globalThis.fetch,
   });
+  const faroProxy = createFaroProxy({
+    faroCollectorUrl: deps.faroCollectorUrl,
+    fetch: deps.faroFetch ?? globalThis.fetch,
+    // RUM batches are small; cap well above a normal batch but far below an abuse flood.
+    maxBodyBytes: 1_000_000,
+  });
 
   const app = new Hono();
 
@@ -37,6 +47,10 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
     cors({
       origin: (origin) => (origin === deps.webOrigin ? origin : null),
       credentials: true,
+      // `traceparent`/`tracestate` are non-safelisted request headers; the browser's
+      // cross-origin RPC fetches carry them for the trace stitch (ADR-0013), so preflight
+      // must allow them. `content-type` covers both the RPC calls and the Faro POST.
+      allowHeaders: ["content-type", "traceparent", "tracestate"],
     }),
   );
 
@@ -49,6 +63,11 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono {
   // service blip must not take the edge out of rotation (that's the upstreams' own readiness
   // job). So this is a cheap static OK (ADR-0011 Tier 1).
   app.get("/ready", (c) => c.json({ service: "gateway", ready: true, checks: {} }, 200));
+
+  // Browser RUM export channel (ADR-0013): a transparent pass-through to the collector's faro
+  // receiver. Deliberately NOT wrapped in instrumentEdge/withSpan — it's a telemetry conduit,
+  // not a user request, so it opens no span and runs off the Effect runtime.
+  app.post("/otel/v1/faro", (c) => faroProxy(c.req.raw));
 
   app.all(`${AUTH_PROXY_PREFIX}/*`, (c) => {
     // Run the reverse proxy inside a root span on the runtime so the global context

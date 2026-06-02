@@ -83,6 +83,7 @@ function buildGatewayApp(): Hono {
     runtime,
     webOrigin: WEB_ORIGIN,
     authBaseUrl: AUTH_BASE_URL,
+    faroCollectorUrl: "http://otel-collector:8090/",
     fetch: authFetch,
   });
 }

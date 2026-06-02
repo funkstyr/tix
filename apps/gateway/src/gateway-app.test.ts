@@ -6,7 +6,7 @@ import { createGatewayTestRuntime } from "./gateway-test-runtime.ts";
 
 const WEB_ORIGIN = "https://app.tix.test";
 
-function buildApp(authFetch?: typeof globalThis.fetch) {
+function buildApp(opts?: { authFetch?: typeof globalThis.fetch; faroFetch?: typeof globalThis.fetch }) {
   const clients = createDownstreamClients(
     {
       ticketsBaseUrl: "http://tickets.test",
@@ -22,7 +22,9 @@ function buildApp(authFetch?: typeof globalThis.fetch) {
     runtime,
     webOrigin: WEB_ORIGIN,
     authBaseUrl: "http://auth.test",
-    ...(authFetch ? { fetch: authFetch } : {}),
+    faroCollectorUrl: "http://otel-collector:8090/",
+    ...(opts?.authFetch ? { fetch: opts.authFetch } : {}),
+    ...(opts?.faroFetch ? { faroFetch: opts.faroFetch } : {}),
   });
 }
 
@@ -48,13 +50,16 @@ describe("createGatewayApp", () => {
           headers: {
             Origin: WEB_ORIGIN,
             "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type",
+            "Access-Control-Request-Headers": "content-type,traceparent",
           },
         }),
       );
 
       expect(res.headers.get("access-control-allow-origin")).toBe(WEB_ORIGIN);
       expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+      expect((res.headers.get("access-control-allow-headers") ?? "").toLowerCase()).toContain(
+        "traceparent",
+      );
     });
 
     it("rejects preflight from any other origin", async () => {
@@ -72,6 +77,28 @@ describe("createGatewayApp", () => {
       );
 
       expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    });
+  });
+
+  describe("POST /otel/v1/faro (RUM proxy)", () => {
+    it("forwards a browser RUM batch to the collector's faro receiver", async () => {
+      const captured: string[] = [];
+      const stub: typeof globalThis.fetch = async (input) => {
+        captured.push(new Request(input as Request | URL | string).url);
+        return new Response(null, { status: 202 });
+      };
+      const app = buildApp({ faroFetch: stub });
+
+      const res = await app.fetch(
+        new Request("http://gateway.test/otel/v1/faro", {
+          method: "POST",
+          headers: { "content-type": "application/json", Origin: WEB_ORIGIN },
+          body: '{"traces":{}}',
+        }),
+      );
+
+      expect(res.status).toBe(202);
+      expect(captured).toEqual(["http://otel-collector:8090/"]);
     });
   });
 
@@ -95,7 +122,7 @@ describe("createGatewayApp", () => {
           },
         });
       };
-      const app = buildApp(stub);
+      const app = buildApp({ authFetch: stub });
 
       const res = await app.fetch(
         new Request("http://gateway.test/api/auth/sign-in", {
@@ -132,7 +159,7 @@ describe("createGatewayApp", () => {
           },
         });
       };
-      const app = buildApp(stub);
+      const app = buildApp({ authFetch: stub });
 
       const res = await app.fetch(
         new Request("http://gateway.test/api/auth/sign-out", {
@@ -157,7 +184,7 @@ describe("createGatewayApp", () => {
         },
       });
       const stub: typeof globalThis.fetch = async () => upstreamRes;
-      const app = buildApp(stub);
+      const app = buildApp({ authFetch: stub });
 
       const res = await app.fetch(
         new Request("http://gateway.test/api/auth/sign-up", {
