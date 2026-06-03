@@ -5,9 +5,10 @@ import { promiseOf } from "./pulumi-mocks.ts";
 
 const ACCESS_KEY = "GKa1b2c3d4e5f60718293a4b5c";
 
-function build(args?: { alertingEnabled?: boolean }): ObservabilityStack {
+function build(args?: { alertingEnabled?: boolean; gitSha?: string }): ObservabilityStack {
   return new ObservabilityStack("test", {
     namespace: "tix",
+    env: "dev",
     grafanaRootUrl: "http://localhost/grafana",
     garageRpcSecret: "deadbeef",
     garageAdminToken: "admintoken",
@@ -24,14 +25,19 @@ function build(args?: { alertingEnabled?: boolean }): ObservabilityStack {
 describe("ObservabilityStack", () => {
   // Building the full stack (7 backends + 8 synthesized dashboards) is the heavy part, so we do
   // it once per arg-variant and share the instances across the read-only assertions below.
-  // Rebuilding per `it` made each test body race the 5s timeout under CI fork-contention; the
-  // construction now lives in beforeAll (10s hook budget) and runs twice, not twelve times.
+  // Rebuilding per `it` made each test body race the test timeout under CI fork-contention; the
+  // construction now lives in beforeAll and runs three times (default / alerting / gitSha
+  // variants), not once per `it`. Three full stacks (each ~8 backends + the synthesized
+  // dashboards) plus the first Output resolution are heavy — the package's integration vitest
+  // preset gives the 30s hook/test budgets that absorb it on a loaded CI runner.
   let stack: ObservabilityStack;
   let alertingStack: ObservabilityStack;
+  let shaStack: ObservabilityStack;
 
   beforeAll(() => {
     stack = build();
     alertingStack = build({ alertingEnabled: true });
+    shaStack = build({ gitSha: "abc1234" });
   });
 
   it("exposes the gateway collector as the OTLP ingress", async () => {
@@ -76,6 +82,25 @@ describe("ObservabilityStack", () => {
 
     const lokiSpec = await promiseOf(stack.loki.deployment.spec);
     expect(lokiSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name).toBe(secretName);
+
+    const pyroscopeSpec = await promiseOf(stack.pyroscope.deployment.spec);
+    expect(pyroscopeSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name).toBe(
+      secretName,
+    );
+  });
+
+  it("creates the Pyroscope Garage bucket in the bootstrap Job", async () => {
+    // The buckets list is a literal passed into GarageBuckets, surfaced in the rendered init
+    // script (one grant block per bucket). Asserting on the script proves the Job actually
+    // creates + grants the pyroscope bucket, not just that the type permits the name.
+    const data = await promiseOf(stack.buckets.configMap.data);
+    const script = data?.["garage-init.sh"] ?? "";
+    expect(script).toContain("create_or_get_bucket pyroscope");
+  });
+
+  it("stands up Pyroscope on its own Garage bucket", async () => {
+    const spec = await promiseOf(stack.pyroscope.service.spec);
+    expect((spec.ports ?? []).map((p) => p.port)).toContain(4040);
   });
 
   it("stands up the log sink and provisions Grafana alerting when alerting is enabled", async () => {
@@ -92,5 +117,24 @@ describe("ObservabilityStack", () => {
   it("omits the log sink and alerting provisioning by default", () => {
     expect(stack.logSink).toBeUndefined();
     expect(stack.grafana.alerting).toBeUndefined();
+  });
+
+  it("emits a deploy annotation when a git SHA is supplied", async () => {
+    expect(shaStack.deployAnnotation).toBeDefined();
+    const meta = await promiseOf(shaStack.deployAnnotation!.job.metadata);
+    expect(meta.name).toBe("deploy-annotation-abc1234");
+
+    // The Job pulls its Grafana basic-auth creds from a sibling `grafana-annotation` Secret via
+    // envFrom. That Secret is a constructor-local (not a named field), and the Job carries
+    // `pulumi.com/skipAwait`, so a renamed/broken Secret would fail silently at deploy time —
+    // lock in the wiring by asserting the secretRef name the envFrom resolves to.
+    const jobSpec = await promiseOf(shaStack.deployAnnotation!.job.spec);
+    expect(jobSpec.template.spec?.containers[0]?.envFrom?.[0]?.secretRef?.name).toBe(
+      "grafana-annotation",
+    );
+  });
+
+  it("omits the deploy annotation when no SHA is supplied", () => {
+    expect(stack.deployAnnotation).toBeUndefined();
   });
 });

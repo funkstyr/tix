@@ -135,6 +135,13 @@ describe("alertRulesJson", () => {
     expect(threshold(rule)).toEqual({ type: "lt", params: [1] });
   });
 
+  it("pages when the synthetic buyer-journey fails over a 10m window", () => {
+    const rule = ruleByUid("synthetic-journey-failure");
+    expect(queryExpr(rule)).toContain('increase(synthetic_journey_total{result="failure"}[10m])');
+    expect(threshold(rule)).toEqual({ type: "gt", params: [0] });
+    expect(rule.labels.severity).toBe("page");
+  });
+
   it("derives checkout + payment coverage burn alerts from the union", () => {
     for (const uid of ["checkout-burn-fast", "checkout-burn-slow", "payment-burn-fast"]) {
       expect(ruleByUid(uid)).toBeDefined();
@@ -167,6 +174,12 @@ describe("alertRulesJson", () => {
       params: [0.05],
     });
     expect(ruleByUid("stripe-charge-error-rate").labels.severity).toBe("page");
+
+    // The paging numerator filters to our-side reasons only — card_declined (expected buyer
+    // behavior) is excluded so a decline spike no longer pages.
+    const errorRate = queryExpr(ruleByUid("stripe-charge-error-rate"));
+    expect(errorRate).toContain('reason=~"^(api_error');
+    expect(errorRate).not.toContain("card_declined");
 
     expect(queryExpr(ruleByUid("stripe-charge-latency"))).toContain(
       "payment:charge_latency_ms:p95_rate5m",

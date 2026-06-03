@@ -4,9 +4,15 @@ Alert: `stripe-charge-error-rate` (page). Dashboard: **money-inventory**.
 
 ## Symptom
 
-`payments_failed / (payments_succeeded + payments_failed)` over 5m is above 5%. The threshold sits
+our-side `payments_failed` (reason ∈ api_error/rate_limited/authentication_error/network/idempotency_error) / (payments_succeeded + payments_failed) over 5m is above 5%. The threshold sits
 above the k6 generator's induced-decline baseline and far above real Stripe's own <0.1% decline rate,
 so this is the external money dependency clearly failing — distinct from the `saga-stall` heuristic.
+
+The paging numerator counts **our-side** failure reasons only
+(`reason=~"api_error|rate_limited|authentication_error|network|idempotency_error"`) and **excludes
+`card_declined`**, which is expected buyer behavior. The denominator stays total charge attempts. So
+this page fires on our-side breakage, not on declines — a decline-rate spike is investigated via the
+**money-inventory** dashboard (the `reason`-tagged failure panel), not as a page.
 
 ## Likely cause
 

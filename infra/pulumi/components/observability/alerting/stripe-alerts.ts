@@ -4,8 +4,9 @@ import { alertRule } from "./alert-rule.ts";
 // stripe_alerts (ADR-0012 Tier 1): Stripe is a hard external dependency on the money path we can't
 // scrape, so we give it its own error-rate + latency alerts off the counters we already emit —
 // separating "Stripe's fault" from the `saga-stall` heuristic's "our payment code broke", so the 3am
-// "is Stripe down?" question is a board, not a log-dive. Per-reason decline tagging (declined /
-// network / rate-limit) needs an app change and is out of scope here.
+// "is Stripe down?" question is a board, not a log-dive. The charge error-rate numerator filters to
+// our-side reasons via the `reason` label `payments_failed_total` now carries (classifyStripeError),
+// so `card_declined` — expected buyer behavior — no longer pages.
 
 export function stripeAlertRules(): Array<Record<string, unknown>> {
   return [chargeErrorRate(), chargeLatency(), failureStepChange()];
@@ -13,15 +14,20 @@ export function stripeAlertRules(): Array<Record<string, unknown>> {
 
 // Charge error-rate over 5% — above the k6 induced-decline baseline, and clearly broken for real
 // Stripe (whose own decline rate is <0.1%). Pages: every failed charge is lost revenue on the money
-// path. clamp_min floors the denominator so a quiet window reads 0, not NaN.
+// path. clamp_min floors the denominator so a quiet window reads 0, not NaN. The numerator filters to
+// our-side reasons only (api_error / rate_limited / authentication_error / network / idempotency_error)
+// so `card_declined` — expected buyer behavior — no longer pages; a decline spike is investigated on
+// the money-inventory board, not via this alert. Denominator stays total charge attempts.
 function chargeErrorRate(): Record<string, unknown> {
+  const ourSide = "^(api_error|rate_limited|authentication_error|network|idempotency_error)$";
+  const failedOurSide = `sum(rate(payments_failed_total{reason=~"${ourSide}"}[5m]))`;
   const failed = "sum(rate(payments_failed_total[5m]))";
   const all = `clamp_min(${failed} + sum(rate(payments_succeeded_total[5m])), 1)`;
 
   return alertRule({
     uid: "stripe-charge-error-rate",
     title: "Stripe charge error-rate over 5%",
-    expr: `${failed} / ${all}`,
+    expr: `${failedOurSide} / ${all}`,
     threshold: 0.05,
     condition: "gt",
     pending: "10m",

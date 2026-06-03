@@ -2,8 +2,8 @@
 #
 # Local + CI smoke deploy for the Pulumi `dev` topology against a kind cluster.
 # Automates the manual recipe documented in infra/pulumi/CLAUDE.md: spins up a
-# kind cluster with an ingress port-mapping, builds and loads the seven service
-# images, installs ingress-nginx, deploys a throwaway Pulumi stack with stub
+# kind cluster with an ingress port-mapping, builds and loads the locally-built
+# service images, installs ingress-nginx, deploys a throwaway Pulumi stack with stub
 # secrets, waits on the bootstrap -> migration -> rollout chain, then probes the
 # gateway /health and the SPA through the ingress.
 #
@@ -36,6 +36,10 @@ INGRESS_NGINX_REF="${INGRESS_NGINX_REF:-controller-v1.12.1}"
 TEARDOWN=""
 SKIP_BUILD=""
 SERVICES=(auth tickets orders payments expiration gateway web)
+# Locally-built images to build + kind-load. SERVICES plus `synthetic`, which is
+# a CronJob (no Deployment, so it's not in the rollout-wait SERVICES list) but
+# still needs its `tix-synthetic:dev` image present — imagePullPolicy is Never.
+IMAGES=("${SERVICES[@]}" synthetic)
 MIGRATED=(auth tickets orders payments expiration)
 # Discrete observability backends (ADR-0009) + substrate-health exporters (ADR-0012 Tier 2). Split
 # by workload kind so the rollout waits use the right resource type; all are remote images (pulled).
@@ -194,15 +198,15 @@ prepull_observability() {
 if [[ -n "$SKIP_BUILD" ]]; then
   log "skipping image build (--skip-build)"
 else
-  log "pre-pulling observability images (background) + building ${#SERVICES[@]} service images"
+  log "pre-pulling observability images (background) + building ${#IMAGES[@]} service images"
   prepull_observability &
   prepull_pid=$!
 
-  build_image "${SERVICES[0]}" prime
-  ok "tix-${SERVICES[0]}:dev"
+  build_image "${IMAGES[0]}" prime
+  ok "tix-${IMAGES[0]}:dev"
   build_pids=()
   build_names=()
-  for s in "${SERVICES[@]:1}"; do
+  for s in "${IMAGES[@]:1}"; do
     ( build_image "$s" && ok "tix-$s:dev" ) &
     build_pids+=("$!")
     build_names+=("$s")
@@ -219,7 +223,7 @@ else
 
   log "loading service images into kind"
   image_tags=()
-  for s in "${SERVICES[@]}"; do image_tags+=("tix-$s:dev"); done
+  for s in "${IMAGES[@]}"; do image_tags+=("tix-$s:dev"); done
   kind load docker-image "${image_tags[@]}" --name "$CLUSTER"
 fi
 

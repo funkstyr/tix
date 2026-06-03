@@ -27,7 +27,7 @@ function ruleGroups(): Array<{ name: string; rules: Array<Record<string, unknown
     { name: "capacity_alerts", rules: capacityAlertRules() },
     { name: "datastore_health", rules: datastoreAlertRules() },
     { name: "cluster_use", rules: clusterAlertRules() },
-    { name: "platform_alerts", rules: [backendDown(), probeFailure()] },
+    { name: "platform_alerts", rules: [backendDown(), probeFailure(), syntheticJourneyFailure()] },
     { name: "logs_alerts", rules: logsAlertRules() },
     { name: "watchdog", rules: watchdogRules() },
   ];
@@ -140,6 +140,28 @@ function probeFailure(): Record<string, unknown> {
     severity: "page",
     summary: "Synthetic probe {{ $labels.instance }} is failing (probe_success == 0) — page.",
     runbookUrl: runbook("probe-failure.md"),
+    dashboardUid: "synthetics",
+  });
+}
+
+// Synthetic-journey-failure: the always-on buyer-journey CronJob (apps/synthetic) drove the live
+// reserve→order→charge saga and a run failed. Where `probe-failure` is outside-in liveness of a
+// single HTTP endpoint, this is the end-to-end *business* path — sign-in, list, reserve, order,
+// charge, cancel — exercised against the real services and Stripe test mode. Any failure in a 10m
+// window pages: a broken checkout saga is directly user-facing. `increase(...[10m]) > 0` over the
+// `result="failure"` counter catches even a single bad run (the CronJob runs every ~2m).
+function syntheticJourneyFailure(): Record<string, unknown> {
+  return alertRule({
+    uid: "synthetic-journey-failure",
+    title: "Synthetic buyer-journey failing",
+    expr: 'increase(synthetic_journey_total{result="failure"}[10m])',
+    threshold: 0,
+    condition: "gt",
+    pending: "0s",
+    severity: "page",
+    summary:
+      "The synthetic buyer-journey probe is failing — the live reserve→order→charge saga is broken or degraded.",
+    runbookUrl: runbook("synthetic-journey-failure.md"),
     dashboardUid: "synthetics",
   });
 }

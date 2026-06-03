@@ -12,6 +12,7 @@ import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts
 import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
 import { StreamBootstrap } from "./components/stream-bootstrap.ts";
+import { SyntheticCronJob } from "./components/synthetic-cronjob.ts";
 
 const POSTGRES_PORT = 5432;
 const POSTGRES_DATABASE = "tix";
@@ -66,6 +67,10 @@ const paymentsImage = config.get("paymentsImage") ?? "tix-payments:dev";
 const expirationImage = config.get("expirationImage") ?? "tix-expiration:dev";
 const gatewayImage = config.get("gatewayImage") ?? "tix-gateway:dev";
 const webImage = config.get("webImage") ?? "tix-web:dev";
+// The synthetic probe runs from its own monorepo image (`apps/synthetic`, D4) via
+// `pnpm -F @tix/synthetic probe`. Mirrors the per-service image config keys; the kind
+// smoke builds + loads `tix-synthetic:dev` like the rest.
+const syntheticImage = config.get("syntheticImage") ?? "tix-synthetic:dev";
 const imagePullPolicy = config.get("imagePullPolicy") ?? "Never";
 
 // Dev-only in-cluster k6 load generator (ADR-0010). Off by default and absent from
@@ -109,6 +114,37 @@ const logLevel = config.get("logLevel") ?? (stack === "prod" ? "warn" : "info");
 // insecure, consistent with the other prod stubs (garageS3AccessKey, grafana anonymousAccess).
 const kubeletCaBundle = config.get("kubeletCaBundle");
 
+// Standing-account credentials for the synthetic buyer-journey probe (ADR-0011 Tier 3, D5).
+// The probe signs in as a long-lived seller + buyer and pays with a Stripe test token, so these
+// are operational config, not per-run secrets. Dev fallbacks let the kind smoke / dev stack run
+// out of the box; the passwords are config *secrets* (so a real deploy can rotate them without
+// touching this file) but default to dev placeholders. `pm_card_visa` is Stripe's always-succeeds
+// test PaymentMethod token. Override per stack via `pulumi config set [--secret] tix:synthetic…`.
+const syntheticSellerEmail = config.get("syntheticSellerEmail") ?? "synthetic-seller@tix.test";
+const syntheticSellerPassword =
+  config.getSecret("syntheticSellerPassword") ?? pulumi.secret("synthetic-seller-dev");
+const syntheticBuyerEmail = config.get("syntheticBuyerEmail") ?? "synthetic-buyer@tix.test";
+const syntheticBuyerPassword =
+  config.getSecret("syntheticBuyerPassword") ?? pulumi.secret("synthetic-buyer-dev");
+const syntheticPaymentMethodId = config.get("syntheticPaymentMethodId") ?? "pm_card_visa";
+
+// Git SHA of the deploy being applied (ADR-0010 deploy markers). Supplied by the deploy
+// invocation: `pulumi config set tix:gitSha <sha>` or the GIT_SHA env. Absent → no marker.
+const gitSha = config.get("gitSha") ?? process.env["GIT_SHA"];
+
+// Continuous-profiling env for the six Node services (ADR-0009 addendum). The
+// `@tix/service-runtime` profiling hook only starts pushing pprof to Pyroscope
+// when `PROFILING_ENABLED === "true"` AND `PYROSCOPE_SERVER_ADDRESS` is set, so
+// this turns it on cluster-wide. `SERVICE_VERSION` reuses the deploy's `gitSha`
+// (shared with profiles/traces/deploy markers) and falls back to "dev" — the
+// same default the hook applies when the env is unset. Spread into each Node
+// service's `env` below; the static SPA `web` Deployment is excluded (no runtime).
+const profilingEnv = {
+  PROFILING_ENABLED: "true",
+  PYROSCOPE_SERVER_ADDRESS: "http://pyroscope:4040",
+  SERVICE_VERSION: gitSha ?? "dev",
+};
+
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
   metadata: { name: desiredNamespace },
 });
@@ -135,6 +171,7 @@ const observability = new ObservabilityStack(
   "tix",
   {
     namespace: namespace.metadata.name,
+    env: stack,
     grafanaRootUrl: `http://${ingressHost}/grafana`,
     garageRpcSecret,
     garageAdminToken,
@@ -146,6 +183,7 @@ const observability = new ObservabilityStack(
     tracesRetention,
     logsRetention,
     ...(kubeletCaBundle ? { kubeletCaBundle } : {}),
+    ...(gitSha ? { gitSha } : {}),
   },
   { dependsOn: namespace },
 );
@@ -211,6 +249,19 @@ const expirationSecret = new k8s.core.v1.Secret("expiration-credentials", {
   stringData: {
     EXPIRATION_PASSWORD: expirationPassword,
     DATABASE_URL: buildDatabaseUrl("expiration", expirationPassword),
+  },
+});
+
+// Standing-account credentials for the synthetic probe (D5). Injected into the CronJob via
+// `envFrom: secretRef`, so the five keys land as env vars the probe reads (SYNTHETIC_*).
+const syntheticSecret = new k8s.core.v1.Secret("synthetic-credentials", {
+  metadata: { name: "synthetic-credentials", namespace: namespace.metadata.name },
+  stringData: {
+    SYNTHETIC_SELLER_EMAIL: syntheticSellerEmail,
+    SYNTHETIC_SELLER_PASSWORD: syntheticSellerPassword,
+    SYNTHETIC_BUYER_EMAIL: syntheticBuyerEmail,
+    SYNTHETIC_BUYER_PASSWORD: syntheticBuyerPassword,
+    SYNTHETIC_PAYMENT_METHOD_ID: syntheticPaymentMethodId,
   },
 });
 
@@ -336,6 +387,7 @@ const authDeployment = new ServiceDeployment(
       AUTH_HTTP_PORT: String(AUTH_PORT),
       AUTH_BASE_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: authSecret.metadata.name, key: "DATABASE_URL" },
@@ -373,6 +425,7 @@ const ticketsDeployment = new ServiceDeployment(
       AUTH_BASE_URL,
       NATS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: ticketsSecret.metadata.name, key: "DATABASE_URL" },
@@ -414,6 +467,7 @@ const ordersDeployment = new ServiceDeployment(
       TICKETS_BASE_URL,
       NATS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: ordersSecret.metadata.name, key: "DATABASE_URL" },
@@ -454,6 +508,7 @@ const paymentsDeployment = new ServiceDeployment(
       AUTH_BASE_URL,
       NATS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: paymentsSecret.metadata.name, key: "DATABASE_URL" },
@@ -494,6 +549,7 @@ const expiration = new ServiceDeployment(
       NATS_URL,
       REDIS_URL,
       LOG_LEVEL: logLevel,
+      ...profilingEnv,
     },
     secrets: {
       DATABASE_URL: { name: expirationSecret.metadata.name, key: "DATABASE_URL" },
@@ -524,6 +580,7 @@ const gatewayDeployment = new ServiceDeployment("gateway", {
     ORDERS_BASE_URL,
     PAYMENTS_BASE_URL,
     LOG_LEVEL: logLevel,
+    ...profilingEnv,
   },
   secrets: {
     BETTER_AUTH_SECRET: { name: authSecret.metadata.name, key: "BETTER_AUTH_SECRET" },
@@ -571,6 +628,26 @@ if (loadgenEnabled) {
   loadgenDeploymentName = loadgen.deployment.metadata.name;
 }
 
+// Synthetic buyer-journey probe on a schedule (ADR-0011 Tier 3, D5). Always-on (dev AND prod),
+// like the blackbox exporter — outside-in liveness shouldn't be a dev-only signal. Drives the live
+// gateway saga end-to-end every 2 minutes and exports its own probe metrics to the collector
+// before exiting; a failed journey marks the Job failed and feeds the probe-failure alert +
+// synthetics board. Depends on the gateway (the surface it drives) and the collector (its export
+// target). Concurrency Forbid keeps a slow run from overlapping the next tick.
+const synthetic = new SyntheticCronJob(
+  "tix-synthetic",
+  {
+    namespace: namespace.metadata.name,
+    image: syntheticImage,
+    imagePullPolicy,
+    schedule: "*/2 * * * *",
+    gatewayUrl: `http://gateway:${GATEWAY_PORT}`,
+    otelEndpoint: "http://otel-collector:4318",
+    credentialsSecretName: syntheticSecret.metadata.name,
+  },
+  { dependsOn: [gatewayDeployment, observability.collector] },
+);
+
 export const namespaceName = namespace.metadata.name;
 export const postgresService = infra.postgres.metadata.name;
 export const natsService = infra.nats.metadata.name;
@@ -601,6 +678,8 @@ export const nodeExporterService = observability.nodeExporter.service.metadata.n
 export const kubeStateMetricsService = observability.kubeStateMetrics.service.metadata.name;
 // Present only when `alertingEnabled` (dev); undefined elsewhere, so prod gets no such output.
 export const alertLogSinkService = observability.logSink?.service.metadata.name;
+// Always-on synthetic buyer-journey CronJob (ADR-0011 Tier 3, D5).
+export const syntheticCronJob = synthetic.cronJob.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;
 // Present only when `loadgenEnabled` (dev); undefined elsewhere, so it simply doesn't

@@ -5,6 +5,8 @@ packages:
   - "scripts"
 
 allowBuilds:
+  # native profiler addon; built so @pyroscope/nodejs works when PROFILING_ENABLED
+  "@datadog/pprof": true
   "@pulumi/kubernetes": false
   cpu-features: false
   esbuild: true
@@ -47,6 +49,7 @@ catalog:
   "@grafana/faro-web-sdk": ^2.7.0
   "@grafana/faro-web-tracing": ^2.7.0
   "@grafana/grafana-foundation-sdk": ^0.0.13
+  "@pyroscope/nodejs": ^0.4.11
   postgres: ^3.4.9
   react: ^19.2.6
   react-dom: ^19.2.6

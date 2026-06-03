@@ -1,0 +1,23 @@
+{
+  "name": "@tix/synthetic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-types": "tsgo --noEmit",
+    "probe": "node src/index.ts",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tix/saga-client": "workspace:*",
+    "@tix/service-runtime": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@tix/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "vitest": "catalog:"
+  }
+}

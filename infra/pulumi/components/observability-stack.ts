@@ -1,7 +1,9 @@
+import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
 import { AlertLogSink } from "./observability/alert-log-sink.ts";
 import { BlackboxExporter } from "./observability/blackbox-exporter.ts";
+import { DeployAnnotation } from "./observability/deploy-annotation.ts";
 import { GarageBackend } from "./observability/garage-backend.ts";
 import { GarageBuckets, type GarageBucketName } from "./observability/garage-buckets.ts";
 import { GrafanaBackend } from "./observability/grafana-backend.ts";
@@ -15,6 +17,7 @@ import {
   type OtlpHttpMetricsEndpoint,
 } from "./observability/otel-collector.ts";
 import { PrometheusBackend } from "./observability/prometheus-backend.ts";
+import { PyroscopeBackend } from "./observability/pyroscope-backend.ts";
 import { TempoBackend } from "./observability/tempo-backend.ts";
 
 // In-cluster service endpoints. DNS names are deterministic (one Service per
@@ -28,11 +31,17 @@ const TEMPO_URL = "http://tempo:3200";
 const LOKI_URL = "http://loki:3100";
 const LOKI_OTLP_LOGS = "http://loki:3100/otlp/v1/logs" as OtlpHttpLogsEndpoint;
 const PROMETHEUS_URL = "http://prometheus:9090";
+const PYROSCOPE_URL = "http://pyroscope:4040";
+// In-cluster Grafana base URL for the deploy-annotation Job's curl. Matches the `grafana` Service
+// name + its HTTP port (3000); this is the in-cluster API root, distinct from `grafanaRootUrl`
+// (the external `/grafana` ingress path Grafana serves itself under).
+const GRAFANA_URL = "http://grafana:3000";
 const PROMETHEUS_OTLP_METRICS =
   "http://prometheus:9090/api/v1/otlp/v1/metrics" as OtlpHttpMetricsEndpoint;
 
 const TEMPO_BUCKET: GarageBucketName = "tempo";
 const LOKI_BUCKET: GarageBucketName = "loki";
+const PYROSCOPE_BUCKET: GarageBucketName = "pyroscope";
 const S3_KEY_NAME = "tix-observability";
 
 // In-cluster webhook target for Grafana's alert contact point (deterministic Service DNS, like
@@ -41,6 +50,9 @@ const ALERT_LOG_SINK_URL = "http://alert-log-sink:8080/";
 
 export type ObservabilityStackArgs = {
   namespace: pulumi.Input<string>;
+  // Pulumi stack name (dev/prod), surfaced as the deploy annotation's env tag so dashboards can
+  // distinguish which environment a marker came from. Threaded from `stack` in index.ts.
+  env: string;
   // Absolute root URL Grafana serves itself under, e.g. `http://localhost/grafana`.
   grafanaRootUrl: pulumi.Input<string>;
   garageRpcSecret: pulumi.Input<string>;
@@ -62,6 +74,9 @@ export type ObservabilityStackArgs = {
   // PEM contents of the CA that signs the apiserver serving cert, for the kubelet/cAdvisor scrape
   // (ADR-0012 Tier 2). dev/kind omits it (insecure_skip_verify); prod supplies it so TLS verifies.
   kubeletCaBundle?: string;
+  // Git SHA of the current deploy (ADR-0010 deploy markers). When set, a DeployAnnotation Job
+  // marks the deploy on Grafana's dashboards; omitted in unit tests / when no marker applies.
+  gitSha?: string;
 };
 
 // Stands up the discrete in-cluster OpenTelemetry stack (ADR-0009): Garage
@@ -78,6 +93,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
   readonly buckets: GarageBuckets;
   readonly tempo: TempoBackend;
   readonly loki: LokiBackend;
+  readonly pyroscope: PyroscopeBackend;
   readonly prometheus: PrometheusBackend;
   readonly grafana: GrafanaBackend;
   readonly collector: OtelCollector;
@@ -88,6 +104,8 @@ export class ObservabilityStack extends pulumi.ComponentResource {
   readonly kubeStateMetrics: KubeStateMetrics;
   // Present only when `alertingEnabled` (dev); undefined otherwise.
   readonly logSink: AlertLogSink | undefined;
+  // Present only when a `gitSha` is supplied (a real deploy); undefined in unit tests / no-marker.
+  readonly deployAnnotation: DeployAnnotation | undefined;
 
   constructor(name: string, args: ObservabilityStackArgs, opts?: pulumi.ComponentResourceOptions) {
     super("tix:infra:ObservabilityStack", name, args, opts);
@@ -116,7 +134,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
         namespace,
         adminEndpoint: GARAGE_ADMIN_ENDPOINT,
         credentialsSecretName: this.garage.credentialsSecret.metadata.name,
-        buckets: [TEMPO_BUCKET, LOKI_BUCKET],
+        buckets: [TEMPO_BUCKET, LOKI_BUCKET, PYROSCOPE_BUCKET],
         keyName: S3_KEY_NAME,
       },
       { parent: this, dependsOn: this.garage },
@@ -149,6 +167,21 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       { parent: this, dependsOn: this.buckets },
     );
 
+    // Pyroscope (continuous profiling) stores profile blocks in its own Garage bucket, like
+    // Tempo/Loki, so it waits on the same bucket bootstrap and reads the shared S3 credentials
+    // Secret. Profiles are trace-like, so it shares the traces retention window (ADR-0011 Tier 3).
+    this.pyroscope = new PyroscopeBackend(
+      `${name}-pyroscope`,
+      {
+        namespace,
+        s3Endpoint: GARAGE_S3_ENDPOINT,
+        bucket: PYROSCOPE_BUCKET,
+        credentialsSecretName,
+        retentionPeriod: args.tracesRetention,
+      },
+      { parent: this, dependsOn: this.buckets },
+    );
+
     // Prometheus uses a local TSDB, so it depends on nothing but the namespace. It now also owns
     // the stack's first cluster RBAC (SA + ClusterRole) and the kubelet TLS toggle (ADR-0012 Tier 2).
     this.prometheus = new PrometheusBackend(
@@ -162,7 +195,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       childOpts,
     );
 
-    const backends = [this.tempo, this.loki, this.prometheus];
+    const backends = [this.tempo, this.loki, this.prometheus, this.pyroscope];
 
     // Dev-only webhook log sink + alert provisioning (ADR-0010). Constructed only when
     // alerting is on; prod omits both. The sink is a plain echo Deployment, so it depends on
@@ -179,10 +212,42 @@ export class ObservabilityStack extends pulumi.ComponentResource {
         tempoUrl: TEMPO_URL,
         lokiUrl: LOKI_URL,
         prometheusUrl: PROMETHEUS_URL,
+        pyroscopeUrl: PYROSCOPE_URL,
         ...(args.alertingEnabled ? { alerting: { logSinkUrl: ALERT_LOG_SINK_URL } } : {}),
       },
       { parent: this, dependsOn: backends },
     );
+
+    // Deploy marker (ADR-0010): on a real deploy (a git SHA supplied), a one-shot Job curls
+    // Grafana's annotations API so dashboards overlay "what shipped, when". GrafanaBackend holds
+    // its admin creds as inline pod env (hardcoded dev `admin`/`admin`), not a Secret, so there's
+    // nothing to reference for the Job's basic-auth — we mint a dedicated `grafana-annotation`
+    // Secret exposing the same creds under the GRAFANA_USER / GRAFANA_PASSWORD keys the Job's
+    // `envFrom` expects. TODO(prod): source these from the same Secret once Grafana's admin
+    // password moves off the hardcoded dev default (see grafana-backend.ts TODO).
+    let deployAnnotation: DeployAnnotation | undefined;
+    if (args.gitSha) {
+      const annotationSecret = new k8s.core.v1.Secret(
+        `${name}-grafana-annotation`,
+        {
+          metadata: { name: "grafana-annotation", namespace },
+          stringData: { GRAFANA_USER: "admin", GRAFANA_PASSWORD: "admin" },
+        },
+        { parent: this, dependsOn: this.grafana },
+      );
+      deployAnnotation = new DeployAnnotation(
+        `${name}-deploy-annotation`,
+        {
+          namespace,
+          grafanaUrl: GRAFANA_URL,
+          env: args.env,
+          gitSha: args.gitSha,
+          adminSecretName: annotationSecret.metadata.name,
+        },
+        { parent: this, dependsOn: this.grafana },
+      );
+    }
+    this.deployAnnotation = deployAnnotation;
 
     // Always-on blackbox synthetics (ADR-0011 Tier 3) — ungated, unlike the dev-only loadgen/alert
     // sink: it probes the services from outside in both dev and prod. The Prometheus `blackbox`
@@ -217,6 +282,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       buckets: this.buckets,
       tempo: this.tempo,
       loki: this.loki,
+      pyroscope: this.pyroscope,
       prometheus: this.prometheus,
       grafana: this.grafana,
       collector: this.collector,
@@ -224,6 +290,7 @@ export class ObservabilityStack extends pulumi.ComponentResource {
       nodeExporter: this.nodeExporter,
       kubeStateMetrics: this.kubeStateMetrics,
       logSink: this.logSink,
+      deployAnnotation: this.deployAnnotation,
     });
   }
 }

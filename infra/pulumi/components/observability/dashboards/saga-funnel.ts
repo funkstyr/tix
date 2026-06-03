@@ -4,6 +4,7 @@ import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 import { DataqueryBuilder } from "@grafana/grafana-foundation-sdk/prometheus";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
+import { deployAnnotationLayer } from "./_deploy-annotation-layer.ts";
 import { exemplarLatencyPanel } from "./_exemplar.ts";
 import { PROMETHEUS, tsPanel } from "./_shared.ts";
 import type { Series } from "./_shared.ts";
@@ -27,6 +28,7 @@ export function sagaFunnelDashboardJson(): string {
     )
     .tags(["domain", "saga"])
     .refresh("30s")
+    .annotation(deployAnnotationLayer())
     .withPanel(conversionFunnel())
     .withPanel(conflictRates())
     .withPanel(paymentOutcomes())

@@ -110,8 +110,9 @@ it.effect("fails with OrderNotPayable when the order is not in 'created'", () =>
 );
 
 // A non-succeeded intent maps to the domain tag and increments the failed-charge counter
-// (no Payment row is written — that path is covered by the integration test).
-it.effect("fails with PaymentIntentNotSucceeded and counts a failed charge", () =>
+// under the matching `reason` label (no Payment row is written — that path is covered by
+// the integration test). `requires_payment_method` buckets to `card_declined`.
+it.effect("fails with PaymentIntentNotSucceeded and counts a card_declined charge", () =>
   Effect.gen(function* () {
     const layer = createPaymentsTestLayer({
       db: fakeDb([CREATED_ORDER]),
@@ -119,13 +120,37 @@ it.effect("fails with PaymentIntentNotSucceeded and counts a failed charge", () 
       paymentIntentClient: stubIntent({ stripeId: "pi_x", status: "requires_payment_method" }),
     });
 
-    const before = (yield* Metric.value(paymentsFailedTotal)).count;
+    const declined = Metric.tagged(paymentsFailedTotal, "reason", "card_declined");
+    const before = (yield* Metric.value(declined)).count;
 
     const error = yield* createPaymentProgram(INPUT).pipe(Effect.provide(layer), Effect.flip);
 
-    const after = (yield* Metric.value(paymentsFailedTotal)).count;
+    const after = (yield* Metric.value(declined)).count;
 
     expect(error).toBeInstanceOf(PaymentIntentNotSucceeded);
+    expect(after - before).toBe(1);
+  }),
+);
+
+// A thrown Stripe SDK error lands in the defect channel via `tryOrpc`; the `tapDefect`
+// classifier must still count it under the matching `reason` label.
+it.effect("counts a thrown Stripe API error under reason=api_error", () =>
+  Effect.gen(function* () {
+    const throwing = {
+      createPaymentIntent: () => Promise.reject({ type: "StripeAPIError", message: "boom" }),
+    } as unknown as PaymentIntentClient;
+    const layer = createPaymentsTestLayer({
+      db: fakeDb([CREATED_ORDER]),
+      authClient: stubAuth(),
+      paymentIntentClient: throwing,
+    });
+
+    const apiErr = Metric.tagged(paymentsFailedTotal, "reason", "api_error");
+    const before = (yield* Metric.value(apiErr)).count;
+
+    yield* createPaymentProgram(INPUT).pipe(Effect.provide(layer), Effect.exit);
+
+    const after = (yield* Metric.value(apiErr)).count;
     expect(after - before).toBe(1);
   }),
 );
