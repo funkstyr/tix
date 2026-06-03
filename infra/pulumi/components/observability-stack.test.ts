@@ -25,11 +25,11 @@ function build(args?: { alertingEnabled?: boolean; gitSha?: string }): Observabi
 describe("ObservabilityStack", () => {
   // Building the full stack (7 backends + 8 synthesized dashboards) is the heavy part, so we do
   // it once per arg-variant and share the instances across the read-only assertions below.
-  // Rebuilding per `it` made each test body race the 5s timeout under CI fork-contention; the
+  // Rebuilding per `it` made each test body race the test timeout under CI fork-contention; the
   // construction now lives in beforeAll and runs three times (default / alerting / gitSha
   // variants), not once per `it`. Three full stacks (each ~8 backends + the synthesized
-  // dashboards) outgrow the default 10s hook budget on a loaded CI runner, so this hook gets the
-  // 30s ceiling the integration preset uses for heavy setup.
+  // dashboards) plus the first Output resolution are heavy — the package's integration vitest
+  // preset gives the 30s hook/test budgets that absorb it on a loaded CI runner.
   let stack: ObservabilityStack;
   let alertingStack: ObservabilityStack;
   let shaStack: ObservabilityStack;
@@ -38,7 +38,7 @@ describe("ObservabilityStack", () => {
     stack = build();
     alertingStack = build({ alertingEnabled: true });
     shaStack = build({ gitSha: "abc1234" });
-  }, 30_000);
+  });
 
   it("exposes the gateway collector as the OTLP ingress", async () => {
     const meta = await promiseOf(stack.collector.service.metadata);
