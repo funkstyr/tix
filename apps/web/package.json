@@ -16,6 +16,7 @@
     "@stripe/stripe-js": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tix/contracts": "workspace:*",
+    "@tix/core-ui": "workspace:*",
     "@tix/observability": "workspace:*",
     "arktype": "catalog:",
     "better-auth": "catalog:",
@@ -23,6 +24,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
     "@tanstack/router-plugin": "catalog:",
     "@tix/config": "workspace:*",
     "@types/node": "catalog:",
@@ -31,6 +33,7 @@
     "@typescript/native-preview": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "jsdom": "catalog:",
+    "tailwindcss": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
   }
