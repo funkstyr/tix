@@ -30,7 +30,7 @@ export function reactPreset(overrides: UserConfig = {}): UserConfig {
         ...base,
         platform: "neutral",
         entry: ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.test.ts", "!src/**/*.test.tsx"],
-        external: ["react", "react-dom", "react/jsx-runtime", /^@base-ui\//],
+        deps: { neverBundle: ["react", "react-dom", "react/jsx-runtime", /^@base-ui\//] },
       },
       overrides,
     ),
