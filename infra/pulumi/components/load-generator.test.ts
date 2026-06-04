@@ -1,3 +1,4 @@
+import * as k8s from "@pulumi/kubernetes";
 import { describe, expect, it } from "vitest";
 
 import { LoadGenerator } from "./load-generator.ts";
@@ -19,6 +20,10 @@ async function containerOf(loadgen: LoadGenerator) {
 async function envOf(loadgen: LoadGenerator): Promise<Array<{ name: string; value?: string }>> {
   const container = await containerOf(loadgen);
   return container?.env ?? [];
+}
+
+async function dataOf(cm: k8s.core.v1.ConfigMap) {
+  return promiseOf(cm.data);
 }
 
 describe("LoadGenerator", () => {
@@ -110,5 +115,17 @@ describe("LoadGenerator", () => {
     const scriptText = data?.["loadgen.js"] ?? "";
     expect(scriptText).toContain("tickets/list");
     expect(scriptText).toContain("anchorTicketIds");
+  });
+
+  it("renders a ConfigMap script per on-demand scenario", async () => {
+    const lg = build();
+    const flash = await dataOf(lg.flashSaleScript);
+    const decline = await dataOf(lg.declineWaveScript);
+    const storm = await dataOf(lg.expirationStormScript);
+
+    expect(flash?.["scenario.js"]).toContain("http.batch");
+    expect(decline?.["scenario.js"]).toContain("pm_card_chargeDeclined");
+    expect(storm?.["scenario.js"]).toContain("orders/create");
+    expect(flash?.["scenario.js"]).not.toContain("9999h");
   });
 });
