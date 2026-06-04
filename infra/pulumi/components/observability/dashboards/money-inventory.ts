@@ -1,11 +1,10 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
-
-import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import * as heatmap from "@grafana/grafana-foundation-sdk/heatmap";
 import { DataqueryBuilder, PromQueryFormat } from "@grafana/grafana-foundation-sdk/prometheus";
 import * as stat from "@grafana/grafana-foundation-sdk/stat";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
+import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import { PROMETHEUS, statPanel, tsPanel } from "./_shared.ts";
 
 // Money & inventory board (ADR-0010), Domain folder. The order-value distribution

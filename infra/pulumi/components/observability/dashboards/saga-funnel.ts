@@ -5,8 +5,8 @@ import { DataqueryBuilder } from "@grafana/grafana-foundation-sdk/prometheus";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
 import { deployAnnotationLayer } from "./_deploy-annotation-layer.ts";
-import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import { exemplarLatencyPanel } from "./_exemplar.ts";
+import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import { PROMETHEUS, tsPanel } from "./_shared.ts";
 import type { Series } from "./_shared.ts";
 

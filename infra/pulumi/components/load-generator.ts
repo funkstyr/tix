@@ -54,17 +54,26 @@ export class LoadGenerator extends pulumi.ComponentResource {
 
     this.flashSaleScript = new k8s.core.v1.ConfigMap(
       `${name}-flash-sale`,
-      { metadata: { name: "loadgen-flash-sale", namespace }, data: { "scenario.js": renderFlashSaleScript() } },
+      {
+        metadata: { name: "loadgen-flash-sale", namespace },
+        data: { "scenario.js": renderFlashSaleScript() },
+      },
       childOpts,
     );
     this.declineWaveScript = new k8s.core.v1.ConfigMap(
       `${name}-decline-wave`,
-      { metadata: { name: "loadgen-decline-wave", namespace }, data: { "scenario.js": renderDeclineWaveScript() } },
+      {
+        metadata: { name: "loadgen-decline-wave", namespace },
+        data: { "scenario.js": renderDeclineWaveScript() },
+      },
       childOpts,
     );
     this.expirationStormScript = new k8s.core.v1.ConfigMap(
       `${name}-expiration-storm`,
-      { metadata: { name: "loadgen-expiration-storm", namespace }, data: { "scenario.js": renderExpirationStormScript() } },
+      {
+        metadata: { name: "loadgen-expiration-storm", namespace },
+        data: { "scenario.js": renderExpirationStormScript() },
+      },
       childOpts,
     );
 
@@ -124,83 +133,98 @@ const SCENARIO_PRELUDE = [
   'const GATEWAY = __ENV.GATEWAY_BASE_URL || "http://gateway:4000";',
   'const PASSWORD = "correct-horse-battery";',
   'function authToken(res) { return res.headers["Set-Auth-Token"]; }',
-  'function signUp(email, name) {',
+  "function signUp(email, name) {",
   '  const res = http.post(GATEWAY + "/api/auth/sign-up/email",',
-  '    JSON.stringify({ email: email, password: PASSWORD, name: name }),',
+  "    JSON.stringify({ email: email, password: PASSWORD, name: name }),",
   '    { headers: { "Content-Type": "application/json" }, tags: { op: "auth.signUp" } });',
-  '  return authToken(res);',
-  '}',
-  'function rpc(path, input) {',
+  "  return authToken(res);",
+  "}",
+  "function rpc(path, input) {",
   '  return http.post(GATEWAY + "/rpc/" + path, JSON.stringify({ json: input }),',
   '    { headers: { "Content-Type": "application/json" }, tags: { op: path } });',
-  '}',
-  'function rpcJson(res) { return JSON.parse(res.body).json; }',
+  "}",
+  "function rpcJson(res) { return JSON.parse(res.body).json; }",
 ].join("\n");
 
 // Flash sale: a burst of buyers all reserving the same hot ticket -> reservation-conflict spike,
 // saga-funnel drop-off, latency climb. Bounded (~80s), then the Job exits.
 function renderFlashSaleScript(): string {
-  return SCENARIO_PRELUDE + "\n" + [
-    "export const options = { scenarios: { flash: {",
-    '  executor: "ramping-arrival-rate", startRate: 5, timeUnit: "1s",',
-    '  preAllocatedVUs: 50, stages: [',
-    '    { duration: "20s", target: 60 }, { duration: "40s", target: 60 }, { duration: "20s", target: 0 },',
-    "  ] } } };",
-    "export function setup() {",
-    '  const seller = signUp("flash-seller-" + Date.now() + "@tix.test", "Flash Seller");',
-    '  const hot = rpcJson(rpc("tickets/create", { token: seller, title: "FLASH SALE drop", quantityTotal: 100000, unitPriceCents: 1500 })).id;',
-    "  const buyers = [];",
-    '  for (let i = 0; i < 20; i++) buyers.push(signUp("flash-buyer-" + i + "-" + Date.now() + "@tix.test", "Flash Buyer " + i));',
-    "  return { hot: hot, buyers: buyers };",
-    "}",
-    "export default function (data) {",
-    "  const reqs = data.buyers.map(function (token) { return {",
-    '    method: "POST", url: GATEWAY + "/rpc/orders/create",',
-    '    body: JSON.stringify({ json: { token: token, ticketId: data.hot, quantity: 1 } }),',
-    '    params: { headers: { "Content-Type": "application/json" }, tags: { op: "orders/create" } } }; });',
-    "  http.batch(reqs);",
-    "  sleep(1);",
-    "}",
-  ].join("\n") + "\n";
+  return (
+    SCENARIO_PRELUDE +
+    "\n" +
+    [
+      "export const options = { scenarios: { flash: {",
+      '  executor: "ramping-arrival-rate", startRate: 5, timeUnit: "1s",',
+      "  preAllocatedVUs: 50, stages: [",
+      '    { duration: "20s", target: 60 }, { duration: "40s", target: 60 }, { duration: "20s", target: 0 },',
+      "  ] } } };",
+      "export function setup() {",
+      '  const seller = signUp("flash-seller-" + Date.now() + "@tix.test", "Flash Seller");',
+      '  const hot = rpcJson(rpc("tickets/create", { token: seller, title: "FLASH SALE drop", quantityTotal: 100000, unitPriceCents: 1500 })).id;',
+      "  const buyers = [];",
+      '  for (let i = 0; i < 20; i++) buyers.push(signUp("flash-buyer-" + i + "-" + Date.now() + "@tix.test", "Flash Buyer " + i));',
+      "  return { hot: hot, buyers: buyers };",
+      "}",
+      "export default function (data) {",
+      "  const reqs = data.buyers.map(function (token) { return {",
+      '    method: "POST", url: GATEWAY + "/rpc/orders/create",',
+      "    body: JSON.stringify({ json: { token: token, ticketId: data.hot, quantity: 1 } }),",
+      '    params: { headers: { "Content-Type": "application/json" }, tags: { op: "orders/create" } } }; });',
+      "  http.batch(reqs);",
+      "  sleep(1);",
+      "}",
+    ].join("\n") +
+    "\n"
+  );
 }
 
 // Decline wave: buyers reserve then pay with the declined test card -> payment error-ratio + saga
 // charge-step failures spike. Bounded run.
 function renderDeclineWaveScript(): string {
-  return SCENARIO_PRELUDE + "\n" + [
-    'export const options = { scenarios: { decline: { executor: "constant-arrival-rate",',
-    '  rate: 8, timeUnit: "1s", duration: "60s", preAllocatedVUs: 20 } } };',
-    'const CARD_DECLINE = "pm_card_chargeDeclined";',
-    "export function setup() {",
-    '  const seller = signUp("decline-seller-" + Date.now() + "@tix.test", "Decline Seller");',
-    '  const ticket = rpcJson(rpc("tickets/create", { token: seller, title: "Decline-wave GA", quantityTotal: 100000, unitPriceCents: 3000 })).id;',
-    '  const buyer = signUp("decline-buyer-" + Date.now() + "@tix.test", "Decline Buyer");',
-    "  return { ticket: ticket, buyer: buyer };",
-    "}",
-    "export default function (data) {",
-    '  const order = rpc("orders/create", { token: data.buyer, ticketId: data.ticket, quantity: 1 });',
-    "  if (order.status === 200) {",
-    '    rpc("payments/create", { token: data.buyer, orderId: rpcJson(order).id, paymentMethodId: CARD_DECLINE });',
-    "  }",
-    "}",
-  ].join("\n") + "\n";
+  return (
+    SCENARIO_PRELUDE +
+    "\n" +
+    [
+      'export const options = { scenarios: { decline: { executor: "constant-arrival-rate",',
+      '  rate: 8, timeUnit: "1s", duration: "60s", preAllocatedVUs: 20 } } };',
+      'const CARD_DECLINE = "pm_card_chargeDeclined";',
+      "export function setup() {",
+      '  const seller = signUp("decline-seller-" + Date.now() + "@tix.test", "Decline Seller");',
+      '  const ticket = rpcJson(rpc("tickets/create", { token: seller, title: "Decline-wave GA", quantityTotal: 100000, unitPriceCents: 3000 })).id;',
+      '  const buyer = signUp("decline-buyer-" + Date.now() + "@tix.test", "Decline Buyer");',
+      "  return { ticket: ticket, buyer: buyer };",
+      "}",
+      "export default function (data) {",
+      '  const order = rpc("orders/create", { token: data.buyer, ticketId: data.ticket, quantity: 1 });',
+      "  if (order.status === 200) {",
+      '    rpc("payments/create", { token: data.buyer, orderId: rpcJson(order).id, paymentMethodId: CARD_DECLINE });',
+      "  }",
+      "}",
+    ].join("\n") +
+    "\n"
+  );
 }
 
 // Expiration storm: buyers reserve and never pay -> the expiration worker auto-cancels a wave.
 function renderExpirationStormScript(): string {
-  return SCENARIO_PRELUDE + "\n" + [
-    'export const options = { scenarios: { storm: { executor: "shared-iterations",',
-    '  vus: 20, iterations: 300, maxDuration: "90s" } } };',
-    "export function setup() {",
-    '  const seller = signUp("storm-seller-" + Date.now() + "@tix.test", "Storm Seller");',
-    '  const ticket = rpcJson(rpc("tickets/create", { token: seller, title: "Expiration-storm GA", quantityTotal: 100000, unitPriceCents: 2500 })).id;',
-    '  const buyer = signUp("storm-buyer-" + Date.now() + "@tix.test", "Storm Buyer");',
-    "  return { ticket: ticket, buyer: buyer };",
-    "}",
-    "export default function (data) {",
-    '  rpc("orders/create", { token: data.buyer, ticketId: data.ticket, quantity: 1 });',
-    "}",
-  ].join("\n") + "\n";
+  return (
+    SCENARIO_PRELUDE +
+    "\n" +
+    [
+      'export const options = { scenarios: { storm: { executor: "shared-iterations",',
+      '  vus: 20, iterations: 300, maxDuration: "90s" } } };',
+      "export function setup() {",
+      '  const seller = signUp("storm-seller-" + Date.now() + "@tix.test", "Storm Seller");',
+      '  const ticket = rpcJson(rpc("tickets/create", { token: seller, title: "Expiration-storm GA", quantityTotal: 100000, unitPriceCents: 2500 })).id;',
+      '  const buyer = signUp("storm-buyer-" + Date.now() + "@tix.test", "Storm Buyer");',
+      "  return { ticket: ticket, buyer: buyer };",
+      "}",
+      "export default function (data) {",
+      '  rpc("orders/create", { token: data.buyer, ticketId: data.ticket, quantity: 1 });',
+      "}",
+    ].join("\n") +
+    "\n"
+  );
 }
 
 // The k6 script, embedded verbatim into the script ConfigMap. Written with string

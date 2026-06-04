@@ -50,8 +50,7 @@ export async function ensureCatalog(
       outcomes.push({ title: event.title, status: "exists" });
       continue;
     }
-    // eslint-disable-next-line no-await-in-loop -- sequential keeps a fresh tickets service from
-    // racing a burst of creates, and the curated set is tiny.
+    // eslint-disable-next-line no-await-in-loop -- sequential; curated set is tiny, fresh service needs ordered creates
     await tickets.create({
       token: sellerToken,
       title: event.title,

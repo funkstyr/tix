@@ -18,11 +18,11 @@ function ticketRecord(title: string) {
 }
 
 function stubTickets(existingTitles: readonly string[]) {
-  const list = vi.fn(() =>
+  const list = vi.fn<() => Promise<{ items: ReturnType<typeof ticketRecord>[] }>>(() =>
     Promise.resolve({ items: existingTitles.map(ticketRecord) }),
   );
-  const create = vi.fn((input: { title: string }) =>
-    Promise.resolve(ticketRecord(input.title)),
+  const create = vi.fn<(input: { title: string }) => Promise<ReturnType<typeof ticketRecord>>>(
+    (input) => Promise.resolve(ticketRecord(input.title)),
   );
   return { list, create };
 }

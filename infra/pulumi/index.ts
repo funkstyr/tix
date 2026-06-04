@@ -712,7 +712,7 @@ if (loadgenEnabled) {
   // Dev-only curated catalog seed (paired with the loadgen): gives the web app believable data to
   // browse and the loadgen stable anchors to drive. Depends on the always-on synthetic-seed Job
   // (which provisions the seller account) and the tickets service.
-  new SyntheticCatalogSeedJob(
+  void new SyntheticCatalogSeedJob(
     "tix-synthetic",
     {
       namespace: namespace.metadata.name,
