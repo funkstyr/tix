@@ -22,3 +22,17 @@ export function nodePreset(overrides: UserConfig = {}): UserConfig {
     ),
   );
 }
+
+export function reactPreset(overrides: UserConfig = {}): UserConfig {
+  return defineConfig(
+    mergeConfig(
+      {
+        ...base,
+        platform: "neutral",
+        entry: ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.test.ts", "!src/**/*.test.tsx"],
+        external: ["react", "react-dom", "react/jsx-runtime", /^@base-ui-components\//],
+      },
+      overrides,
+    ),
+  );
+}
