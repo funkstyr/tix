@@ -9,7 +9,7 @@ type PackageJson = {
 
 export default function generator(plop: PlopTypes.NodePlopAPI): void {
   plop.setGenerator("package", {
-    description: "Scaffold a new lib package in packages/<name>",
+    description: "Scaffold a new package in packages/<name> (lib or ui)",
     prompts: [
       {
         type: "input",
@@ -18,39 +18,49 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
         validate: (input: string) =>
           /^[a-z][a-z0-9-]*$/.test(input) || "Must be kebab-case starting with a letter",
       },
+      {
+        type: "list",
+        name: "flavor",
+        message: "Package flavor:",
+        choices: ["lib", "ui"],
+        default: "lib",
+      },
     ],
-    actions: () => {
+    actions: (answers) => {
+      const flavor = (answers?.["flavor"] as string | undefined) ?? "lib";
+      const ext = flavor === "ui" ? "tsx" : "ts";
       const base = "packages/{{name}}";
-      return [
+
+      const actions: PlopTypes.ActionType[] = [
         {
           type: "add",
           path: `${base}/package.json`,
-          templateFile: "templates/lib/package.json.hbs",
+          templateFile: `templates/${flavor}/package.json.hbs`,
         },
         {
           type: "add",
           path: `${base}/tsconfig.json`,
-          templateFile: "templates/lib/tsconfig.json.hbs",
+          templateFile: `templates/${flavor}/tsconfig.json.hbs`,
         },
         {
           type: "add",
           path: `${base}/tsdown.config.ts`,
-          templateFile: "templates/lib/tsdown.config.ts.hbs",
+          templateFile: `templates/${flavor}/tsdown.config.ts.hbs`,
         },
         {
           type: "add",
           path: `${base}/vitest.config.ts`,
-          templateFile: "templates/lib/vitest.config.ts.hbs",
+          templateFile: `templates/${flavor}/vitest.config.ts.hbs`,
         },
         {
           type: "add",
-          path: `${base}/src/{{name}}.ts`,
-          templateFile: "templates/lib/starter.hbs",
+          path: `${base}/src/{{name}}.${ext}`,
+          templateFile: `templates/${flavor}/starter.hbs`,
         },
         {
           type: "add",
-          path: `${base}/src/{{name}}.test.ts`,
-          templateFile: "templates/lib/starter.test.hbs",
+          path: `${base}/src/{{name}}.test.${ext}`,
+          templateFile: `templates/${flavor}/starter.test.hbs`,
         },
         {
           type: "add",
@@ -58,6 +68,16 @@ export default function generator(plop: PlopTypes.NodePlopAPI): void {
           templateFile: "templates/.gitignore.hbs",
         },
       ];
+
+      if (flavor === "ui") {
+        actions.push({
+          type: "add",
+          path: `${base}/src/styles.css`,
+          templateFile: "templates/ui/styles.css.hbs",
+        });
+      }
+
+      return actions;
     },
   });
 
