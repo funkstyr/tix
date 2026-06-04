@@ -5,7 +5,12 @@ export type SyntheticCronJobArgs = {
   namespace: pulumi.Input<string>;
   image: pulumi.Input<string>;
   schedule: string; // cron, e.g. "*/2 * * * *"
-  gatewayUrl: string; // live gateway base URL the probe drives the saga against
+  // Per-service in-cluster base URLs the probe drives the saga against. Not the gateway: its oRPC
+  // router is nested and auth-less, so the flat saga-client only resolves against the services.
+  authBaseUrl: string;
+  ticketsBaseUrl: string;
+  ordersBaseUrl: string;
+  paymentsBaseUrl: string;
   otelEndpoint: string; // OTLP HTTP endpoint for metric/span export
   credentialsSecretName: pulumi.Input<string>;
   imagePullPolicy?: pulumi.Input<string>;
@@ -53,7 +58,10 @@ export class SyntheticCronJob extends pulumi.ComponentResource {
                       imagePullPolicy: args.imagePullPolicy,
                       command: ["pnpm", "-F", "@tix/synthetic", "probe"],
                       env: [
-                        { name: "GATEWAY_BASE_URL", value: args.gatewayUrl },
+                        { name: "AUTH_BASE_URL", value: args.authBaseUrl },
+                        { name: "TICKETS_BASE_URL", value: args.ticketsBaseUrl },
+                        { name: "ORDERS_BASE_URL", value: args.ordersBaseUrl },
+                        { name: "PAYMENTS_BASE_URL", value: args.paymentsBaseUrl },
                         { name: "OTEL_EXPORTER_OTLP_ENDPOINT", value: args.otelEndpoint },
                       ],
                       envFrom: [{ secretRef: { name: args.credentialsSecretName } }],

@@ -114,15 +114,15 @@ export class PyroscopeBackend extends pulumi.ComponentResource {
 // Monolithic Pyroscope config. `storage.backend: s3` + the `s3:` sub-block is the
 // Pyroscope 1.x layout; `force_path_style` + `insecure` are mandatory for Garage
 // (path-style addressing, plaintext) and `region` must match Garage's `s3_region`.
-// Retention is enforced by the compactor via `limits.retention_period`; without it
-// the S3 bucket grows without bound (window is dev-small / prod-larger, ADR-0011
-// Tier 3).
+// Retention is enforced by the compactor via `limits.compactor_blocks_retention_period`;
+// without it the S3 bucket grows without bound (window is dev-small / prod-larger,
+// ADR-0011 Tier 3).
 //
 // NOTE: version-sensitive keys for grafana/pyroscope:1.14.0 — confirm against
 // the pinned image's config reference before bumping: `storage.backend`,
 // `storage.s3.bucket_name`, `insecure`, `force_path_style`, and
-// `limits.retention_period`. The kind smoke is the layer that proves Pyroscope
-// actually boots and writes profile blocks to Garage.
+// `limits.compactor_blocks_retention_period`. The kind smoke is the layer that
+// proves Pyroscope actually boots and writes profile blocks to Garage.
 function renderPyroscopeConfig(
   s3Endpoint: string,
   bucket: string,
@@ -144,8 +144,10 @@ storage:
     force_path_style: true
 
 # Profile blocks age out of Garage via the compactor; without a retention window
-# the S3 bucket grows without bound (ADR-0011 Tier 3).
+# the S3 bucket grows without bound (ADR-0011 Tier 3). The key is
+# compactor_blocks_retention_period under limits; a bare limits.retention_period is
+# not valid for grafana/pyroscope:1.14.0 (the server rejects it at config-validation).
 limits:
-  retention_period: ${retentionPeriod}
+  compactor_blocks_retention_period: ${retentionPeriod}
 `;
 }

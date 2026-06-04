@@ -10,6 +10,38 @@
     "playwright": {
       "command": "pnpm",
       "args": ["dlx", "@playwright/mcp@latest"]
+    },
+    "grafana": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--add-host",
+        "host.docker.internal:host-gateway",
+        "-e",
+        "GRAFANA_URL",
+        "-e",
+        "GRAFANA_USERNAME",
+        "-e",
+        "GRAFANA_PASSWORD",
+        "mcp/grafana",
+        "-t",
+        "stdio"
+      ],
+      "env": {
+        "GRAFANA_URL": "http://host.docker.internal:3000/grafana",
+        "GRAFANA_USERNAME": "admin",
+        "GRAFANA_PASSWORD": "admin"
+      }
+    },
+    "kubernetes": {
+      "command": "pnpm",
+      "args": ["dlx", "mcp-server-kubernetes@3.8.0"],
+      "env": {
+        "ALLOW_ONLY_READONLY_TOOLS": "true",
+        "MASK_SECRETS": "true"
+      }
     }
   }
 }

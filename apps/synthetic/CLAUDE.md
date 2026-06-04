@@ -4,10 +4,17 @@ Headless, one-shot **buyer-journey probe**. It drives the live reserve→order�
 against a real deployment — sign in, list a ticket, reserve it, place the order, charge it (Stripe
 test mode), then cancel to clean up — and exports a success/failure metric + the wall-clock duration
 before exiting. Run as a Kubernetes CronJob every ~2 minutes, **always-on (dev AND prod)** like the
-blackbox exporter: outside-in liveness of the _business_ path, not just an HTTP endpoint.
+blackbox exporter: liveness of the _business_ path, not just an HTTP endpoint.
 
 It reuses `@tix/saga-client` (the same `runBuyerJourney` flow the `api-e2e` suite drives), so the
 probe and the integration tests can't drift apart.
+
+**Targets each service directly, not the gateway.** The flat per-router saga-client only resolves
+against the services themselves: the gateway's oRPC router nests procedures under
+`tickets`/`orders`/`payments` (so `/rpc/<router>/<proc>`, not `/rpc/<proc>`) and carries no `auth`
+at all (auth is a REST proxy under `/api/auth`). So the probe is wired with one base URL per
+service (`AUTH_BASE_URL`, …), the same way `api-e2e` wires the shared client. Edge/ingress liveness
+is the blackbox exporter's job, not the probe's.
 
 ## Running
 
@@ -24,18 +31,21 @@ the Job failed. The deployment wiring is `SyntheticCronJob`
 ## Env
 
 All required, none defaulted (`src/config.ts` throws on a missing var, so a misconfigured probe fails
-loudly rather than hitting the wrong target). The first two come from the CronJob `env`; the five
+loudly rather than hitting the wrong target). The first five come from the CronJob `env`; the five
 `SYNTHETIC_*` come from the `synthetic-credentials` Secret (`envFrom`).
 
-| Var                           | Purpose                                                        |
-| ----------------------------- | -------------------------------------------------------------- |
-| `GATEWAY_BASE_URL`            | Live gateway base URL — every saga client shares this ingress. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP endpoint for metric/span export.                     |
-| `SYNTHETIC_SELLER_EMAIL`      | Standing seller account (lists the ticket).                    |
-| `SYNTHETIC_SELLER_PASSWORD`   | Standing seller password.                                      |
-| `SYNTHETIC_BUYER_EMAIL`       | Standing buyer account (reserves + charges).                   |
-| `SYNTHETIC_BUYER_PASSWORD`    | Standing buyer password.                                       |
-| `SYNTHETIC_PAYMENT_METHOD_ID` | Stripe **test-mode** payment method — `pm_card_visa`.          |
+| Var                           | Purpose                                                         |
+| ----------------------------- | --------------------------------------------------------------- |
+| `AUTH_BASE_URL`               | auth service base URL (`http://auth:4001`) — sign-in.           |
+| `TICKETS_BASE_URL`            | tickets service base URL (`http://tickets:4002`) — list.        |
+| `ORDERS_BASE_URL`             | orders service base URL (`http://orders:4003`) — reserve/order. |
+| `PAYMENTS_BASE_URL`           | payments service base URL (`http://payments:4004`) — charge.    |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP endpoint for metric/span export.                      |
+| `SYNTHETIC_SELLER_EMAIL`      | Standing seller account (lists the ticket).                     |
+| `SYNTHETIC_SELLER_PASSWORD`   | Standing seller password.                                       |
+| `SYNTHETIC_BUYER_EMAIL`       | Standing buyer account (reserves + charges).                    |
+| `SYNTHETIC_BUYER_PASSWORD`    | Standing buyer password.                                        |
+| `SYNTHETIC_PAYMENT_METHOD_ID` | Stripe **test-mode** payment method — `pm_card_visa`.           |
 
 ## Metrics
 
@@ -51,13 +61,18 @@ On each run the probe also emits a structured log annotated with the `steps` it 
 (`ticketId` / `orderId` / `charge`) — that's how the runbook reads _which_ stage broke off a failed
 Job's logs.
 
-## STANDING-ACCOUNT SEED requirement (read before deploying to a new env)
+## STANDING-ACCOUNT SEED (automated by a deploy-time Job)
 
-The buyer + seller named in the `synthetic-credentials` Secret **must be seeded once** in the target
-environment's `auth` service (via `auth` signUp) **before** the probe can run — it signs in as those
-accounts, it does not create them. A fresh environment with the Secret set but the accounts unseeded
-will fail every run at sign-in until you seed them. Re-seed after any password rotation, and keep the
-Secret in sync.
+The probe signs IN as the buyer + seller named in the `synthetic-credentials` Secret — it does not
+create them. Those accounts are provisioned by a one-shot seed Job (`SyntheticSeedJob`,
+`infra/pulumi/components/synthetic-seed-job.ts`, `command: ["pnpm", "-F", "@tix/synthetic", "seed"]`
+→ `src/seed-main.ts`) that runs on deploy before the CronJob's first tick. The seed is **idempotent**
+(`src/seed.ts`: sign-in, else sign-up), so redeploys are a no-op and a fresh auth DB (first `tilt up`,
+namespace wipe, new env) self-heals — no manual `auth` signUp needed.
+
+Caveats: the seed only runs at deploy time, so if you rotate the `SYNTHETIC_*_PASSWORD` Secret values
+without redeploying (re-running the Job), sign-in for the existing account will fail until the Job
+re-runs against the new password. Keep the Secret and the seeded accounts in sync.
 
 Other operational constraints:
 

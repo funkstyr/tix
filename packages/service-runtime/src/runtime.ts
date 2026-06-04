@@ -16,15 +16,26 @@ export function makeServiceRuntime<R>(opts: {
   appLayer: Layer.Layer<R>;
 }): ManagedRuntime.ManagedRuntime<R, never> {
   // Only load @pyroscope/nodejs (which pulls the native @datadog/pprof addon) when profiling is
-  // actually enabled, so disabled processes and the test suite never touch native code.
+  // actually enabled, so disabled processes and the test suite never touch native code. The load
+  // is fail-soft: @datadog/pprof ships no prebuilt binary for some platforms (e.g. Node 26 on
+  // alpine/musl arm64), and a missing optional profiler must not crash the service. On failure we
+  // log and continue — metrics/logs/traces are unaffected, and profiling still works wherever the
+  // native addon resolves (CI / x64 / prod).
   if (process.env["PROFILING_ENABLED"] === "true" && process.env["PYROSCOPE_SERVER_ADDRESS"]) {
-    const pyroscope = createRequire(import.meta.url)("@pyroscope/nodejs") as PyroscopeLike;
-    startProfiling({
-      serviceName: opts.serviceName,
-      version: opts.version ?? process.env["SERVICE_VERSION"] ?? "dev",
-      env: process.env,
-      pyroscope,
-    });
+    try {
+      const pyroscope = createRequire(import.meta.url)("@pyroscope/nodejs") as PyroscopeLike;
+      startProfiling({
+        serviceName: opts.serviceName,
+        version: opts.version ?? process.env["SERVICE_VERSION"] ?? "dev",
+        env: process.env,
+        pyroscope,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[service-runtime] continuous profiling unavailable, continuing without it: ${reason}`,
+      );
+    }
   }
 
   return ManagedRuntime.make(

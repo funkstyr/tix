@@ -11,7 +11,10 @@ describe("SyntheticCronJob", () => {
       namespace: "tix",
       image: "tix/synthetic:dev",
       schedule: "*/2 * * * *",
-      gatewayUrl: "http://gateway:3000",
+      authBaseUrl: "http://auth:4001",
+      ticketsBaseUrl: "http://tickets:4002",
+      ordersBaseUrl: "http://orders:4003",
+      paymentsBaseUrl: "http://payments:4004",
       otelEndpoint: "http://otel-collector:4318",
       credentialsSecretName: "synthetic-credentials",
     });
@@ -27,6 +30,15 @@ describe("SyntheticCronJob", () => {
     const spec = await promiseOf(cron.cronJob.spec);
     const container = spec.jobTemplate.spec?.template.spec?.containers[0];
     expect(container?.envFrom?.[0]?.secretRef?.name).toBe("synthetic-credentials");
+  });
+
+  it("targets each service directly, not the gateway", async () => {
+    const spec = await promiseOf(cron.cronJob.spec);
+    const container = spec.jobTemplate.spec?.template.spec?.containers[0];
+    const env = Object.fromEntries((container?.env ?? []).map((e) => [e.name, e.value]));
+    expect(env["AUTH_BASE_URL"]).toBe("http://auth:4001");
+    expect(env["PAYMENTS_BASE_URL"]).toBe("http://payments:4004");
+    expect(env["GATEWAY_BASE_URL"]).toBeUndefined();
   });
 
   it("runs exactly one attempt per tick", async () => {

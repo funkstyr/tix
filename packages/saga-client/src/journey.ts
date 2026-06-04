@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import type { PaymentIntentStatus } from "@tix/contracts/payments";
 
 import type { SagaClients } from "./clients.ts";
@@ -61,7 +63,7 @@ export async function runBuyerJourney(opts: BuyerJourneyOptions): Promise<BuyerJ
     orderId = order.id;
     steps.orderId = order.id;
 
-    const payment = await clients.payments.create({
+    const payment = await chargeWithRetry(clients, {
       token: buyer.token,
       orderId: order.id,
       paymentMethodId: opts.paymentMethodId,
@@ -85,4 +87,36 @@ export async function runBuyerJourney(opts: BuyerJourneyOptions): Promise<BuyerJ
       }
     }
   }
+}
+
+// payments builds its order view by consuming `order.created.v1` from NATS, so a charge fired
+// immediately after `orders.create` can race that projection and fail with "order not found".
+// Retry the charge a few times with a short backoff; any other failure propagates at once.
+const CHARGE_MAX_ATTEMPTS = 5;
+const CHARGE_RETRY_DELAY_MS = 400;
+
+function isOrderNotProjectedYet(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.toLowerCase().includes("order not found");
+}
+
+async function chargeWithRetry(
+  clients: SagaClients,
+  input: Parameters<SagaClients["payments"]["create"]>[0],
+): Promise<Awaited<ReturnType<SagaClients["payments"]["create"]>>> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= CHARGE_MAX_ATTEMPTS; attempt++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- serial retry by design
+      return await clients.payments.create(input);
+    } catch (error) {
+      if (!isOrderNotProjectedYet(error)) throw error;
+
+      lastError = error;
+      // eslint-disable-next-line no-await-in-loop -- backoff before the next attempt
+      await delay(CHARGE_RETRY_DELAY_MS);
+    }
+  }
+
+  throw lastError;
 }

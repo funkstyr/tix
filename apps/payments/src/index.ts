@@ -31,14 +31,18 @@ const program = Effect.gen(function* () {
 
   yield* Effect.forkScoped(paymentsSaturationPoller);
 
+  // The order-projection consumers read `order.*` events, which live in the ORDERS stream — not
+  // payments' own PAYMENTS stream. Binding them to `env.stream` matches zero messages.
   yield* Effect.acquireRelease(
-    Effect.promise(() => startPaymentsOrderCreatedConsumer({ runtime, nats, stream: env.stream })),
+    Effect.promise(() =>
+      startPaymentsOrderCreatedConsumer({ runtime, nats, stream: env.ordersStream }),
+    ),
     (consumer) => Effect.promise(() => consumer.stop()),
   );
 
   yield* Effect.acquireRelease(
     Effect.promise(() =>
-      startPaymentsOrderCancelledConsumer({ runtime, nats, stream: env.stream }),
+      startPaymentsOrderCancelledConsumer({ runtime, nats, stream: env.ordersStream }),
     ),
     (consumer) => Effect.promise(() => consumer.stop()),
   );

@@ -23,10 +23,14 @@ export type SagaClientUrls = {
   paymentsBaseUrl: string;
 };
 
+// One auth client on its own. The synthetic seed only needs auth (sign-in/sign-up), so it builds
+// just this rather than the full saga set — and makeSagaClients reuses it to stay DRY.
+export function makeAuthClient(authBaseUrl: string): AuthRouterClient {
+  return createORPCClient(new RPCLink({ url: joinRpcUrl(authBaseUrl) }));
+}
+
 export function makeSagaClients(urls: SagaClientUrls): SagaClients {
-  const auth: AuthRouterClient = createORPCClient(
-    new RPCLink({ url: joinRpcUrl(urls.authBaseUrl) }),
-  );
+  const auth = makeAuthClient(urls.authBaseUrl);
   const tickets: TicketsRouterClient = createORPCClient(
     new RPCLink({ url: joinRpcUrl(urls.ticketsBaseUrl) }),
   );

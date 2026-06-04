@@ -9,12 +9,13 @@ import { recordJourney } from "./metrics.ts";
 
 const env = parseEnv();
 
-// All routers sit behind the one gateway URL in a live deployment, so every client shares it.
+// Each router is its own service; the flat saga-client targets them directly (see config.ts for
+// why the gateway can't serve this client shape).
 const clients = makeSagaClients({
-  authBaseUrl: env.gatewayUrl,
-  ticketsBaseUrl: env.gatewayUrl,
-  ordersBaseUrl: env.gatewayUrl,
-  paymentsBaseUrl: env.gatewayUrl,
+  authBaseUrl: env.authBaseUrl,
+  ticketsBaseUrl: env.ticketsBaseUrl,
+  ordersBaseUrl: env.ordersBaseUrl,
+  paymentsBaseUrl: env.paymentsBaseUrl,
 });
 
 // No app layer — the probe only needs the observability layer so its metrics/spans export.

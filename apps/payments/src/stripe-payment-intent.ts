@@ -29,6 +29,11 @@ export function createStripePaymentIntentClient(stripe: Stripe): PaymentIntentCl
           currency: args.currency,
           payment_method: args.paymentMethodId,
           confirm: true,
+          // Confirming server-side with no browser to handle redirects: opt out of
+          // redirect-based methods so Stripe doesn't demand a `return_url`. Required since the
+          // pinned SDK API version (2024-06+/dahlia) rejects a bare `confirm` + `payment_method`
+          // with an invalid_request_error otherwise.
+          automatic_payment_methods: { enabled: true, allow_redirects: "never" },
           metadata: { orderId: args.orderId },
         },
         { idempotencyKey: args.orderId },

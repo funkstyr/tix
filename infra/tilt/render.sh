@@ -16,6 +16,7 @@
 # strings derive from the same config), which they are.
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$(dirname "$0")/../pulumi"
 
 export PULUMI_CONFIG_PASSPHRASE="${PULUMI_CONFIG_PASSPHRASE:-tilt-dev}"
@@ -39,9 +40,29 @@ RENDER_DIR="$(pwd)/rendered-tilt"
   set_secret prometheusExporterPassword tilt_prometheus_exporter
   set_secret betterAuthSecret tilt_better_auth_secret_min_32_characters
   set_secret ticketsServiceToken tilt_tickets_service_token
-  set_secret stripeKey sk_test_tilt_placeholder
+  # Real Stripe test key for loadgen/synthetic charges, pulled from the gitignored
+  # apps/payments/.env if present; otherwise a placeholder that boots payments but fails
+  # real charges. This is the ONLY value taken from an app .env — the rest of the
+  # deployment env (DB URLs, service URLs, NATS, ports) is owned by the Pulumi program
+  # and must NOT come from .env, whose values target standalone/compose runs on localhost.
+  stripe_key="$(grep -E '^STRIPE_KEY=' "$REPO_ROOT/apps/payments/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\r' || true)"
+  set_secret stripeKey "${stripe_key:-sk_test_tilt_placeholder}"
+  # Garage object store (round-4 o11y backends). Format-validated at runtime:
+  # rpcSecret + s3SecretKey are hex (32-byte / 64-char); the S3 access-key id has
+  # a dev default in index.ts, so only the secret half is set here.
+  set_secret garageRpcSecret 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  set_secret garageAdminToken tilt_garage_admin_token
+  set_secret garageS3SecretKey fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 
   pulumi config set imagePullPolicy Never
+  # Enable the k6 load generator (ADR-0010) so the dev loop has continuous gateway
+  # traffic feeding the RED/saga dashboards. Unlike the synthetic probe it drives the
+  # gateway correctly (sign-in via the /api/auth REST proxy + the nested /rpc paths).
+  pulumi config set loadgenEnabled true
+  # Profiling stays at its default (on): `@tix/service-runtime` now loads the native
+  # @datadog/pprof addon fail-soft, so on platforms without a prebuilt binary (Node 26
+  # on alpine/musl arm64) the service logs a warning and runs without profiling instead
+  # of crashing. No stack-specific override needed.
   pulumi config set kubernetes:renderYamlToDirectory "$RENDER_DIR"
 
   # `renderYamlToDirectory` only writes files for resources that *changed*, so a

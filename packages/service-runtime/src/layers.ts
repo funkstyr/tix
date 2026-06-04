@@ -10,6 +10,7 @@ import { traceparentHeaders } from "@tix/observability/otel-http";
 import { otlpLayer } from "@tix/observability/otel-layer";
 import { withResilience } from "@tix/observability/resilience";
 
+import { heartbeatLayer } from "./heartbeat.js";
 import { logLevelFromEnv } from "./log-level.js";
 import { AuthClient, EventPublisher, Nats } from "./tags.js";
 
@@ -79,12 +80,23 @@ export function makeObservabilityLayer(opts: {
   serviceName: string;
   otelEndpoint: string;
 }): Layer.Layer<never> {
-  return Layer.mergeAll(
+  // The logger set — OTLP export + pretty console + level gate — as one memoized layer. The
+  // heartbeat runs as a background fiber, and a forked fiber snapshots its loggers at fork time;
+  // forked as a bare sibling of these layers it races their setup and its beats land on Effect's
+  // default logfmt logger (stdout only, never OTLP → invisible in Loki). Providing `loggers` to the
+  // heartbeat forces it to build *after* them, so the fiber inherits the OTLP + pretty loggers and
+  // its beats reach Loki. `loggers` is one reference, so the merge memoizes it — a single exporter.
+  const loggers = Layer.mergeAll(
     otlpLayer({ serviceName: opts.serviceName, baseUrl: opts.otelEndpoint }).pipe(
       Layer.provide(FetchHttpClient.layer),
     ),
-    globalContextManagerLayer,
     Logger.pretty,
     Logger.minimumLogLevel(logLevelFromEnv(process.env["LOG_LEVEL"])),
+  );
+
+  return Layer.mergeAll(
+    loggers,
+    globalContextManagerLayer,
+    heartbeatLayer({ serviceName: opts.serviceName }).pipe(Layer.provide(loggers)),
   );
 }

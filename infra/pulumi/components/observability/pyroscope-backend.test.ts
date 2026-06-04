@@ -34,7 +34,9 @@ describe("PyroscopeBackend", () => {
     const pyroscope = build();
 
     const data = await promiseOf(pyroscope.config.data);
-    expect(data?.["pyroscope.yaml"] ?? "").toContain("360h");
+    // The key must be `compactor_blocks_retention_period` — pyroscope:1.14.0 rejects
+    // a bare `limits.retention_period` at config-validation and crashloops.
+    expect(data?.["pyroscope.yaml"] ?? "").toContain("compactor_blocks_retention_period: 360h");
   });
 
   it("emits Garage-required S3 keys so path-style plaintext access works", async () => {

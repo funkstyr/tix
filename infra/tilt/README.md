@@ -37,21 +37,33 @@ src/index.ts`) instead of `node dist/…`. Tilt's `live_update` syncs changed
 
 ```sh
 brew install tilt-dev/tap/tilt kind kubectl pulumi   # tilt is the only new one
-kind create cluster --name tix
-kubectl apply -k github.com/kubernetes/ingress-nginx/deploy/static/provider/kind
 ```
 
-`pnpm install` must have run (the Pulumi program and the dev images need the
-workspace). The kube context must be `kind-tix` — the Tiltfile refuses anything
-that isn't `kind-*` as a safety rail.
+That's the whole manual setup. The cluster, ingress-nginx, kube context, and
+`pnpm install` are all bootstrapped by the entrypoint below — the only thing it
+won't start for you is the **Docker daemon** (start OrbStack/Docker first).
 
 ## Run
 
 ```sh
-tilt up          # opens the web UI; builds images, applies manifests, streams logs
+pnpm dev:tilt            # = infra/tilt/up.sh — the one command you need
+pnpm dev:tilt --stream   # extra args pass straight through to `tilt up`
 # … edit apps/<svc>/src/** → Tilt syncs into the pod, node --watch restarts …
-tilt down        # tears down the applied resources
+tilt down                # tears down the applied resources (cluster stays)
 ```
+
+`infra/tilt/up.sh` is idempotent: it ensures the `kind-tix` cluster exists (with
+the ingress port-mapping), selects the `kind-tix` context, waits for
+ingress-nginx, installs workspace deps if missing, then execs `tilt up`. After a
+reboot every step is a fast no-op except re-selecting the context, so one command
+brings the whole stack back.
+
+**Why not bare `tilt up`?** Tilt binds its kube context at startup and evaluates
+the Tiltfile against an already-connected cluster — so it can't create a missing
+cluster or rebind its own context. Running `tilt up` directly still works once
+the cluster + context exist; the Tiltfile safety rail (`ensure_kind_context`)
+will even auto-switch the context for you, but Tilt's startup lock means that
+switch only takes effect on a **re-run**. `pnpm dev:tilt` does it all in one shot.
 
 Port-forwards (set in the Tiltfile): gateway `4000`, auth `4001`, tickets
 `4002`, orders `4003`, payments `4004`, web `5173` → pod `80`. So

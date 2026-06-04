@@ -13,6 +13,7 @@ import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
 import { StreamBootstrap } from "./components/stream-bootstrap.ts";
 import { SyntheticCronJob } from "./components/synthetic-cronjob.ts";
+import { SyntheticSeedJob } from "./components/synthetic-seed-job.ts";
 
 const POSTGRES_PORT = 5432;
 const POSTGRES_DATABASE = "tix";
@@ -139,10 +140,28 @@ const gitSha = config.get("gitSha") ?? process.env["GIT_SHA"];
 // (shared with profiles/traces/deploy markers) and falls back to "dev" — the
 // same default the hook applies when the env is unset. Spread into each Node
 // service's `env` below; the static SPA `web` Deployment is excluded (no runtime).
+//
+// Gated by `profilingEnabled` (default true, so prod/dev/smoke keep profiling).
+// The Tilt dev loop sets it false: `@datadog/pprof` (loaded by the hook) ships no
+// prebuilt native binary for Node 26 (abi 147) on alpine/musl arm64, so loading it
+// crashes the service on boot. Profiling is the only signal that breaks there; the
+// metrics/logs/traces pillars are unaffected.
+const profilingEnabled = config.getBoolean("profilingEnabled") ?? true;
 const profilingEnv = {
-  PROFILING_ENABLED: "true",
+  PROFILING_ENABLED: profilingEnabled ? "true" : "false",
   PYROSCOPE_SERVER_ADDRESS: "http://pyroscope:4040",
   SERVICE_VERSION: gitSha ?? "dev",
+};
+
+// OTLP collector readiness budget (ms). Opt-in gate in `@tix/observability`: at boot a service
+// blocks its first log/metric/trace flush until `otel-collector:4318` is reachable, up to this
+// budget, then starts anyway. Without it the collector — which comes up after the apps on a cold
+// boot — isn't ready when the exporter's first batch flushes; the `@effect/opentelemetry` exporter
+// then self-disables for 60s and drops every log in that window, so a service that only logs at
+// startup (gateway, tickets, auth) vanishes from Loki. Bounded so a genuinely-down collector can't
+// wedge boot. Spread into each Node service's `env`; the static SPA `web` has no exporter.
+const collectorReadyEnv = {
+  OTEL_COLLECTOR_READY_TIMEOUT_MS: "60000",
 };
 
 const namespace = new k8s.core.v1.Namespace("tix-namespace", {
@@ -388,13 +407,18 @@ const authDeployment = new ServiceDeployment(
       AUTH_BASE_URL,
       LOG_LEVEL: logLevel,
       ...profilingEnv,
+      ...collectorReadyEnv,
     },
     secrets: {
       DATABASE_URL: { name: authSecret.metadata.name, key: "DATABASE_URL" },
       BETTER_AUTH_SECRET: { name: authSecret.metadata.name, key: "BETTER_AUTH_SECRET" },
     },
   },
-  { dependsOn: authMigration },
+  // `observability.collector` is a head-start edge, not a hard gate: pulumi orders resource
+  // *creation* (collector StatefulSet applied before the apps), but pod readiness still races —
+  // the OTLP readiness gate in `@tix/observability` (awaitCollector) is what actually keeps a
+  // service's first log flush from racing a cold collector and tripping its 60s self-disable.
+  { dependsOn: [authMigration, observability.collector] },
 );
 
 const ticketsMigration = new MigrationJob(
@@ -426,6 +450,7 @@ const ticketsDeployment = new ServiceDeployment(
       NATS_URL,
       LOG_LEVEL: logLevel,
       ...profilingEnv,
+      ...collectorReadyEnv,
     },
     secrets: {
       DATABASE_URL: { name: ticketsSecret.metadata.name, key: "DATABASE_URL" },
@@ -435,7 +460,7 @@ const ticketsDeployment = new ServiceDeployment(
       },
     },
   },
-  { dependsOn: [ticketsMigration, streams] },
+  { dependsOn: [ticketsMigration, streams, observability.collector] },
 );
 
 const ordersMigration = new MigrationJob(
@@ -468,6 +493,7 @@ const ordersDeployment = new ServiceDeployment(
       NATS_URL,
       LOG_LEVEL: logLevel,
       ...profilingEnv,
+      ...collectorReadyEnv,
     },
     secrets: {
       DATABASE_URL: { name: ordersSecret.metadata.name, key: "DATABASE_URL" },
@@ -477,7 +503,7 @@ const ordersDeployment = new ServiceDeployment(
       },
     },
   },
-  { dependsOn: [ordersMigration, streams] },
+  { dependsOn: [ordersMigration, streams, observability.collector] },
 );
 
 const paymentsMigration = new MigrationJob(
@@ -509,13 +535,14 @@ const paymentsDeployment = new ServiceDeployment(
       NATS_URL,
       LOG_LEVEL: logLevel,
       ...profilingEnv,
+      ...collectorReadyEnv,
     },
     secrets: {
       DATABASE_URL: { name: paymentsSecret.metadata.name, key: "DATABASE_URL" },
       STRIPE_KEY: { name: paymentsSecret.metadata.name, key: "STRIPE_KEY" },
     },
   },
-  { dependsOn: [paymentsMigration, streams] },
+  { dependsOn: [paymentsMigration, streams, observability.collector] },
 );
 
 const expirationMigration = new MigrationJob(
@@ -550,12 +577,13 @@ const expiration = new ServiceDeployment(
       REDIS_URL,
       LOG_LEVEL: logLevel,
       ...profilingEnv,
+      ...collectorReadyEnv,
     },
     secrets: {
       DATABASE_URL: { name: expirationSecret.metadata.name, key: "DATABASE_URL" },
     },
   },
-  { dependsOn: [expirationMigration, streams] },
+  { dependsOn: [expirationMigration, streams, observability.collector] },
 );
 
 // Gateway reads `BETTER_AUTH_SECRET` from `auth-credentials` (single source of
@@ -563,29 +591,34 @@ const expiration = new ServiceDeployment(
 // consume it today — sessions are resolved by HTTP-calling auth — but it is
 // declared so a future local-verification path doesn't require a fresh secret
 // roll-out.
-const gatewayDeployment = new ServiceDeployment("gateway", {
-  namespace: namespace.metadata.name,
-  name: "gateway",
-  image: gatewayImage,
-  imagePullPolicy,
-  port: GATEWAY_PORT,
-  replicas: 1,
-  healthPath: "/health",
-  readinessPath: "/ready",
-  env: {
-    GATEWAY_HTTP_PORT: String(GATEWAY_PORT),
-    WEB_ORIGIN: webOrigin,
-    AUTH_BASE_URL,
-    TICKETS_BASE_URL,
-    ORDERS_BASE_URL,
-    PAYMENTS_BASE_URL,
-    LOG_LEVEL: logLevel,
-    ...profilingEnv,
+const gatewayDeployment = new ServiceDeployment(
+  "gateway",
+  {
+    namespace: namespace.metadata.name,
+    name: "gateway",
+    image: gatewayImage,
+    imagePullPolicy,
+    port: GATEWAY_PORT,
+    replicas: 1,
+    healthPath: "/health",
+    readinessPath: "/ready",
+    env: {
+      GATEWAY_HTTP_PORT: String(GATEWAY_PORT),
+      WEB_ORIGIN: webOrigin,
+      AUTH_BASE_URL,
+      TICKETS_BASE_URL,
+      ORDERS_BASE_URL,
+      PAYMENTS_BASE_URL,
+      LOG_LEVEL: logLevel,
+      ...profilingEnv,
+      ...collectorReadyEnv,
+    },
+    secrets: {
+      BETTER_AUTH_SECRET: { name: authSecret.metadata.name, key: "BETTER_AUTH_SECRET" },
+    },
   },
-  secrets: {
-    BETTER_AUTH_SECRET: { name: authSecret.metadata.name, key: "BETTER_AUTH_SECRET" },
-  },
-});
+  { dependsOn: [observability.collector] },
+);
 
 // Web is the Vite SPA served by nginx out of `apps/web/dist`. No env, no
 // secrets, no migration — the image is a static-asset bundle. Probe `/` so
@@ -629,11 +662,27 @@ if (loadgenEnabled) {
 }
 
 // Synthetic buyer-journey probe on a schedule (ADR-0011 Tier 3, D5). Always-on (dev AND prod),
-// like the blackbox exporter — outside-in liveness shouldn't be a dev-only signal. Drives the live
-// gateway saga end-to-end every 2 minutes and exports its own probe metrics to the collector
-// before exiting; a failed journey marks the Job failed and feeds the probe-failure alert +
-// synthetics board. Depends on the gateway (the surface it drives) and the collector (its export
+// like the blackbox exporter — business-path liveness shouldn't be a dev-only signal. Drives the
+// reserve→order→charge saga directly against the services every 2 minutes (the flat saga-client
+// can't resolve the gateway's nested, auth-less oRPC router) and exports its own probe metrics to
+// the collector before exiting; a failed journey marks the Job failed and feeds the probe-failure
+// alert + synthetics board. Depends on the services it drives and the collector (its export
 // target). Concurrency Forbid keeps a slow run from overlapping the next tick.
+// Provision the probe's standing seller + buyer accounts once, before the CronJob's first tick:
+// the probe signs IN to these, so a fresh auth DB would otherwise fail every journey at sign-in.
+// Idempotent, so it's a no-op on redeploy.
+const syntheticSeed = new SyntheticSeedJob(
+  "tix-synthetic",
+  {
+    namespace: namespace.metadata.name,
+    image: syntheticImage,
+    imagePullPolicy,
+    authBaseUrl: AUTH_BASE_URL,
+    credentialsSecretName: syntheticSecret.metadata.name,
+  },
+  { dependsOn: [authDeployment] },
+);
+
 const synthetic = new SyntheticCronJob(
   "tix-synthetic",
   {
@@ -641,11 +690,23 @@ const synthetic = new SyntheticCronJob(
     image: syntheticImage,
     imagePullPolicy,
     schedule: "*/2 * * * *",
-    gatewayUrl: `http://gateway:${GATEWAY_PORT}`,
+    authBaseUrl: AUTH_BASE_URL,
+    ticketsBaseUrl: TICKETS_BASE_URL,
+    ordersBaseUrl: ORDERS_BASE_URL,
+    paymentsBaseUrl: PAYMENTS_BASE_URL,
     otelEndpoint: "http://otel-collector:4318",
     credentialsSecretName: syntheticSecret.metadata.name,
   },
-  { dependsOn: [gatewayDeployment, observability.collector] },
+  {
+    dependsOn: [
+      authDeployment,
+      ticketsDeployment,
+      ordersDeployment,
+      paymentsDeployment,
+      observability.collector,
+      syntheticSeed.job,
+    ],
+  },
 );
 
 export const namespaceName = namespace.metadata.name;
@@ -678,8 +739,9 @@ export const nodeExporterService = observability.nodeExporter.service.metadata.n
 export const kubeStateMetricsService = observability.kubeStateMetrics.service.metadata.name;
 // Present only when `alertingEnabled` (dev); undefined elsewhere, so prod gets no such output.
 export const alertLogSinkService = observability.logSink?.service.metadata.name;
-// Always-on synthetic buyer-journey CronJob (ADR-0011 Tier 3, D5).
+// Always-on synthetic buyer-journey CronJob (ADR-0011 Tier 3, D5) + its standing-account seed Job.
 export const syntheticCronJob = synthetic.cronJob.metadata.name;
+export const syntheticSeedJob = syntheticSeed.job.metadata.name;
 export const ingressName = ingress.ingress.metadata.name;
 export const ingressHostName = ingressHost;
 // Present only when `loadgenEnabled` (dev); undefined elsewhere, so it simply doesn't

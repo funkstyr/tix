@@ -6,6 +6,7 @@
   "scripts": {
     "check-types": "tsgo --noEmit",
     "probe": "node src/index.ts",
+    "seed": "node src/seed-main.ts",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

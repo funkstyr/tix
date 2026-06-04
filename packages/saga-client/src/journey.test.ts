@@ -96,6 +96,53 @@ describe("runBuyerJourney", () => {
     expect(result.steps.charge).toBe("succeeded");
   });
 
+  it("retries the charge while the order projection is still catching up", async () => {
+    vi.useFakeTimers();
+    try {
+      const { clients, calls } = stubClients();
+      let attempts = 0;
+      clients.payments.create = vi.fn<() => Promise<{ id: string; status: "succeeded" }>>(() => {
+        attempts += 1;
+        calls.push("payment.create");
+        if (attempts < 3) return Promise.reject(new Error("order not found"));
+        return Promise.resolve({ id: "33333333-3333-4333-8333-333333333333", status: "succeeded" });
+      }) as unknown as SagaClients["payments"]["create"];
+
+      const pending = runBuyerJourney({
+        clients,
+        seller: { email: "seller@x.com", password: "pw" },
+        buyer: { email: "buyer@x.com", password: "pw" },
+        paymentMethodId: "pm_card_visa",
+      });
+      await vi.runAllTimersAsync();
+      const result = await pending;
+
+      expect(result.ok).toBe(true);
+      expect(attempts).toBe(3);
+      expect(calls.filter((c) => c === "payment.create")).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry a non-projection charge failure", async () => {
+    const { clients } = stubClients();
+    clients.payments.create = vi.fn<() => Promise<never>>(() =>
+      Promise.reject(new Error("payment provider unavailable")),
+    ) as unknown as SagaClients["payments"]["create"];
+
+    const result = await runBuyerJourney({
+      clients,
+      seller: { email: "seller@x.com", password: "pw" },
+      buyer: { email: "buyer@x.com", password: "pw" },
+      paymentMethodId: "pm_card_visa",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/payment provider unavailable/);
+    expect(clients.payments.create).toHaveBeenCalledOnce();
+  });
+
   it("reports failure (and still attempts cleanup) when the charge does not succeed", async () => {
     const { clients } = stubClients();
     clients.payments.create = vi.fn<

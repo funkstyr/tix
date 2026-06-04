@@ -87,6 +87,7 @@ function makeTestEnv(): PaymentsEnv {
     natsUrl: "nats://test",
     stripeKey: "sk_test",
     stream: "PAYMENTS",
+    ordersStream: "ORDERS",
     otelEndpoint: "http://otel.test:4318",
   };
 }
