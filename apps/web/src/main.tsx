@@ -2,7 +2,7 @@ import { type JSX, StrictMode, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 
-// eslint-disable-next-line import/no-unassigned-import
+// eslint-disable-next-line import/no-unassigned-import -- side-effect CSS import (theme)
 import "@tix/core-ui/styles.css";
 import { initWebRum, setRumRoute } from "@tix/observability/web-rum";
 
