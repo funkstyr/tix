@@ -6,6 +6,7 @@ export type LabelProps = ComponentProps<"label">;
 
 export function Label({ className, ...props }: LabelProps): JSX.Element {
   return (
+    // oxlint-disable-next-line jsx-a11y/label-has-associated-control
     <label
       data-slot="label"
       className={cn(

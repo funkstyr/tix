@@ -27,7 +27,7 @@
       "rules": {
         "no-console": "off"
       }
-    }
+    },
   ],
   "ignorePatterns": [
     "**/drizzle/migrations/**",

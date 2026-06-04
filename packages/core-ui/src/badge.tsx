@@ -29,5 +29,7 @@ export type BadgeProps = ComponentProps<"span"> & {
 };
 
 export function Badge({ className, variant, ...props }: BadgeProps): JSX.Element {
-  return <span data-slot="badge" className={cn(badgeVariants({ variant }), className)} {...props} />;
+  return (
+    <span data-slot="badge" className={cn(badgeVariants({ variant }), className)} {...props} />
+  );
 }

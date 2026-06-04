@@ -1,8 +1,9 @@
-import "@tix/core-ui/styles.css";
 import { type JSX, StrictMode, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 
+// eslint-disable-next-line import/no-unassigned-import
+import "@tix/core-ui/styles.css";
 import { initWebRum, setRumRoute } from "@tix/observability/web-rum";
 
 import { createWebAuthClient } from "./auth/auth-client";
