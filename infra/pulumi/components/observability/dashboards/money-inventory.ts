@@ -1,4 +1,6 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
+
+import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import * as heatmap from "@grafana/grafana-foundation-sdk/heatmap";
 import { DataqueryBuilder, PromQueryFormat } from "@grafana/grafana-foundation-sdk/prometheus";
 import * as stat from "@grafana/grafana-foundation-sdk/stat";
@@ -22,6 +24,7 @@ export function moneyInventoryDashboardJson(): string {
     )
     .tags(["domain", "money"])
     .refresh("30s")
+    .annotation(scenarioAnnotationLayer())
     .withPanel(gmv())
     .withPanel(aov())
     .withPanel(paymentSuccessRate())

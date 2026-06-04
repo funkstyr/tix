@@ -45,4 +45,10 @@ describe("edgeAuthDashboardJson", () => {
   it("queries the provisioned prometheus datasource", () => {
     expect(edgeAuthDashboardJson()).toContain('"uid": "prometheus"');
   });
+
+  it("carries the scenario annotation layer so demo triggers mark the timeline", () => {
+    const dashboard = JSON.parse(edgeAuthDashboardJson());
+    const names = (dashboard.annotations?.list ?? []).map((a: { name: string }) => a.name);
+    expect(names).toContain("Scenarios");
+  });
 });

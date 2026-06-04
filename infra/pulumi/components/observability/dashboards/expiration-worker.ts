@@ -1,5 +1,6 @@
 import { DashboardBuilder } from "@grafana/grafana-foundation-sdk/dashboard";
 
+import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import { tsPanel } from "./_shared.ts";
 
 // Expiration-worker board (ADR-0010), Domain folder. The BullMQ delayed-job worker that
@@ -18,6 +19,7 @@ export function expirationWorkerDashboardJson(): string {
     )
     .tags(["domain", "expiration"])
     .refresh("30s")
+    .annotation(scenarioAnnotationLayer())
     .withPanel(
       tsPanel("Expirations processed", "reqps", { h: 8, w: 12, x: 0, y: 0 }, [
         {

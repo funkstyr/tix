@@ -42,4 +42,10 @@ describe("moneyInventoryDashboardJson", () => {
   it("renders the stat panels as instant queries", () => {
     expect(moneyInventoryDashboardJson()).toContain('"instant": true');
   });
+
+  it("carries the scenario annotation layer so demo triggers mark the timeline", () => {
+    const dashboard = JSON.parse(moneyInventoryDashboardJson());
+    const names = (dashboard.annotations?.list ?? []).map((a: { name: string }) => a.name);
+    expect(names).toContain("Scenarios");
+  });
 });
