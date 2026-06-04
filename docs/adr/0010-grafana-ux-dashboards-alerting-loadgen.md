@@ -62,3 +62,12 @@ Both synthesize RED + service-graph metrics. The collector connectors keep all s
   (`alertingEnabled` is unset there), so end-to-end "a failure trips an alert and the payload
   lands in the sink's logs" is a manual verify; components are unit-tested on the rendered
   manifests.
+- **Demo-grade smoke landed (2026-06).** A dev-only curated catalog seed
+  (`apps/synthetic` `seed-catalog` → `SyntheticCatalogSeedJob`, gated with `loadgenEnabled`)
+  lists ~a dozen believable anchor events so the web app is browsable and the loadgen drives
+  stable anchors. The k6 baseline became a repeating diurnal ramp + an ambient churn scenario
+  (so the boards breathe and expirations tick over), and three on-demand scenarios
+  (flash-sale / decline-wave / expiration-storm) ship as k6 ConfigMaps + static Job manifests
+  fired from Tilt `cmd_button`s, each posting a `scenario`-tagged Grafana annotation drawn by
+  `scenarioAnnotationLayer()` on the saga / RED / money / expiration boards. All dev-only; prod
+  renders none of it.

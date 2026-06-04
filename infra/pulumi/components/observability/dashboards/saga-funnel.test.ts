@@ -47,4 +47,10 @@ describe("sagaFunnelDashboardJson", () => {
     expect(deploys.datasource).toEqual({ type: "grafana", uid: "-- Grafana --" });
     expect(deploys.target.tags).toEqual(["deploy"]);
   });
+
+  it("carries the scenario annotation layer so demo triggers mark the timeline", () => {
+    const dashboard = JSON.parse(sagaFunnelDashboardJson());
+    const names = (dashboard.annotations?.list ?? []).map((a: { name: string }) => a.name);
+    expect(names).toContain("Scenarios");
+  });
 });

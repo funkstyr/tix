@@ -14,6 +14,8 @@
 # Prereqs: a local kind cluster (`kind create cluster --name tix`) with the
 # ingress-nginx controller, plus `tilt`, `kubectl`, `pulumi`. Run `tilt up`.
 
+load('ext://uibutton', 'cmd_button')
+
 # Safety rail: only ever deploy to a local kind cluster. If the current context
 # isn't a kind one we don't silently deploy elsewhere — but if a kind-* context
 # does exist we switch to it and ask for a re-run (Tilt locks the context at
@@ -133,3 +135,30 @@ k8s_resource('synthetic-seed', resource_deps=['auth'], labels=['observability'])
 # The probe drives the live gateway saga every 2m → feeds the dashboards. Order it
 # after the gateway and the seed so the first tick has accounts and isn't a miss.
 k8s_resource('synthetic', resource_deps=['gateway', 'synthetic-seed'], labels=['observability'])
+# Dev-only k6 load generator (rendered only when loadgenEnabled). Surfaced as its own resource so
+# the demo scenario buttons can attach to it.
+k8s_resource('loadgen', labels=['observability'])
+# One-shot curated catalog seed (dev-only, paired with the loadgen). Lists believable anchor events
+# so the web app has data to browse and the loadgen has stable anchors. Depends on the account seed
+# (provides the seller) and tickets.
+k8s_resource('synthetic-catalog-seed', resource_deps=['tickets', 'synthetic-seed'], labels=['observability'])
+
+# Demo control panel: fire a scenario on cue. Each button kubectl-creates a fresh k6 Job (the
+# scenario script already lives in-cluster as a ConfigMap rendered by the LoadGenerator) and posts
+# a `scenario`-tagged Grafana annotation, so the saga/RED/money/expiration boards show cause->effect.
+SCENARIOS = [
+    ('flash-sale', 'Flash sale'),
+    ('decline-wave', 'Decline wave'),
+    ('expiration-storm', 'Expiration storm'),
+]
+for slug, label in SCENARIOS:
+    cmd_button(
+        name='scenario-' + slug,
+        resource='loadgen',
+        text=label,
+        argv=[
+            'sh', '-c',
+            'kubectl create -f infra/tilt/scenarios/' + slug + '-job.yaml && ' +
+            'infra/tilt/scenarios/annotate.sh ' + slug,
+        ],
+    )

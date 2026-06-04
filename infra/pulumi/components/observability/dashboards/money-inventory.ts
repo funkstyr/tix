@@ -4,6 +4,7 @@ import { DataqueryBuilder, PromQueryFormat } from "@grafana/grafana-foundation-s
 import * as stat from "@grafana/grafana-foundation-sdk/stat";
 import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
+import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import { PROMETHEUS, statPanel, tsPanel } from "./_shared.ts";
 
 // Money & inventory board (ADR-0010), Domain folder. The order-value distribution
@@ -22,6 +23,7 @@ export function moneyInventoryDashboardJson(): string {
     )
     .tags(["domain", "money"])
     .refresh("30s")
+    .annotation(scenarioAnnotationLayer())
     .withPanel(gmv())
     .withPanel(aov())
     .withPanel(paymentSuccessRate())

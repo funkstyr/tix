@@ -12,6 +12,7 @@ import { PostgresRoles, type PostgresRole } from "./components/postgres-roles.ts
 import { ServiceDeployment } from "./components/service-deployment.ts";
 import { StatefulInfra } from "./components/stateful-infra.ts";
 import { StreamBootstrap } from "./components/stream-bootstrap.ts";
+import { SyntheticCatalogSeedJob } from "./components/synthetic-catalog-seed-job.ts";
 import { SyntheticCronJob } from "./components/synthetic-cronjob.ts";
 import { SyntheticSeedJob } from "./components/synthetic-seed-job.ts";
 
@@ -645,22 +646,6 @@ const ingress = new IngressRoutes("tix", {
   grafana: { name: observability.grafana.service.metadata.name, port: GRAFANA_PORT },
 });
 
-// Dev-only k6 load generator (ADR-0010), gated by `loadgenEnabled`. Drives the gateway's
-// public surface and pushes its own load metrics to the collector, so it depends on both.
-let loadgenDeploymentName: pulumi.Output<string> | undefined;
-if (loadgenEnabled) {
-  const loadgen = new LoadGenerator(
-    "tix-loadgen",
-    {
-      namespace: namespace.metadata.name,
-      gatewayBaseUrl: `http://gateway:${GATEWAY_PORT}`,
-      otelEndpoint: "otel-collector:4317",
-    },
-    { dependsOn: [gatewayDeployment, observability.collector] },
-  );
-  loadgenDeploymentName = loadgen.deployment.metadata.name;
-}
-
 // Synthetic buyer-journey probe on a schedule (ADR-0011 Tier 3, D5). Always-on (dev AND prod),
 // like the blackbox exporter — business-path liveness shouldn't be a dev-only signal. Drives the
 // reserve→order→charge saga directly against the services every 2 minutes (the flat saga-client
@@ -708,6 +693,38 @@ const synthetic = new SyntheticCronJob(
     ],
   },
 );
+
+// Dev-only k6 load generator (ADR-0010), gated by `loadgenEnabled`. Drives the gateway's
+// public surface and pushes its own load metrics to the collector, so it depends on both.
+let loadgenDeploymentName: pulumi.Output<string> | undefined;
+if (loadgenEnabled) {
+  const loadgen = new LoadGenerator(
+    "tix-loadgen",
+    {
+      namespace: namespace.metadata.name,
+      gatewayBaseUrl: `http://gateway:${GATEWAY_PORT}`,
+      otelEndpoint: "otel-collector:4317",
+    },
+    { dependsOn: [gatewayDeployment, observability.collector] },
+  );
+  loadgenDeploymentName = loadgen.deployment.metadata.name;
+
+  // Dev-only curated catalog seed (paired with the loadgen): gives the web app believable data to
+  // browse and the loadgen stable anchors to drive. Depends on the always-on synthetic-seed Job
+  // (which provisions the seller account) and the tickets service.
+  void new SyntheticCatalogSeedJob(
+    "tix-synthetic",
+    {
+      namespace: namespace.metadata.name,
+      image: syntheticImage,
+      imagePullPolicy,
+      authBaseUrl: AUTH_BASE_URL,
+      ticketsBaseUrl: TICKETS_BASE_URL,
+      credentialsSecretName: syntheticSecret.metadata.name,
+    },
+    { dependsOn: [authDeployment, ticketsDeployment, syntheticSeed.job] },
+  );
+}
 
 export const namespaceName = namespace.metadata.name;
 export const postgresService = infra.postgres.metadata.name;

@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: scenario-decline-wave-
+  namespace: tix
+  labels:
+    app.kubernetes.io/name: loadgen
+    app.kubernetes.io/component: scenario
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loadgen
+        app.kubernetes.io/component: scenario
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.57.0
+          command: ["k6", "run", "/scripts/scenario.js"]
+          env:
+            - name: GATEWAY_BASE_URL
+              value: http://gateway:4000
+            - name: K6_OUT
+              value: experimental-opentelemetry
+            - name: K6_OTEL_GRPC_EXPORTER_ENDPOINT
+              value: otel-collector:4317
+            - name: K6_OTEL_GRPC_EXPORTER_INSECURE
+              value: "true"
+            - name: K6_OTEL_METRIC_PREFIX
+              value: k6_scenario_
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: loadgen-decline-wave

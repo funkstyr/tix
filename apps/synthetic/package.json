@@ -7,6 +7,7 @@
     "check-types": "tsgo --noEmit",
     "probe": "node src/index.ts",
     "seed": "node src/seed-main.ts",
+    "seed-catalog": "node src/seed-catalog-main.ts",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

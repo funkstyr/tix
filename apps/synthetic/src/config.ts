@@ -45,3 +45,16 @@ export function parseSeedEnv() {
     },
   };
 }
+
+// The catalog seed signs the seller in (auth) and lists/creates anchor tickets (tickets), so it
+// parses a narrower env than parseEnv() — only the two URLs it touches plus the seller credentials.
+export function parseCatalogSeedEnv() {
+  return {
+    authBaseUrl: required("AUTH_BASE_URL"),
+    ticketsBaseUrl: required("TICKETS_BASE_URL"),
+    seller: {
+      email: required("SYNTHETIC_SELLER_EMAIL"),
+      password: required("SYNTHETIC_SELLER_PASSWORD"),
+    },
+  };
+}

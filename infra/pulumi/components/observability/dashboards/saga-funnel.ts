@@ -6,6 +6,7 @@ import * as timeseries from "@grafana/grafana-foundation-sdk/timeseries";
 
 import { deployAnnotationLayer } from "./_deploy-annotation-layer.ts";
 import { exemplarLatencyPanel } from "./_exemplar.ts";
+import { scenarioAnnotationLayer } from "./_scenario-annotation-layer.ts";
 import { PROMETHEUS, tsPanel } from "./_shared.ts";
 import type { Series } from "./_shared.ts";
 
@@ -29,6 +30,7 @@ export function sagaFunnelDashboardJson(): string {
     .tags(["domain", "saga"])
     .refresh("30s")
     .annotation(deployAnnotationLayer())
+    .annotation(scenarioAnnotationLayer())
     .withPanel(conversionFunnel())
     .withPanel(conflictRates())
     .withPanel(paymentOutcomes())
