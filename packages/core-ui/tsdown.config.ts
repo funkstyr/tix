@@ -1,3 +1,3 @@
 import { reactPreset } from "@tix/config/tsdown";
 
-export default reactPreset();
+export default reactPreset({ alias: { "@/": "./src/" } });
