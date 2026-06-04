@@ -29,6 +29,11 @@ export function makeAuthClient(authBaseUrl: string): AuthRouterClient {
   return createORPCClient(new RPCLink({ url: joinRpcUrl(authBaseUrl) }));
 }
 
+// One tickets client on its own. The catalog seeder needs tickets without orders/payments.
+export function makeTicketsClient(ticketsBaseUrl: string): TicketsRouterClient {
+  return createORPCClient(new RPCLink({ url: joinRpcUrl(ticketsBaseUrl) }));
+}
+
 export function makeSagaClients(urls: SagaClientUrls): SagaClients {
   const auth = makeAuthClient(urls.authBaseUrl);
   const tickets: TicketsRouterClient = createORPCClient(
