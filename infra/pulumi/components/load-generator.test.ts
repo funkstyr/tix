@@ -88,4 +88,27 @@ describe("LoadGenerator", () => {
     expect(volumes.length).toBeGreaterThan(0);
     expect(volumes.every((v) => v.configMap !== undefined)).toBe(true);
   });
+
+  it("shapes baseline traffic as a repeating diurnal ramp, not a flat constant-VU drone", async () => {
+    const loadgen = build();
+    const data = await promiseOf(loadgen.script.data);
+    const scriptText = data?.["loadgen.js"] ?? "";
+    expect(scriptText).toContain("ramping-vus");
+    expect(scriptText).not.toContain('executor: "constant-vus"');
+  });
+
+  it("runs an ambient churn scenario so listings + expirations tick over", async () => {
+    const loadgen = build();
+    const data = await promiseOf(loadgen.script.data);
+    const scriptText = data?.["loadgen.js"] ?? "";
+    expect(scriptText).toContain("churn:");
+  });
+
+  it("drives reserves against the curated anchor catalog discovered at setup", async () => {
+    const loadgen = build();
+    const data = await promiseOf(loadgen.script.data);
+    const scriptText = data?.["loadgen.js"] ?? "";
+    expect(scriptText).toContain("tickets/list");
+    expect(scriptText).toContain("anchorTicketIds");
+  });
 });

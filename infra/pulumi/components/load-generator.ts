@@ -123,11 +123,29 @@ const CARD_DECLINE = "pm_card_chargeDeclined";
 const INJECT_EVERY = 5;
 
 export const options = {
-  // A continuous load source: a long-running constant-VU scenario. The Deployment restarts
-  // k6 if it ever exits, so load resumes. Thresholds are intentionally omitted — induced
-  // failures must not abort the run.
+  // baseline: a repeating diurnal ramp (trough -> peak -> trough on a ~3min loop) so RED/saga
+  // boards breathe instead of droning. churn: a slow trickle of new listings + abandoned reserves
+  // so expirations tick over ambiently on top of the stable curated anchors. Thresholds omitted on
+  // purpose — induced failures must not abort the run.
   scenarios: {
-    baseline: { executor: "constant-vus", vus: 5, duration: "9999h" },
+    baseline: {
+      executor: "ramping-vus",
+      startVUs: 1,
+      stages: [
+        { duration: "60s", target: 8 },
+        { duration: "30s", target: 8 },
+        { duration: "60s", target: 1 },
+        { duration: "30s", target: 1 },
+      ],
+      gracefulRampDown: "5s",
+    },
+    churn: {
+      executor: "per-vu-iterations",
+      vus: 1,
+      iterations: 100000,
+      maxDuration: "9999h",
+      exec: "churn",
+    },
   },
 };
 
@@ -190,7 +208,21 @@ export function setup() {
     buyerTokens.push(signUp("loadgen-buyer-" + i + "-" + stamp + "@tix.test", "Loadgen Buyer " + i));
   }
 
-  return { buyerTokens: buyerTokens, ticketIds: ticketIds, raceTicketId: raceTicketId };
+  // Discover the curated anchor catalog (seeded by synthetic-catalog-seed) so the baseline drives
+  // believable demo data, not just self-seeded rows. Best-effort: if the seed hasn't landed yet the
+  // list is just the self-seeded tickets, and the baseline still runs.
+  const listed = rpcJson(rpc("tickets/list", { limit: 200 }));
+  const anchorTicketIds = (listed.items || [])
+    .filter(function (t) { return t.quantityAvailable > 0; })
+    .map(function (t) { return t.id; });
+
+  return {
+    buyerTokens: buyerTokens,
+    ticketIds: ticketIds,
+    raceTicketId: raceTicketId,
+    anchorTicketIds: anchorTicketIds,
+    sellerToken: sellerToken,
+  };
 }
 
 // Fire concurrent reserves at the hot ticket so they contend — the forced reservation race.
@@ -204,6 +236,26 @@ function injectRace(buyerTokens, raceTicketId) {
     };
   });
   http.batch(reqs);
+}
+
+// Ambient churn: occasionally list a new throwaway ticket and abandon a reserve (never pay), so the
+// expiration worker has a steady trickle to auto-cancel on top of the stable anchors.
+export function churn(data) {
+  const token = data.buyerTokens[__ITER % data.buyerTokens.length];
+
+  if (__ITER % 4 === 0) {
+    rpc("tickets/create", {
+      token: data.sellerToken,
+      title: "Churn drop " + __ITER,
+      quantityTotal: 10,
+      unitPriceCents: 2000,
+    });
+  }
+
+  // Abandon: reserve and never pay -> the order expires.
+  const pool = data.anchorTicketIds.length > 0 ? data.anchorTicketIds : data.ticketIds;
+  rpc("orders/create", { token: token, ticketId: pool[__ITER % pool.length], quantity: 1 });
+  sleep(3);
 }
 
 export default function (data) {
@@ -220,8 +272,9 @@ export default function (data) {
     return;
   }
 
-  // reserve
-  const ticketId = data.ticketIds[__ITER % data.ticketIds.length];
+  // reserve — prefer a curated anchor (believable on the boards) and fall back to a self-seeded row.
+  const pool = data.anchorTicketIds.length > 0 ? data.anchorTicketIds : data.ticketIds;
+  const ticketId = pool[__ITER % pool.length];
   const orderRes = rpc("orders/create", { token: token, ticketId: ticketId, quantity: 1 });
   check(orderRes, { "reserve ok": function (r) { return r.status === 200; } });
 
