@@ -36,9 +36,7 @@ export function makeTicketsClient(ticketsBaseUrl: string): TicketsRouterClient {
 
 export function makeSagaClients(urls: SagaClientUrls): SagaClients {
   const auth = makeAuthClient(urls.authBaseUrl);
-  const tickets: TicketsRouterClient = createORPCClient(
-    new RPCLink({ url: joinRpcUrl(urls.ticketsBaseUrl) }),
-  );
+  const tickets = makeTicketsClient(urls.ticketsBaseUrl);
   const orders: OrdersRouterClient = createORPCClient(
     new RPCLink({ url: joinRpcUrl(urls.ordersBaseUrl) }),
   );
