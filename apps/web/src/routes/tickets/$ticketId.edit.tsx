@@ -1,6 +1,12 @@
 import { type ChangeEvent, type FormEvent, type JSX, useCallback, useState } from "react";
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 
+import { Alert } from "@tix/core-ui/alert";
+import { Button } from "@tix/core-ui/button";
+import { EmptyState } from "@tix/core-ui/empty-state";
+import { FormField } from "@tix/core-ui/form-field";
+import { PageHeader } from "@tix/core-ui/page-header";
+
 import { requireAuth } from "../../auth/require-auth";
 import { useAuth } from "../../auth/use-auth";
 import { useClient } from "../../client/use-client";
@@ -92,43 +98,33 @@ function EditTicketPage(): JSX.Element {
   // submit.
   if (!isTicketOwner(auth.currentUser, ticket)) {
     return (
-      <section>
-        <h1>Not your ticket</h1>
-
-        <p>You can only edit tickets you listed.</p>
-      </section>
+      <EmptyState title="Not your ticket" description="You can only edit tickets you listed." />
     );
   }
 
   return (
-    <section>
-      <h1>Edit ticket</h1>
+    <section className="mx-auto max-w-md">
+      <PageHeader title="Edit ticket" />
 
-      <form onSubmit={onSubmit}>
-        <label>
-          Title
-          <input type="text" aria-label="Title" required value={title} onChange={onTitle} />
-        </label>
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <FormField label="Title" type="text" required value={title} onChange={onTitle} />
 
-        <label>
-          Price (USD)
-          <input
-            type="number"
-            aria-label="Price"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
-            required
-            value={priceDollars}
-            onChange={onPrice}
-          />
-        </label>
+        <FormField
+          label="Price (USD)"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          required
+          value={priceDollars}
+          onChange={onPrice}
+        />
 
-        {error === null ? null : <p role="alert">{error}</p>}
+        {error === null ? null : <Alert>{error}</Alert>}
 
-        <button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save changes"}
-        </button>
+        </Button>
       </form>
     </section>
   );
