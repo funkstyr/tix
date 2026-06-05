@@ -19,21 +19,21 @@ function Home(): JSX.Element {
       <section className="flex flex-col items-center gap-4 py-12 text-center">
         <h1 className="text-4xl font-bold tracking-tight">Tickets, resold fairly</h1>
 
-        <p className="max-w-md text-muted-foreground">
+        <p className="text-muted-foreground max-w-md">
           Buy and sell tickets peer-to-peer. Reserve in one click; pay within 15 minutes.
         </p>
 
         <div className="flex gap-3">
           <Link
             to="/tickets"
-            className="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-5 py-2.5 text-sm font-medium"
           >
             Browse tickets
           </Link>
 
           <Link
             to="/tickets/new"
-            className="rounded-md border px-5 py-2.5 text-sm font-medium hover:bg-accent"
+            className="hover:bg-accent rounded-md border px-5 py-2.5 text-sm font-medium"
           >
             List a ticket
           </Link>
@@ -46,7 +46,11 @@ function Home(): JSX.Element {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {featured.map((ticket) => (
-              <TicketCard key={ticket.id} ticket={ticket} quantityText={`${ticket.quantityAvailable} available`} />
+              <TicketCard
+                key={ticket.id}
+                ticket={ticket}
+                quantityText={`${ticket.quantityAvailable} available`}
+              />
             ))}
           </div>
         </section>

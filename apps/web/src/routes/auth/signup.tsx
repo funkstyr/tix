@@ -61,9 +61,23 @@ function SignUpPage(): JSX.Element {
   return (
     <AuthCard title="Sign up">
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <FormField id="signup-name" label="Name" type="text" required value={name} onChange={onName} />
+        <FormField
+          id="signup-name"
+          label="Name"
+          type="text"
+          required
+          value={name}
+          onChange={onName}
+        />
 
-        <FormField id="signup-email" label="Email" type="email" required value={email} onChange={onEmail} />
+        <FormField
+          id="signup-email"
+          label="Email"
+          type="email"
+          required
+          value={email}
+          onChange={onEmail}
+        />
 
         <FormField
           id="signup-password"

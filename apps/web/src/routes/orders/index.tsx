@@ -2,7 +2,6 @@ import { type JSX, useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import type { OrderRecord } from "@tix/contracts/orders";
-
 import { EmptyState } from "@tix/core-ui/empty-state";
 import { PageHeader } from "@tix/core-ui/page-header";
 
@@ -27,7 +26,10 @@ function OrdersListPage(): JSX.Element {
       <PageHeader title="Orders" />
 
       {items.length === 0 ? (
-        <EmptyState title="You haven't placed any orders yet" description="Reserve a ticket to get started." />
+        <EmptyState
+          title="You haven't placed any orders yet"
+          description="Reserve a ticket to get started."
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((order) => (
@@ -47,7 +49,7 @@ function OrderRow({ order }: { order: OrderRecord }): JSX.Element {
       <Link
         to="/orders/$orderId"
         params={params}
-        className="flex items-center justify-between rounded-md border px-4 py-3 hover:bg-accent"
+        className="hover:bg-accent flex items-center justify-between rounded-md border px-4 py-3"
       >
         <OrderStatusBadge status={order.status} />
 

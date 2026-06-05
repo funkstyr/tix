@@ -39,8 +39,9 @@ function TicketDetailPage(): JSX.Element {
         <CardContent className="flex items-center justify-between">
           <span className="text-2xl font-semibold">{formatPrice(ticket.unitPriceCents)}</span>
 
-          <span className="text-sm text-muted-foreground">
-            <span data-testid="ticket-quantity-available">{ticket.quantityAvailable}</span> available
+          <span className="text-muted-foreground text-sm">
+            <span data-testid="ticket-quantity-available">{ticket.quantityAvailable}</span>{" "}
+            available
           </span>
         </CardContent>
 
@@ -49,7 +50,7 @@ function TicketDetailPage(): JSX.Element {
             <Link
               to="/tickets/$ticketId/edit"
               params={editParams}
-              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+              className="hover:bg-accent rounded-md border px-4 py-2 text-sm font-medium"
             >
               Edit
             </Link>

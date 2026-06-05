@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { type JSX, useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { EmptyState } from "@tix/core-ui/empty-state";
@@ -19,29 +19,36 @@ export const Route = createFileRoute("/tickets/mine")({
 function MyTicketsPage(): JSX.Element {
   const { items } = Route.useLoaderData();
 
+  const headerAction = useMemo(
+    () => (
+      <Link
+        to="/tickets/new"
+        className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium"
+      >
+        List a ticket
+      </Link>
+    ),
+    [],
+  );
+
+  const emptyAction = useMemo(
+    () => (
+      <Link to="/tickets/new" className="underline">
+        List a ticket
+      </Link>
+    ),
+    [],
+  );
+
   return (
     <section>
-      <PageHeader
-        title="My tickets"
-        action={
-          <Link
-            to="/tickets/new"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            List a ticket
-          </Link>
-        }
-      />
+      <PageHeader title="My tickets" action={headerAction} />
 
       {items.length === 0 ? (
         <EmptyState
           title="You haven't listed any tickets yet"
           description="List one to start selling."
-          action={
-            <Link to="/tickets/new" className="underline">
-              List a ticket
-            </Link>
-          }
+          action={emptyAction}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

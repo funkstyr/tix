@@ -2,7 +2,6 @@ import { type JSX, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 
 import type { TicketRecord } from "@tix/contracts/tickets";
-
 import { Card, CardContent, CardHeader, CardTitle } from "@tix/core-ui/card";
 
 import { formatPrice } from "../money/format-price";
@@ -18,7 +17,7 @@ export function TicketCard({ ticket, quantityText, quantityTestId }: TicketCardP
 
   return (
     <Link to="/tickets/$ticketId" params={params} className="block">
-      <Card className="h-full transition-colors hover:border-foreground/30">
+      <Card className="hover:border-foreground/30 h-full transition-colors">
         <CardHeader>
           <CardTitle>{ticket.title}</CardTitle>
         </CardHeader>
@@ -26,7 +25,7 @@ export function TicketCard({ ticket, quantityText, quantityTestId }: TicketCardP
         <CardContent className="flex items-center justify-between">
           <span className="text-lg font-semibold">{formatPrice(ticket.unitPriceCents)}</span>
 
-          <span data-testid={quantityTestId} className="text-sm text-muted-foreground">
+          <span data-testid={quantityTestId} className="text-muted-foreground text-sm">
             {quantityText}
           </span>
         </CardContent>

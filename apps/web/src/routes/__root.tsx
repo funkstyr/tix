@@ -29,7 +29,7 @@ function RootLayout(): JSX.Element {
         <Outlet />
       </main>
 
-      <footer className="border-t py-6 text-center text-sm text-muted-foreground">
+      <footer className="text-muted-foreground border-t py-6 text-center text-sm">
         tix — peer-to-peer ticket resale
       </footer>
     </div>
@@ -59,7 +59,7 @@ function Header(): JSX.Element {
 
               <Link
                 to="/auth/signup"
-                className="rounded-md bg-primary px-3 py-1.5 text-primary-foreground hover:bg-primary/90"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 py-1.5"
               >
                 Sign up
               </Link>

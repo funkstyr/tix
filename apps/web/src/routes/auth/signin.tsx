@@ -62,7 +62,14 @@ function SignInPage(): JSX.Element {
   return (
     <AuthCard title="Sign in">
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <FormField id="signin-email" label="Email" type="email" required value={email} onChange={onEmail} />
+        <FormField
+          id="signin-email"
+          label="Email"
+          type="email"
+          required
+          value={email}
+          onChange={onEmail}
+        />
 
         <FormField
           id="signin-password"

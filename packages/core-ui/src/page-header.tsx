@@ -9,7 +9,12 @@ export type PageHeaderProps = {
   className?: string;
 };
 
-export function PageHeader({ title, description, action, className }: PageHeaderProps): JSX.Element {
+export function PageHeader({
+  title,
+  description,
+  action,
+  className,
+}: PageHeaderProps): JSX.Element {
   return (
     <div
       data-slot="page-header"
@@ -18,7 +23,9 @@ export function PageHeader({ title, description, action, className }: PageHeader
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
 
-        {description == null ? null : <p className="text-sm text-muted-foreground">{description}</p>}
+        {description == null ? null : (
+          <p className="text-muted-foreground text-sm">{description}</p>
+        )}
       </div>
 
       {action == null ? null : <div className="shrink-0">{action}</div>}

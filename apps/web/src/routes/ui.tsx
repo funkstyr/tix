@@ -1,4 +1,4 @@
-import { type JSX } from "react";
+import { type JSX, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { Alert } from "@tix/core-ui/alert";
@@ -25,6 +25,8 @@ export const Route = createFileRoute("/ui")({
 });
 
 function GalleryPage(): JSX.Element {
+  const listAction = useMemo(() => <Button>List a ticket</Button>, []);
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
       <section className="flex flex-col gap-3">
@@ -102,7 +104,7 @@ function GalleryPage(): JSX.Element {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">PageHeader</h2>
 
-        <PageHeader title="Tickets" description="Browse every listing" action={<Button>List a ticket</Button>} />
+        <PageHeader title="Tickets" description="Browse every listing" action={listAction} />
       </section>
 
       <Separator />
@@ -133,7 +135,7 @@ function GalleryPage(): JSX.Element {
         <EmptyState
           title="No tickets yet"
           description="Be the first to list one."
-          action={<Button>List a ticket</Button>}
+          action={listAction}
         />
       </section>
     </div>

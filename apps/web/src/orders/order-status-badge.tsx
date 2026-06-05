@@ -1,7 +1,6 @@
 import { type JSX } from "react";
 
 import type { OrderRecord } from "@tix/contracts/orders";
-
 import { Badge, type BadgeVariant } from "@tix/core-ui/badge";
 
 export const ORDER_STATUS_VARIANT: Record<OrderRecord["status"], BadgeVariant> = {

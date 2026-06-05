@@ -17,7 +17,9 @@ describe("OrderStatusBadge", () => {
   });
 
   it("renders the status text under the order-status test id", () => {
-    const html = renderToStaticMarkup(<OrderStatusBadge status={"complete" as OrderRecord["status"]} />);
+    const html = renderToStaticMarkup(
+      <OrderStatusBadge status={"complete" as OrderRecord["status"]} />,
+    );
     expect(html).toContain('data-testid="order-status"');
     expect(html).toContain("complete");
   });

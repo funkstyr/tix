@@ -2,7 +2,6 @@ import { type JSX, useCallback, useMemo, useState } from "react";
 import { createFileRoute, notFound, useRouter } from "@tanstack/react-router";
 
 import type { OrderRecord } from "@tix/contracts/orders";
-
 import { Alert } from "@tix/core-ui/alert";
 import { Button } from "@tix/core-ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@tix/core-ui/card";
@@ -80,7 +79,7 @@ function OrderDetailPage(): JSX.Element {
           {cancellable ? <CancelAction orderId={order.id} /> : null}
 
           {expired ? (
-            <p data-testid="order-expired" className="text-sm text-destructive">
+            <p data-testid="order-expired" className="text-destructive text-sm">
               Order expired
             </p>
           ) : null}
@@ -141,7 +140,10 @@ function CancelAction({ orderId }: { orderId: string }): JSX.Element {
 function OrderNotFound(): JSX.Element {
   return (
     <section className="mx-auto max-w-md py-16">
-      <EmptyState title="Order not found" description="This order may have been removed or never existed." />
+      <EmptyState
+        title="Order not found"
+        description="This order may have been removed or never existed."
+      />
     </section>
   );
 }

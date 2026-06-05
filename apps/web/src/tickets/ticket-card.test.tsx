@@ -5,7 +5,7 @@ import type { TicketRecord } from "@tix/contracts/tickets";
 
 // Link needs a router context; stub it down to a plain anchor for an isolated render.
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+  Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
 }));
 
 import { TicketCard } from "./ticket-card";

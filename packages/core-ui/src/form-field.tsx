@@ -30,13 +30,13 @@ export function FormField({ label, error, hint, id, ...props }: FormFieldProps):
       />
 
       {hint == null ? null : (
-        <p id={hintId} className="text-sm text-muted-foreground">
+        <p id={hintId} className="text-muted-foreground text-sm">
           {hint}
         </p>
       )}
 
       {error == null ? null : (
-        <p id={errorId} role="alert" className="text-sm text-destructive">
+        <p id={errorId} role="alert" className="text-destructive text-sm">
           {error}
         </p>
       )}

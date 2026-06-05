@@ -23,6 +23,11 @@ export type AlertProps = ComponentProps<"div"> & {
 
 export function Alert({ className, variant, ...props }: AlertProps): JSX.Element {
   return (
-    <div data-slot="alert" role="alert" className={cn(alertVariants({ variant }), className)} {...props} />
+    <div
+      data-slot="alert"
+      role="alert"
+      className={cn(alertVariants({ variant }), className)}
+      {...props}
+    />
   );
 }

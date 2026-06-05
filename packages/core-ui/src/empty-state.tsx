@@ -9,7 +9,12 @@ export type EmptyStateProps = {
   className?: string;
 };
 
-export function EmptyState({ title, description, action, className }: EmptyStateProps): JSX.Element {
+export function EmptyState({
+  title,
+  description,
+  action,
+  className,
+}: EmptyStateProps): JSX.Element {
   return (
     <div
       data-slot="empty-state"
@@ -21,7 +26,7 @@ export function EmptyState({ title, description, action, className }: EmptyState
       <p className="text-lg font-medium">{title}</p>
 
       {description == null ? null : (
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
+        <p className="text-muted-foreground max-w-sm text-sm">{description}</p>
       )}
 
       {action == null ? null : <div className="mt-2">{action}</div>}

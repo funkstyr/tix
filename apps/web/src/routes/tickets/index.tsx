@@ -23,7 +23,11 @@ function TicketsListPage(): JSX.Element {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((ticket) => (
-            <TicketCard key={ticket.id} ticket={ticket} quantityText={`${ticket.quantityAvailable} available`} />
+            <TicketCard
+              key={ticket.id}
+              ticket={ticket}
+              quantityText={`${ticket.quantityAvailable} available`}
+            />
           ))}
         </div>
       )}

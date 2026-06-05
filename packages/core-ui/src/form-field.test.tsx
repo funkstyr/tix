@@ -12,7 +12,9 @@ describe("FormField", () => {
   });
 
   it("renders an error in an alert and marks the input invalid", () => {
-    const html = renderToStaticMarkup(<FormField id="price" label="Price" error="Enter a valid price" />);
+    const html = renderToStaticMarkup(
+      <FormField id="price" label="Price" error="Enter a valid price" />,
+    );
     expect(html).toContain('role="alert"');
     expect(html).toContain("Enter a valid price");
     expect(html).toContain('aria-invalid="true"');
