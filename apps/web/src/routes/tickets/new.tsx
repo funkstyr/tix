@@ -102,7 +102,8 @@ function NewTicketPage(): JSX.Element {
         <FormField label="Title" type="text" required value={title} onChange={onTitle} />
 
         <FormField
-          label="Price (USD)"
+          label="Price"
+          hint="USD"
           type="number"
           inputMode="decimal"
           min="0"
