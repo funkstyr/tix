@@ -1,6 +1,9 @@
 import { type JSX, useMemo } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@tix/core-ui/card";
+import { EmptyState } from "@tix/core-ui/empty-state";
+
 import { useAuth } from "../../auth/use-auth";
 import { formatPrice } from "../../money/format-price";
 import { BuyAction } from "../../tickets/buy-action";
@@ -27,33 +30,43 @@ function TicketDetailPage(): JSX.Element {
   const editParams = useMemo(() => ({ ticketId: ticket.id }), [ticket.id]);
 
   return (
-    <section>
-      <h1>{ticket.title}</h1>
+    <section className="mx-auto max-w-lg">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">{ticket.title}</CardTitle>
+        </CardHeader>
 
-      <dl>
-        <dt>Price</dt>
-        <dd>{formatPrice(ticket.unitPriceCents)}</dd>
-        <dt>Remaining</dt>
-        <dd data-testid="ticket-quantity-available">{ticket.quantityAvailable}</dd>
-      </dl>
+        <CardContent className="flex items-center justify-between">
+          <span className="text-2xl font-semibold">{formatPrice(ticket.unitPriceCents)}</span>
 
-      {isOwner ? (
-        <Link to="/tickets/$ticketId/edit" params={editParams}>
-          Edit
-        </Link>
-      ) : (
-        <BuyAction ticketId={ticket.id} quantityAvailable={ticket.quantityAvailable} />
-      )}
+          <span className="text-sm text-muted-foreground">
+            <span data-testid="ticket-quantity-available">{ticket.quantityAvailable}</span> available
+          </span>
+        </CardContent>
+
+        <CardFooter>
+          {isOwner ? (
+            <Link
+              to="/tickets/$ticketId/edit"
+              params={editParams}
+              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+            >
+              Edit
+            </Link>
+          ) : (
+            <BuyAction ticketId={ticket.id} quantityAvailable={ticket.quantityAvailable} />
+          )}
+        </CardFooter>
+      </Card>
     </section>
   );
 }
 
 function TicketNotFound(): JSX.Element {
   return (
-    <section>
-      <h1>Ticket not found</h1>
-
-      <p>This ticket may have been removed or never existed.</p>
-    </section>
+    <EmptyState
+      title="Ticket not found"
+      description="This ticket may have been removed or never existed."
+    />
   );
 }
