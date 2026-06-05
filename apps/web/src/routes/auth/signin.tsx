@@ -2,6 +2,11 @@ import { type ChangeEvent, type FormEvent, type JSX, useCallback, useState } fro
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { type } from "arktype";
 
+import { Alert } from "@tix/core-ui/alert";
+import { Button } from "@tix/core-ui/button";
+import { FormField } from "@tix/core-ui/form-field";
+
+import { AuthCard } from "../../auth/auth-card";
 import { useAuth } from "../../auth/use-auth";
 
 const searchSchema = type({
@@ -55,32 +60,25 @@ function SignInPage(): JSX.Element {
   );
 
   return (
-    <section>
-      <h1>Sign in</h1>
-      <form onSubmit={onSubmit}>
-        <label htmlFor="signin-email">Email</label>
-        <input
-          id="signin-email"
-          type="email"
-          aria-label="Email"
-          required
-          value={email}
-          onChange={onEmail}
-        />
-        <label htmlFor="signin-password">Password</label>
-        <input
+    <AuthCard title="Sign in">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <FormField id="signin-email" label="Email" type="email" required value={email} onChange={onEmail} />
+
+        <FormField
           id="signin-password"
+          label="Password"
           type="password"
-          aria-label="Password"
           required
           value={password}
           onChange={onPassword}
         />
-        {error === null ? null : <p role="alert">{error}</p>}
-        <button type="submit" disabled={pending}>
+
+        {error === null ? null : <Alert>{error}</Alert>}
+
+        <Button type="submit" disabled={pending}>
           {pending ? "Signing in…" : "Sign in"}
-        </button>
+        </Button>
       </form>
-    </section>
+    </AuthCard>
   );
 }

@@ -36,7 +36,7 @@ function SignOutPage(): JSX.Element {
   }, [auth, router, navigate]);
 
   return (
-    <section>
+    <section className="mx-auto max-w-sm py-8">
       <h1>Signing out…</h1>
       {error === null ? null : <p role="alert">{error}</p>}
     </section>
