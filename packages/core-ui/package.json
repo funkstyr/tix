@@ -40,6 +40,10 @@
       "types": "./dist/spinner.d.ts",
       "import": "./dist/spinner.js"
     },
+    "./alert": {
+      "types": "./dist/alert.d.ts",
+      "import": "./dist/alert.js"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
