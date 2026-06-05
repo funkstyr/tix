@@ -52,6 +52,10 @@
       "types": "./dist/empty-state.d.ts",
       "import": "./dist/empty-state.js"
     },
+    "./form-field": {
+      "types": "./dist/form-field.d.ts",
+      "import": "./dist/form-field.js"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
