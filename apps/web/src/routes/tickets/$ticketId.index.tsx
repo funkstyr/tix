@@ -1,7 +1,7 @@
 import { type JSX, useMemo } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@tix/core-ui/card";
+import { Card, CardContent, CardFooter, CardHeader } from "@tix/core-ui/card";
 import { EmptyState } from "@tix/core-ui/empty-state";
 
 import { useAuth } from "../../auth/use-auth";
@@ -33,7 +33,7 @@ function TicketDetailPage(): JSX.Element {
     <section className="mx-auto max-w-lg">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">{ticket.title}</CardTitle>
+          <h1 className="text-2xl leading-none font-semibold">{ticket.title}</h1>
         </CardHeader>
 
         <CardContent className="flex items-center justify-between">

@@ -16,7 +16,7 @@ test("seller signs up, lists a ticket, and sees it on the listings page", async 
   // Header swaps to the signed-in slot once auth state settles.
   await expect(page.getByTestId("current-user")).toHaveText(email);
 
-  await page.getByRole("link", { name: "List a ticket" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "List a ticket" }).click();
   await expect(page).toHaveURL(/\/tickets\/new$/);
 
   await page.getByLabel("Title").fill(title);
@@ -52,7 +52,7 @@ test("seller edits a listed ticket's title and price", async ({ page }) => {
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByTestId("current-user")).toHaveText(email);
 
-  await page.getByRole("link", { name: "List a ticket" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "List a ticket" }).click();
   await page.getByLabel("Title").fill(title);
   await page.getByLabel("Price").fill("25");
   await page.getByLabel("Quantity").fill("3");
