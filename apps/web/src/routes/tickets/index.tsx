@@ -1,7 +1,10 @@
 import type { JSX } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { TicketRow } from "../../tickets/ticket-row";
+import { EmptyState } from "@tix/core-ui/empty-state";
+import { PageHeader } from "@tix/core-ui/page-header";
+
+import { TicketCard } from "../../tickets/ticket-card";
 
 export const Route = createFileRoute("/tickets/")({
   loader: ({ context }) => context.gateway.tickets.list({}),
@@ -11,29 +14,19 @@ export const Route = createFileRoute("/tickets/")({
 function TicketsListPage(): JSX.Element {
   const { items } = Route.useLoaderData();
 
-  if (items.length === 0) {
-    return (
-      <section>
-        <h1>Tickets</h1>
-
-        <p>No tickets available yet.</p>
-      </section>
-    );
-  }
-
   return (
     <section>
-      <h1>Tickets</h1>
+      <PageHeader title="Tickets" description="Browse every listing" />
 
-      <ul>
-        {items.map((ticket) => (
-          <TicketRow
-            key={ticket.id}
-            ticket={ticket}
-            quantityText={`${ticket.quantityAvailable} available`}
-          />
-        ))}
-      </ul>
+      {items.length === 0 ? (
+        <EmptyState title="No tickets available yet" description="Check back soon." />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((ticket) => (
+            <TicketCard key={ticket.id} ticket={ticket} quantityText={`${ticket.quantityAvailable} available`} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
