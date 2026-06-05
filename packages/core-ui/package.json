@@ -44,6 +44,10 @@
       "types": "./dist/alert.d.ts",
       "import": "./dist/alert.js"
     },
+    "./page-header": {
+      "types": "./dist/page-header.d.ts",
+      "import": "./dist/page-header.js"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
