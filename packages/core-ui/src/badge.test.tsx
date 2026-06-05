@@ -11,6 +11,6 @@ describe("Badge", () => {
 
   it("renders a distinct success variant", () => {
     const html = renderToStaticMarkup(<Badge variant="success">Complete</Badge>);
-    expect(html).toContain("emerald");
+    expect(html).toContain("bg-emerald-600");
   });
 });
