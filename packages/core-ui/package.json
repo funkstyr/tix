@@ -36,6 +36,10 @@
       "types": "./dist/separator.d.ts",
       "import": "./dist/separator.js"
     },
+    "./spinner": {
+      "types": "./dist/spinner.d.ts",
+      "import": "./dist/spinner.js"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
