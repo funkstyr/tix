@@ -140,6 +140,8 @@ function CancelAction({ orderId }: { orderId: string }): JSX.Element {
 
 function OrderNotFound(): JSX.Element {
   return (
-    <EmptyState title="Order not found" description="This order may have been removed or never existed." />
+    <section className="mx-auto max-w-md py-16">
+      <EmptyState title="Order not found" description="This order may have been removed or never existed." />
+    </section>
   );
 }
