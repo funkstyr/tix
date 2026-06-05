@@ -3,12 +3,16 @@ import { createFileRoute, notFound, useRouter } from "@tanstack/react-router";
 
 import type { OrderRecord } from "@tix/contracts/orders";
 
+import { Alert } from "@tix/core-ui/alert";
+import { Button } from "@tix/core-ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@tix/core-ui/card";
+import { EmptyState } from "@tix/core-ui/empty-state";
+
 import { requireAuth } from "../../auth/require-auth";
 import { useAuth } from "../../auth/use-auth";
 import { useClient } from "../../client/use-client";
-import { formatPrice } from "../../money/format-price";
 import { cancelOrder } from "../../orders/cancel-order";
-import { Countdown } from "../../orders/countdown";
+import { OrderSummary } from "../../orders/order-summary";
 import { StripeCheckout } from "../../orders/stripe-checkout";
 
 const PAYABLE_STATUSES = new Set<OrderRecord["status"]>(["created", "awaiting_payment"]);
@@ -56,30 +60,32 @@ function OrderDetailPage(): JSX.Element {
   const cancellable = !expired && CANCELLABLE_STATUSES.has(order.status);
 
   return (
-    <section>
-      <h1>Order</h1>
+    <section className="mx-auto max-w-md">
+      <Card>
+        <CardHeader>
+          <CardTitle>Order</CardTitle>
+        </CardHeader>
 
-      <dl>
-        <dt>Status</dt>
-        <dd data-testid="order-status">{order.status}</dd>
+        <CardContent className="flex flex-col gap-6">
+          <OrderSummary
+            status={order.status}
+            priceCents={order.priceCents}
+            expiresAt={expiresAt}
+            expiresAtLabel={expiresAtLabel}
+            onExpire={onExpire}
+          />
 
-        <dt>Price</dt>
-        <dd>{formatPrice(order.priceCents)}</dd>
+          {payable ? <StripeCheckout orderId={order.id} priceCents={order.priceCents} /> : null}
 
-        <dt>Expires at</dt>
-        <dd>{expiresAtLabel}</dd>
+          {cancellable ? <CancelAction orderId={order.id} /> : null}
 
-        <dt>Time remaining</dt>
-        <dd>
-          <Countdown expiresAt={expiresAt} onExpire={onExpire} />
-        </dd>
-      </dl>
-
-      {payable ? <StripeCheckout orderId={order.id} priceCents={order.priceCents} /> : null}
-
-      {cancellable ? <CancelAction orderId={order.id} /> : null}
-
-      {expired ? <p data-testid="order-expired">Order expired</p> : null}
+          {expired ? (
+            <p data-testid="order-expired" className="text-sm text-destructive">
+              Order expired
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
     </section>
   );
 }
@@ -117,20 +123,23 @@ function CancelAction({ orderId }: { orderId: string }): JSX.Element {
 
   return (
     <>
-      {error === null ? null : <p role="alert">{error}</p>}
-      <button type="button" data-testid="cancel-order" onClick={onCancel} disabled={pending}>
+      {error === null ? null : <Alert className="mb-2">{error}</Alert>}
+
+      <Button
+        type="button"
+        variant="destructive"
+        data-testid="cancel-order"
+        onClick={onCancel}
+        disabled={pending}
+      >
         {pending ? "Cancelling…" : "Cancel order"}
-      </button>
+      </Button>
     </>
   );
 }
 
 function OrderNotFound(): JSX.Element {
   return (
-    <section>
-      <h1>Order not found</h1>
-
-      <p>This order may have been removed or never existed.</p>
-    </section>
+    <EmptyState title="Order not found" description="This order may have been removed or never existed." />
   );
 }
