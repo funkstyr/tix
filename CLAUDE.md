@@ -19,6 +19,7 @@ tix/
 │   └── web-e2e/      # Browser e2e (Playwright + testcontainers) — see its CLAUDE.md
 ├── packages/
 │   ├── contracts/         # arktype schemas + oRPC routers (tickets, orders, subjects)
+│   ├── core-ui/           # shadcn + base-ui atomic components (Tailwind v4) — consumed by web
 │   ├── saga-client/       # shared buyer-journey saga driver (used by api-e2e + synthetic)
 │   ├── db-core/           # drizzle + postgres client (per-service schema; ADR-0003)
 │   ├── messaging/         # NATS JetStream + BullMQ wrappers, outbox/inbox helpers

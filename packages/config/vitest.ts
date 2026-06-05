@@ -23,3 +23,7 @@ export function nodePreset(overrides: TestConfig = {}): ViteUserConfig {
 export function integrationPreset(overrides: TestConfig = {}): ViteUserConfig {
   return nodePreset({ testTimeout: 30_000, hookTimeout: 30_000, ...overrides });
 }
+
+export function uiPreset(overrides: TestConfig = {}): ViteUserConfig {
+  return nodePreset({ environment: "jsdom", ...overrides });
+}

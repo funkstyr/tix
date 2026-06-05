@@ -1,0 +1,45 @@
+{
+  "name": "@tix/{{name}}",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./{{name}}": {
+      "types": "./dist/{{name}}.d.ts",
+      "import": "./dist/{{name}}.js"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsgo --build",
+    "dev": "tsdown --watch",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "dependencies": {
+    "@base-ui/react": "catalog:",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "tailwind-merge": "catalog:"
+  },
+  "devDependencies": {
+    "@tix/config": "workspace:*",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  }
+}
