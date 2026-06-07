@@ -52,8 +52,13 @@ function parse(cursor: string): CursorPayload | null {
   if (!Array.isArray(k) || k.length !== 2) return null;
 
   const [primary, id] = k;
-  if (typeof primary !== "string" && typeof primary !== "number") return null;
   if (typeof id !== "string") return null;
+
+  // `primary` must match the sort it was issued for: an ISO string for `newest`,
+  // a numeric unitPriceCents for the price sorts. This makes the `as string` /
+  // `as number` casts in the query layer provably safe and rejects forged cursors.
+  const primaryOk = s === "newest" ? typeof primary === "string" : typeof primary === "number";
+  if (!primaryOk) return null;
 
   return { s, k: [primary, id] };
 }

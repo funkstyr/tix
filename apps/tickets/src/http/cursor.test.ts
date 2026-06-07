@@ -48,4 +48,14 @@ describe("encodeCursor / decodeCursor", () => {
     const bad = Buffer.from(JSON.stringify({ nope: true }), "utf8").toString("base64url");
     expect(() => decodeCursor(bad, "newest")).toThrow(ORPCError);
   });
+
+  it("rejects a cursor whose primary type does not match the sort", () => {
+    // newest expects a string primary; a numeric one is a forged/stale cursor
+    const forged = Buffer.from(
+      JSON.stringify({ s: "newest", k: [0, "11111111-1111-4111-8111-111111111111"] }),
+      "utf8",
+    ).toString("base64url");
+
+    expect(() => decodeCursor(forged, "newest")).toThrow(ORPCError);
+  });
 });
