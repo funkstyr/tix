@@ -105,6 +105,8 @@ export type TicketsListInput = typeof ticketsListInput.infer;
 // Separate from `ticketsListInput` so the public list can't be coerced into
 // leaking a different seller's inventory: `listMine` requires a session token
 // and filters server-side by the resolved user id.
+// `q`/`availableOnly` are intentionally omitted: a seller's own inventory is
+// small enough that client-side narrowing is fine.
 export const ticketsListMineInput = type({
   "+": "reject",
   token: "string >= 1",

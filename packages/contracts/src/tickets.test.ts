@@ -3,13 +3,27 @@ import { describe, expect, test } from "vitest";
 import {
   type TicketCreatedV1,
   ticketCreatedV1,
+  type TicketSort,
   type TicketUpdatedV1,
   ticketUpdatedV1,
+  type TicketsListInput,
   ticketUpdateInput,
   ticketsListInput,
   ticketsListMineInput,
   ticketsListOutput,
 } from "./tickets";
+
+// Compile-time guard: the runtime `ticketSortValues` array (which `TicketSort` is
+// derived from) and the inline sort literal inside `ticketsListInput` must agree.
+// If someone adds a sort option to one but not the other, this stops compiling.
+type SchemaSort = NonNullable<TicketsListInput["sort"]>;
+type SortArrayMatchesSchema = TicketSort extends SchemaSort
+  ? SchemaSort extends TicketSort
+    ? true
+    : never
+  : never;
+const _sortGuard: SortArrayMatchesSchema = true;
+void _sortGuard;
 
 const goodPayload: TicketCreatedV1 = {
   ticketId: "11111111-1111-4111-8111-111111111111",
@@ -80,7 +94,7 @@ describe("ticketUpdateInput", () => {
 });
 
 describe("ticketsListInput", () => {
-  test("accepts the new optional filter/sort/cursor fields", () => {
+  test("accepts all optional fields when provided", () => {
     expect(() =>
       ticketsListInput.assert({
         limit: 20,
@@ -107,11 +121,23 @@ describe("ticketsListMineInput", () => {
       ticketsListMineInput.assert({ token: "t", sort: "newest", cursor: "abc" }),
     ).not.toThrow();
   });
+
+  test("rejects when token is missing", () => {
+    expect(() => ticketsListMineInput.assert({ sort: "newest" })).toThrow(/token/);
+  });
+
+  test("rejects an unknown sort value", () => {
+    expect(() => ticketsListMineInput.assert({ token: "t", sort: "cheapest" })).toThrow(/sort/);
+  });
 });
 
 describe("ticketsListOutput", () => {
   test("requires nextCursor (string or null)", () => {
     expect(() => ticketsListOutput.assert({ items: [], nextCursor: null })).not.toThrow();
     expect(() => ticketsListOutput.assert({ items: [] })).toThrow(/nextCursor/);
+  });
+
+  test("rejects a malformed item", () => {
+    expect(() => ticketsListOutput.assert({ items: [{}], nextCursor: null })).toThrow();
   });
 });
