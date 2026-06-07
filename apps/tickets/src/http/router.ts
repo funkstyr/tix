@@ -1,6 +1,6 @@
 import type { Context as OtelContext } from "@opentelemetry/api";
 import { ORPCError, os } from "@orpc/server";
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { requireSession } from "@tix/contracts/auth-client";
@@ -24,11 +24,10 @@ import type { TicketsRuntime } from "../runtime/runtime.ts";
 import { AuthClient, Database, TicketsConfig } from "../runtime/services.ts";
 import { makeRunHandler, tryOrpc } from "./boundary.ts";
 import { createTicketProgram } from "./create-ticket.ts";
+import { listTicketsProgram } from "./list-tickets.ts";
 import { reserveTicketProgram } from "./reserve-ticket.ts";
 import { toTicketRecord } from "./ticket-record.ts";
 import { updateTicketProgram } from "./update-ticket.ts";
-
-const DEFAULT_LIST_LIMIT = 50;
 
 // Threaded from the Hono boundary (app.ts): the inbound request's trace context (so each
 // handler's span continues the caller's trace) and the optional service token (reserve is
@@ -127,26 +126,12 @@ export function createTicketsRouter(runtime: TicketsRuntime) {
         withRequestSpan(
           "list",
           context,
-          Effect.gen(function* () {
-            const db = yield* Database;
-
-            const limit = input.limit ?? DEFAULT_LIST_LIMIT;
-
-            // Secondary `desc(id)` is the tie-break when two rows share a millisecond on
-            // createdAt — uuidv7 is monotonic per source, so id-desc preserves insert order
-            // without depending on clock resolution.
-            const rows = yield* withResilience(
-              "tickets.db.list_tickets",
-              tryOrpc(() =>
-                db.db
-                  .select()
-                  .from(tickets)
-                  .orderBy(desc(tickets.createdAt), desc(tickets.id))
-                  .limit(limit),
-              ),
-            );
-
-            return { items: rows.map(toTicketRecord) };
+          listTicketsProgram({
+            limit: input.limit,
+            q: input.q,
+            sort: input.sort,
+            availableOnly: input.availableOnly,
+            cursor: input.cursor,
           }),
         ),
       ),
@@ -162,28 +147,18 @@ export function createTicketsRouter(runtime: TicketsRuntime) {
           context,
           Effect.gen(function* () {
             const authClient = yield* AuthClient;
-            const db = yield* Database;
 
             const session = yield* withResilience(
               "tickets.auth.require_session",
               tryOrpc(() => requireSession(authClient, input.token)),
             );
 
-            const limit = input.limit ?? DEFAULT_LIST_LIMIT;
-
-            const rows = yield* withResilience(
-              "tickets.db.list_mine",
-              tryOrpc(() =>
-                db.db
-                  .select()
-                  .from(tickets)
-                  .where(eq(tickets.sellerId, session.user.id))
-                  .orderBy(desc(tickets.createdAt), desc(tickets.id))
-                  .limit(limit),
-              ),
-            );
-
-            return { items: rows.map(toTicketRecord) };
+            return yield* listTicketsProgram({
+              limit: input.limit,
+              sort: input.sort,
+              cursor: input.cursor,
+              sellerId: session.user.id,
+            });
           }),
         ),
       ),
