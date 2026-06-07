@@ -24,8 +24,24 @@ describe("encodeCursor / decodeCursor", () => {
     expect(() => decodeCursor(encodeCursor("newest", row), "price_asc")).toThrow(ORPCError);
   });
 
+  it("round-trips a price_desc cursor", () => {
+    const key = decodeCursor(encodeCursor("price_desc", row), "price_desc");
+    expect(key).toEqual({ primary: 4500, id: row.id });
+  });
+
   it("rejects a non-base64 / garbage cursor", () => {
     expect(() => decodeCursor("!!!not-base64!!!", "newest")).toThrow(ORPCError);
+  });
+
+  it("throws BAD_REQUEST with an invalid-cursor message", () => {
+    try {
+      decodeCursor("!!!not-base64!!!", "newest");
+      expect.unreachable("decodeCursor should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ORPCError);
+      expect((error as ORPCError<string, unknown>).code).toBe("BAD_REQUEST");
+      expect((error as ORPCError<string, unknown>).message).toBe("invalid cursor");
+    }
   });
 
   it("rejects a wrong-shape payload", () => {

@@ -1,6 +1,6 @@
 import { ORPCError } from "@orpc/server";
 
-import type { TicketSort } from "@tix/contracts/tickets";
+import { ticketSortValues, type TicketSort } from "@tix/contracts/tickets";
 
 import type { TicketRow } from "./ticket-record.ts";
 
@@ -33,6 +33,10 @@ export function decodeCursor(cursor: string, expectedSort: TicketSort): CursorKe
   return { primary: payload.k[0], id: payload.k[1] };
 }
 
+function isTicketSort(value: unknown): value is TicketSort {
+  return (ticketSortValues as readonly unknown[]).includes(value);
+}
+
 function parse(cursor: string): CursorPayload | null {
   let value: unknown;
   try {
@@ -44,7 +48,7 @@ function parse(cursor: string): CursorPayload | null {
   if (typeof value !== "object" || value === null) return null;
 
   const { s, k } = value as Record<string, unknown>;
-  if (s !== "newest" && s !== "price_asc" && s !== "price_desc") return null;
+  if (!isTicketSort(s)) return null;
   if (!Array.isArray(k) || k.length !== 2) return null;
 
   const [primary, id] = k;
