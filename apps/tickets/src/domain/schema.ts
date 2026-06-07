@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  index,
   integer,
   jsonb,
   pgSchema,
@@ -29,6 +30,9 @@ export const tickets = ticketsSchema.table(
       "tickets_quantity_available_bounds",
       sql`${t.quantityAvailable} >= 0 AND ${t.quantityAvailable} <= ${t.quantityTotal}`,
     ),
+    // keyset support for the price sorts and the default newest sort
+    index("tickets_unit_price_id_idx").on(t.unitPriceCents, t.id),
+    index("tickets_created_at_id_idx").on(t.createdAt.desc(), t.id.desc()),
   ],
 );
 

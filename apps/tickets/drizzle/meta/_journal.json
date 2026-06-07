@@ -43,6 +43,13 @@
       "when": 1779384352724,
       "tag": "0005_tickets_outbox_traceparent",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779384352725,
+      "tag": "0006_tickets_list_indexes",
+      "breakpoints": true
     }
   ]
 }
