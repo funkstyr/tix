@@ -4,13 +4,17 @@ import type { TicketSort } from "@tix/contracts/tickets";
 
 import type { TicketRow } from "./ticket-record.ts";
 
+// Only the fields the cursor's ordering keys are built from. A full TicketRow
+// is assignable to this, so callers can pass a db row directly.
+export type CursorRow = Pick<TicketRow, "id" | "createdAt" | "unitPriceCents">;
+
 // Decoded ordering key: the sort's primary value (createdAt ISO string for
 // `newest`, unitPriceCents integer for the price sorts) plus the row id tie-break.
 export type CursorKey = { primary: string | number; id: string };
 
 type CursorPayload = { s: TicketSort; k: [string | number, string] };
 
-export function encodeCursor(sort: TicketSort, row: TicketRow): string {
+export function encodeCursor(sort: TicketSort, row: CursorRow): string {
   const primary = sort === "newest" ? row.createdAt.toISOString() : row.unitPriceCents;
   const payload: CursorPayload = { s: sort, k: [primary, row.id] };
 
