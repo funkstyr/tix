@@ -6,6 +6,9 @@ import {
   type TicketUpdatedV1,
   ticketUpdatedV1,
   ticketUpdateInput,
+  ticketsListInput,
+  ticketsListMineInput,
+  ticketsListOutput,
 } from "./tickets";
 
 const goodPayload: TicketCreatedV1 = {
@@ -73,5 +76,42 @@ describe("ticketUpdateInput", () => {
         expectedVersion: 1,
       }),
     ).toThrow(/title/);
+  });
+});
+
+describe("ticketsListInput", () => {
+  test("accepts the new optional filter/sort/cursor fields", () => {
+    expect(() =>
+      ticketsListInput.assert({
+        limit: 20,
+        q: "aphex",
+        sort: "price_asc",
+        availableOnly: true,
+        cursor: "abc",
+      }),
+    ).not.toThrow();
+  });
+
+  test("accepts an empty object (all fields optional)", () => {
+    expect(() => ticketsListInput.assert({})).not.toThrow();
+  });
+
+  test("rejects an unknown sort value", () => {
+    expect(() => ticketsListInput.assert({ sort: "cheapest" })).toThrow(/sort/);
+  });
+});
+
+describe("ticketsListMineInput", () => {
+  test("accepts token plus sort + cursor", () => {
+    expect(() =>
+      ticketsListMineInput.assert({ token: "t", sort: "newest", cursor: "abc" }),
+    ).not.toThrow();
+  });
+});
+
+describe("ticketsListOutput", () => {
+  test("requires nextCursor (string or null)", () => {
+    expect(() => ticketsListOutput.assert({ items: [], nextCursor: null })).not.toThrow();
+    expect(() => ticketsListOutput.assert({ items: [] })).toThrow(/nextCursor/);
   });
 });
