@@ -1,6 +1,7 @@
-import { type JSX } from "react";
+import { type JSX, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
+import { Alert } from "@tix/core-ui/alert";
 import { Badge } from "@tix/core-ui/badge";
 import { Button } from "@tix/core-ui/button";
 import {
@@ -11,15 +12,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@tix/core-ui/card";
+import { EmptyState } from "@tix/core-ui/empty-state";
+import { FormField } from "@tix/core-ui/form-field";
 import { Input } from "@tix/core-ui/input";
 import { Label } from "@tix/core-ui/label";
+import { PageHeader } from "@tix/core-ui/page-header";
 import { Separator } from "@tix/core-ui/separator";
+import { Spinner } from "@tix/core-ui/spinner";
 
 export const Route = createFileRoute("/ui")({
   component: GalleryPage,
 });
 
 function GalleryPage(): JSX.Element {
+  const listAction = useMemo(() => <Button>List a ticket</Button>, []);
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
       <section className="flex flex-col gap-3">
@@ -53,6 +60,8 @@ function GalleryPage(): JSX.Element {
           <Badge variant="destructive">Destructive</Badge>
 
           <Badge variant="outline">Outline</Badge>
+
+          <Badge variant="success">Success</Badge>
         </div>
       </section>
 
@@ -88,6 +97,46 @@ function GalleryPage(): JSX.Element {
             <Button>Reserve</Button>
           </CardFooter>
         </Card>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">PageHeader</h2>
+
+        <PageHeader title="Tickets" description="Browse every listing" action={listAction} />
+      </section>
+
+      <Separator />
+
+      <section className="flex max-w-sm flex-col gap-3">
+        <h2 className="text-lg font-semibold">FormField</h2>
+
+        <FormField id="gallery-price" label="Price (USD)" type="number" />
+
+        <FormField id="gallery-bad" label="Quantity" error="Enter a quantity of 1 or more" />
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Alert &amp; Spinner</h2>
+
+        <Alert>Sold out — no inventory remaining.</Alert>
+
+        <Spinner label="Loading" />
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">EmptyState</h2>
+
+        <EmptyState
+          title="No tickets yet"
+          description="Be the first to list one."
+          action={listAction}
+        />
       </section>
     </div>
   );

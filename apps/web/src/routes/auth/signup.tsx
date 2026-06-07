@@ -1,6 +1,11 @@
 import { type ChangeEvent, type FormEvent, type JSX, useCallback, useState } from "react";
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 
+import { Alert } from "@tix/core-ui/alert";
+import { Button } from "@tix/core-ui/button";
+import { FormField } from "@tix/core-ui/form-field";
+
+import { AuthCard } from "../../auth/auth-card";
 import { useAuth } from "../../auth/use-auth";
 
 export const Route = createFileRoute("/auth/signup")({
@@ -54,42 +59,42 @@ function SignUpPage(): JSX.Element {
   );
 
   return (
-    <section>
-      <h1>Sign up</h1>
-      <form onSubmit={onSubmit}>
-        <label htmlFor="signup-name">Name</label>
-        <input
+    <AuthCard title="Sign up">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <FormField
           id="signup-name"
+          label="Name"
           type="text"
-          aria-label="Name"
           required
           value={name}
           onChange={onName}
         />
-        <label htmlFor="signup-email">Email</label>
-        <input
+
+        <FormField
           id="signup-email"
+          label="Email"
           type="email"
-          aria-label="Email"
           required
           value={email}
           onChange={onEmail}
         />
-        <label htmlFor="signup-password">Password</label>
-        <input
+
+        <FormField
           id="signup-password"
+          label="Password"
           type="password"
-          aria-label="Password"
           required
           minLength={8}
           value={password}
           onChange={onPassword}
         />
-        {error === null ? null : <p role="alert">{error}</p>}
-        <button type="submit" disabled={pending}>
+
+        {error === null ? null : <Alert>{error}</Alert>}
+
+        <Button type="submit" disabled={pending}>
           {pending ? "Creating account…" : "Create account"}
-        </button>
+        </Button>
       </form>
-    </section>
+    </AuthCard>
   );
 }

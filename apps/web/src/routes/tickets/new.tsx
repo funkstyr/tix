@@ -1,6 +1,11 @@
 import { type ChangeEvent, type FormEvent, type JSX, useCallback, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
+import { Alert } from "@tix/core-ui/alert";
+import { Button } from "@tix/core-ui/button";
+import { FormField } from "@tix/core-ui/form-field";
+import { PageHeader } from "@tix/core-ui/page-header";
+
 import { requireAuth } from "../../auth/require-auth";
 import { useAuth } from "../../auth/use-auth";
 import { useClient } from "../../client/use-client";
@@ -90,48 +95,40 @@ function NewTicketPage(): JSX.Element {
   );
 
   return (
-    <section>
-      <h1>List a ticket</h1>
+    <section className="mx-auto max-w-md">
+      <PageHeader title="List a ticket" />
 
-      <form onSubmit={onSubmit}>
-        <label>
-          Title
-          <input type="text" aria-label="Title" required value={title} onChange={onTitle} />
-        </label>
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <FormField label="Title" type="text" required value={title} onChange={onTitle} />
 
-        <label>
-          Price (USD)
-          <input
-            type="number"
-            aria-label="Price"
-            inputMode="decimal"
-            min="0"
-            step="0.01"
-            required
-            value={priceDollars}
-            onChange={onPrice}
-          />
-        </label>
+        <FormField
+          label="Price"
+          hint="USD"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          required
+          value={priceDollars}
+          onChange={onPrice}
+        />
 
-        <label>
-          Quantity
-          <input
-            type="number"
-            aria-label="Quantity"
-            inputMode="numeric"
-            min="1"
-            step="1"
-            required
-            value={quantity}
-            onChange={onQuantity}
-          />
-        </label>
+        <FormField
+          label="Quantity"
+          type="number"
+          inputMode="numeric"
+          min="1"
+          step="1"
+          required
+          value={quantity}
+          onChange={onQuantity}
+        />
 
-        {error === null ? null : <p role="alert">{error}</p>}
+        {error === null ? null : <Alert>{error}</Alert>}
 
-        <button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending}>
           {pending ? "Creating…" : "List ticket"}
-        </button>
+        </Button>
       </form>
     </section>
   );

@@ -25,7 +25,8 @@
     {
       "files": ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/test/**"],
       "rules": {
-        "no-console": "off"
+        "no-console": "off",
+        "react-perf/jsx-no-jsx-as-prop": "off"
       }
     }
   ],
