@@ -568,3 +568,117 @@ describe.skipIf(!dockerAvailable)("tickets.update", () => {
 function randomTag(): string {
   return Math.random().toString(36).slice(2, 10);
 }
+
+describe.skipIf(!dockerAvailable)("tickets list — filter / sort / pagination", () => {
+  async function seed(): Promise<string> {
+    const seller = await signUpSeller("seller-list@example.com");
+
+    const specs = [
+      { title: "Aphex Twin @ Warehouse", unitPriceCents: 4500 },
+      { title: "Squarepusher @ Fabric", unitPriceCents: 6000 },
+      { title: "Aphex Twin @ Fuji Rock", unitPriceCents: 3000 },
+      { title: "Boards of Canada @ Barrowland", unitPriceCents: 9000 },
+      { title: "Autechre @ Berghain", unitPriceCents: 7000 },
+    ];
+
+    for (const spec of specs) {
+      await getTicketsClient().create({
+        token: seller.token,
+        title: spec.title,
+        quantityTotal: 10,
+        unitPriceCents: spec.unitPriceCents,
+      });
+    }
+
+    return seller.token;
+  }
+
+  it("filters by title with q (case-insensitive, contains)", async () => {
+    await seed();
+
+    const { items } = await getTicketsClient().list({ q: "aphex" });
+
+    expect(items).toHaveLength(2);
+    expect(items.every((t) => t.title.toLowerCase().includes("aphex"))).toBe(true);
+  });
+
+  it("excludes sold-out rows when availableOnly is set", async () => {
+    await seed();
+
+    const [target] = await getTicketsDb()
+      .db.select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.title, "Autechre @ Berghain"));
+    await getTicketsDb()
+      .db.update(ticketsTable)
+      .set({ quantityAvailable: 0 })
+      .where(eq(ticketsTable.id, target!.id));
+
+    const { items } = await getTicketsClient().list({ availableOnly: true });
+
+    expect(items.map((t) => t.title)).not.toContain("Autechre @ Berghain");
+    expect(items).toHaveLength(4);
+  });
+
+  it("sorts by price ascending and descending", async () => {
+    await seed();
+
+    const asc = await getTicketsClient().list({ sort: "price_asc" });
+    const ascPrices = asc.items.map((t) => t.unitPriceCents);
+    expect(ascPrices).toEqual([...ascPrices].sort((a, b) => a - b));
+
+    const desc = await getTicketsClient().list({ sort: "price_desc" });
+    const descPrices = desc.items.map((t) => t.unitPriceCents);
+    expect(descPrices).toEqual([...descPrices].sort((a, b) => b - a));
+  });
+
+  it("returns newest in non-increasing createdAt order", async () => {
+    await seed();
+
+    const { items } = await getTicketsClient().list({ sort: "newest" });
+
+    for (let i = 1; i < items.length; i++) {
+      expect(items[i - 1]!.createdAt >= items[i]!.createdAt).toBe(true);
+    }
+  });
+
+  it("paginates with cursor: disjoint pages, full coverage, null on the last page", async () => {
+    await seed();
+
+    const page1 = await getTicketsClient().list({ sort: "price_asc", limit: 2 });
+    expect(page1.items).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2 = await getTicketsClient().list({
+      sort: "price_asc",
+      limit: 2,
+      cursor: page1.nextCursor!,
+    });
+    expect(page2.items).toHaveLength(2);
+
+    const page3 = await getTicketsClient().list({
+      sort: "price_asc",
+      limit: 2,
+      cursor: page2.nextCursor!,
+    });
+    expect(page3.items).toHaveLength(1);
+    expect(page3.nextCursor).toBeNull();
+
+    const allIds = [...page1.items, ...page2.items, ...page3.items].map((t) => t.id);
+    expect(new Set(allIds).size).toBe(5);
+  });
+
+  it("rejects a cursor reused under a different sort", async () => {
+    await seed();
+
+    const page1 = await getTicketsClient().list({ sort: "price_asc", limit: 2 });
+
+    const wrongSort = getTicketsClient().list({
+      sort: "newest",
+      limit: 2,
+      cursor: page1.nextCursor!,
+    });
+
+    await expect(wrongSort).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+});
