@@ -25,6 +25,11 @@ export const AuthLayer: Layer.Layer<Auth, never, AuthConfig | Database> = Layer.
     const env = yield* AuthConfig;
     const db = yield* Database;
 
-    return createAuth({ db: db.db, secret: env.secret, baseURL: env.baseURL });
+    return createAuth({
+      db: db.db,
+      secret: env.secret,
+      baseURL: env.baseURL,
+      ...(env.trustedOrigins === undefined ? {} : { trustedOrigins: env.trustedOrigins }),
+    });
   }),
 );

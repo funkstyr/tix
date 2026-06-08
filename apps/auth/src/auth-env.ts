@@ -8,6 +8,10 @@ const envSchema = type({
   DATABASE_URL: "string > 0",
   BETTER_AUTH_SECRET: "string > 0",
   "AUTH_BASE_URL?": "string > 0",
+  // The SPA's browser origin. better-auth `baseURL` is the in-cluster `http://auth:<port>`,
+  // so a browser POSTing sign-in/sign-up from the SPA is cross-origin and gets a 403
+  // `INVALID_ORIGIN` unless that origin is trusted. Optional so tests/standalone still boot.
+  "WEB_ORIGIN?": "string > 0",
   "OTEL_EXPORTER_OTLP_ENDPOINT?": "string > 0",
 });
 
@@ -17,6 +21,7 @@ export type AuthEnv = {
   secret: string;
   baseURL: string;
   otelEndpoint: string;
+  trustedOrigins?: string[];
 };
 
 export function parseEnv(env: Record<string, string | undefined>): AuthEnv {
@@ -36,5 +41,6 @@ export function parseEnv(env: Record<string, string | undefined>): AuthEnv {
     secret: parsed.BETTER_AUTH_SECRET,
     baseURL: parsed.AUTH_BASE_URL ?? `http://localhost:${port}`,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
+    ...(parsed.WEB_ORIGIN === undefined ? {} : { trustedOrigins: [parsed.WEB_ORIGIN] }),
   };
 }

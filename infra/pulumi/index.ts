@@ -406,6 +406,9 @@ const authDeployment = new ServiceDeployment(
     env: {
       AUTH_HTTP_PORT: String(AUTH_PORT),
       AUTH_BASE_URL,
+      // Trust the SPA's browser origin so cross-origin sign-in/sign-up POSTs aren't
+      // rejected with `INVALID_ORIGIN` (better-auth `baseURL` is the in-cluster URL).
+      WEB_ORIGIN: webOrigin,
       LOG_LEVEL: logLevel,
       ...profilingEnv,
       ...collectorReadyEnv,

@@ -55,6 +55,12 @@ RENDER_DIR="$(pwd)/rendered-tilt"
   set_secret garageS3SecretKey fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 
   pulumi config set imagePullPolicy Never
+  # The SPA's browser origin in the Tilt loop: Vite is port-forwarded to localhost:5173
+  # while the gateway is on localhost:4000, so this is cross-origin. The gateway echoes it
+  # back for CORS and the auth service trusts it for sign-in/sign-up. Keep it on `localhost`
+  # (not 127.0.0.1) so it's same-site with the gateway — else the SameSite=Lax session
+  # cookie is dropped. The ingress-fronted dev/prod stacks are same-origin and set their own.
+  pulumi config set webOrigin http://localhost:5173
   # Enable the k6 load generator (ADR-0010) so the dev loop has continuous gateway
   # traffic feeding the RED/saga dashboards. Unlike the synthetic probe it drives the
   # gateway correctly (sign-in via the /api/auth REST proxy + the nested /rpc paths).
