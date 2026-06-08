@@ -23,7 +23,7 @@ export const tickets = ticketsSchema.table(
     quantityAvailable: integer("quantity_available").notNull(),
     unitPriceCents: integer("unit_price_cents").notNull(),
     version: integer("version").notNull().default(1),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     check(

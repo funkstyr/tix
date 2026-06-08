@@ -715,4 +715,39 @@ describe.skipIf(!dockerAvailable)("tickets list — filter / sort / pagination",
 
     await expect(wrongSort).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("paginates newest across rows sharing a millisecond without skips", async () => {
+    // Insert directly so we control sub-millisecond timestamps: all five share
+    // the .111 millisecond but differ in microseconds — the exact case that a
+    // millisecond-truncated cursor would skip.
+    await getTicketsDb().sql`
+      INSERT INTO tickets.tickets
+        (seller_id, title, quantity_total, quantity_available, unit_price_cents, created_at)
+      VALUES
+        ('seller-ms', 'Same MS A', 10, 10, 100, '2026-01-01 00:00:00.111111+00'),
+        ('seller-ms', 'Same MS B', 10, 10, 100, '2026-01-01 00:00:00.111222+00'),
+        ('seller-ms', 'Same MS C', 10, 10, 100, '2026-01-01 00:00:00.111333+00'),
+        ('seller-ms', 'Same MS D', 10, 10, 100, '2026-01-01 00:00:00.111444+00'),
+        ('seller-ms', 'Same MS E', 10, 10, 100, '2026-01-01 00:00:00.111555+00')
+    `;
+
+    const collected: string[] = [];
+    let cursor: string | null = null;
+
+    // Drain pages of size 2. Bounded loop guards against an infinite cursor.
+    for (let i = 0; i < 10; i++) {
+      // eslint-disable-next-line no-await-in-loop -- pagination loop is inherently sequential
+      const page = await getTicketsClient().list(
+        cursor === null
+          ? { sort: "newest", limit: 2 }
+          : { sort: "newest", limit: 2, cursor },
+      );
+      collected.push(...page.items.map((t) => t.id));
+      if (page.nextCursor === null) break;
+      cursor = page.nextCursor;
+    }
+
+    expect(collected).toHaveLength(5);
+    expect(new Set(collected).size).toBe(5);
+  });
 });

@@ -50,6 +50,13 @@
       "when": 1779384352725,
       "tag": "0006_tickets_list_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779384352726,
+      "tag": "0007_tickets_created_at_ms_precision",
+      "breakpoints": true
     }
   ]
 }
