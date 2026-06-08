@@ -724,11 +724,11 @@ describe.skipIf(!dockerAvailable)("tickets list — filter / sort / pagination",
       INSERT INTO tickets.tickets
         (seller_id, title, quantity_total, quantity_available, unit_price_cents, created_at)
       VALUES
-        ('seller-ms', 'Same MS A', 10, 10, 100, '2026-01-01 00:00:00.111111+00'),
-        ('seller-ms', 'Same MS B', 10, 10, 100, '2026-01-01 00:00:00.111222+00'),
+        ('seller-ms', 'Same MS A', 10, 10, 100, '2026-01-01 00:00:00.111001+00'),
+        ('seller-ms', 'Same MS B', 10, 10, 100, '2026-01-01 00:00:00.111200+00'),
         ('seller-ms', 'Same MS C', 10, 10, 100, '2026-01-01 00:00:00.111333+00'),
-        ('seller-ms', 'Same MS D', 10, 10, 100, '2026-01-01 00:00:00.111444+00'),
-        ('seller-ms', 'Same MS E', 10, 10, 100, '2026-01-01 00:00:00.111555+00')
+        ('seller-ms', 'Same MS D', 10, 10, 100, '2026-01-01 00:00:00.111400+00'),
+        ('seller-ms', 'Same MS E', 10, 10, 100, '2026-01-01 00:00:00.111499+00')
     `;
 
     const collected: string[] = [];
@@ -738,9 +738,7 @@ describe.skipIf(!dockerAvailable)("tickets list — filter / sort / pagination",
     for (let i = 0; i < 10; i++) {
       // eslint-disable-next-line no-await-in-loop -- pagination loop is inherently sequential
       const page = await getTicketsClient().list(
-        cursor === null
-          ? { sort: "newest", limit: 2 }
-          : { sort: "newest", limit: 2, cursor },
+        cursor === null ? { sort: "newest", limit: 2 } : { sort: "newest", limit: 2, cursor },
       );
       collected.push(...page.items.map((t) => t.id));
       if (page.nextCursor === null) break;
