@@ -78,12 +78,12 @@ describe("createGatewayRouter", () => {
   it("delegates to the downstream tickets client, forwarding the cookie header", async () => {
     const list = vi
       .fn<DownstreamClients["tickets"]["list"]>()
-      .mockResolvedValue({ items: [TICKET_RECORD] });
+      .mockResolvedValue({ items: [TICKET_RECORD], nextCursor: null });
     const client = withDownstreamStub("tickets", { list }, "tix.session=abc");
 
     const result = await client.tickets.list({ limit: 10 });
 
-    expect(result).toEqual({ items: [TICKET_RECORD] });
+    expect(result).toEqual({ items: [TICKET_RECORD], nextCursor: null });
     expect(list).toHaveBeenCalledWith(
       { limit: 10 },
       { context: { cookieHeader: "tix.session=abc" } },
@@ -91,7 +91,9 @@ describe("createGatewayRouter", () => {
   });
 
   it("forwards a null cookieHeader when the request has no cookie", async () => {
-    const list = vi.fn<DownstreamClients["tickets"]["list"]>().mockResolvedValue({ items: [] });
+    const list = vi
+      .fn<DownstreamClients["tickets"]["list"]>()
+      .mockResolvedValue({ items: [], nextCursor: null });
     const client = withDownstreamStub("tickets", { list });
 
     await client.tickets.list({});

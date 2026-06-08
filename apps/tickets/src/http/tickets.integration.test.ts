@@ -581,14 +581,16 @@ describe.skipIf(!dockerAvailable)("tickets list — filter / sort / pagination",
       { title: "Autechre @ Berghain", unitPriceCents: 7000 },
     ];
 
-    for (const spec of specs) {
-      await getTicketsClient().create({
-        token: seller.token,
-        title: spec.title,
-        quantityTotal: 10,
-        unitPriceCents: spec.unitPriceCents,
-      });
-    }
+    await Promise.all(
+      specs.map((spec) =>
+        getTicketsClient().create({
+          token: seller.token,
+          title: spec.title,
+          quantityTotal: 10,
+          unitPriceCents: spec.unitPriceCents,
+        }),
+      ),
+    );
 
     return seller.token;
   }
@@ -625,11 +627,11 @@ describe.skipIf(!dockerAvailable)("tickets list — filter / sort / pagination",
 
     const asc = await getTicketsClient().list({ sort: "price_asc" });
     const ascPrices = asc.items.map((t) => t.unitPriceCents);
-    expect(ascPrices).toEqual([...ascPrices].sort((a, b) => a - b));
+    expect(ascPrices).toEqual([...ascPrices].toSorted((a, b) => a - b));
 
     const desc = await getTicketsClient().list({ sort: "price_desc" });
     const descPrices = desc.items.map((t) => t.unitPriceCents);
-    expect(descPrices).toEqual([...descPrices].sort((a, b) => b - a));
+    expect(descPrices).toEqual([...descPrices].toSorted((a, b) => b - a));
   });
 
   it("returns newest in non-increasing createdAt order", async () => {

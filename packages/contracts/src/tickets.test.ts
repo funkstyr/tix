@@ -22,8 +22,8 @@ type SortArrayMatchesSchema = TicketSort extends SchemaSort
     ? true
     : never
   : never;
-const _sortGuard: SortArrayMatchesSchema = true;
-void _sortGuard;
+const sortGuard: SortArrayMatchesSchema = true;
+void sortGuard;
 
 const goodPayload: TicketCreatedV1 = {
   ticketId: "11111111-1111-4111-8111-111111111111",
@@ -138,6 +138,6 @@ describe("ticketsListOutput", () => {
   });
 
   test("rejects a malformed item", () => {
-    expect(() => ticketsListOutput.assert({ items: [{}], nextCursor: null })).toThrow();
+    expect(() => ticketsListOutput.assert({ items: [{}], nextCursor: null })).toThrow(/id/);
   });
 });

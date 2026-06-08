@@ -74,6 +74,20 @@ describe.skipIf(!dockerAvailable)("gateway canary: signup → ticket → order �
     expect(ticket.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(ticket.quantityAvailable).toBe(4);
 
+    await gatewayClient.tickets.create({
+      token: seller.token,
+      title: "Canary Show @ The Venue Night 2",
+      quantityTotal: 2,
+      unitPriceCents: 5_000,
+    });
+
+    // Assert that filter + keyset pagination round-trips through the gateway
+    // (new optional fields on ticketsListInput/ticketsListOutput flow through
+    // the generic delegate passthrough without any handler change).
+    const filtered = await gatewayClient.tickets.list({ sort: "price_asc", limit: 1 });
+    expect(filtered.items).toHaveLength(1);
+    expect(filtered.nextCursor).not.toBeNull();
+
     const order = await gatewayClient.orders.create({
       token: buyer.token,
       ticketId: ticket.id,

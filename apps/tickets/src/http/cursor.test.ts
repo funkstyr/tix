@@ -34,14 +34,9 @@ describe("encodeCursor / decodeCursor", () => {
   });
 
   it("throws BAD_REQUEST with an invalid-cursor message", () => {
-    try {
-      decodeCursor("!!!not-base64!!!", "newest");
-      expect.unreachable("decodeCursor should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ORPCError);
-      expect((error as ORPCError<string, unknown>).code).toBe("BAD_REQUEST");
-      expect((error as ORPCError<string, unknown>).message).toBe("invalid cursor");
-    }
+    expect(() => decodeCursor("!!!not-base64!!!", "newest")).toThrowError(
+      expect.objectContaining({ code: "BAD_REQUEST", message: "invalid cursor" }),
+    );
   });
 
   it("rejects a wrong-shape payload", () => {
