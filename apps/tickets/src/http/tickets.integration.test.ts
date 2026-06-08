@@ -636,10 +636,42 @@ describe.skipIf(!dockerAvailable)("tickets list — filter / sort / pagination",
     await seed();
 
     const { items } = await getTicketsClient().list({ sort: "newest" });
+    expect(items).toHaveLength(5);
 
     for (let i = 1; i < items.length; i++) {
       expect(items[i - 1]!.createdAt >= items[i]!.createdAt).toBe(true);
     }
+  });
+
+  it("returns an empty page with null cursor when q matches nothing", async () => {
+    await seed();
+
+    const result = await getTicketsClient().list({ q: "zzz-no-such-event-zzz" });
+
+    expect(result.items).toHaveLength(0);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it("paginates a filtered result set (q + cursor)", async () => {
+    await seed();
+
+    const page1 = await getTicketsClient().list({ q: "aphex", sort: "price_asc", limit: 1 });
+    expect(page1.items).toHaveLength(1);
+    expect(page1.items[0]!.title.toLowerCase()).toContain("aphex");
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2 = await getTicketsClient().list({
+      q: "aphex",
+      sort: "price_asc",
+      limit: 1,
+      cursor: page1.nextCursor!,
+    });
+    expect(page2.items).toHaveLength(1);
+    expect(page2.items[0]!.title.toLowerCase()).toContain("aphex");
+    expect(page2.nextCursor).toBeNull();
+
+    const ids = [page1.items[0]!.id, page2.items[0]!.id];
+    expect(new Set(ids).size).toBe(2);
   });
 
   it("paginates with cursor: disjoint pages, full coverage, null on the last page", async () => {
