@@ -83,8 +83,21 @@ export const ticketGetByIdInput = type({
 
 export type TicketGetByIdInput = typeof ticketGetByIdInput.infer;
 
+// Keep this union in sync with the inline literal in `ticketsListInput` /
+// `ticketsListMineInput` below. The schema rejects anything outside it.
+export const ticketSortValues = ["newest", "price_asc", "price_desc"] as const;
+
+export type TicketSort = (typeof ticketSortValues)[number];
+
 export const ticketsListInput = type({
+  "+": "reject",
   "limit?": "1 <= number.integer <= 200",
+  // title contains-search; empty/whitespace is treated as absent server-side
+  "q?": "string <= 100",
+  "sort?": "'newest' | 'price_asc' | 'price_desc'",
+  "availableOnly?": "boolean",
+  // opaque keyset cursor from a prior response's nextCursor
+  "cursor?": "string >= 1",
 });
 
 export type TicketsListInput = typeof ticketsListInput.infer;
@@ -92,15 +105,22 @@ export type TicketsListInput = typeof ticketsListInput.infer;
 // Separate from `ticketsListInput` so the public list can't be coerced into
 // leaking a different seller's inventory: `listMine` requires a session token
 // and filters server-side by the resolved user id.
+// `q`/`availableOnly` are intentionally omitted: a seller's own inventory is
+// small enough that client-side narrowing is fine.
 export const ticketsListMineInput = type({
+  "+": "reject",
   token: "string >= 1",
   "limit?": "1 <= number.integer <= 200",
+  "sort?": "'newest' | 'price_asc' | 'price_desc'",
+  "cursor?": "string >= 1",
 });
 
 export type TicketsListMineInput = typeof ticketsListMineInput.infer;
 
 export const ticketsListOutput = type({
   items: ticketRecordOutput.array(),
+  // null on the last page; otherwise feed back as `cursor` for the next page
+  nextCursor: "string | null",
 });
 
 export type TicketsListOutput = typeof ticketsListOutput.infer;
