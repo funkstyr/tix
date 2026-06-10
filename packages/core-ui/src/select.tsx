@@ -27,7 +27,11 @@ export function Select({
     <SelectPrimitive.Root
       items={options}
       value={value}
-      onValueChange={(next) => onValueChange(next as string)}
+      onValueChange={(next) => {
+        // base-ui can emit null (e.g. a programmatic clear); our callers only
+        // ever deal in concrete string values, so drop the null case.
+        if (next !== null) onValueChange(next as string);
+      }}
     >
       <SelectPrimitive.Trigger
         aria-label={ariaLabel}
