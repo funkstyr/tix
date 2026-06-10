@@ -69,8 +69,7 @@ describe("TicketFilters", () => {
 
     const checkbox = input("input[type=checkbox]");
     await act(async () => {
-      checkbox.checked = true;
-      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+      checkbox.click();
     });
 
     expect(onChange).toHaveBeenCalledWith({ availableOnly: true, cursors: undefined });

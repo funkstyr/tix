@@ -1,4 +1,4 @@
-import { type FormEvent, type JSX, useEffect, useRef } from "react";
+import { type ChangeEvent, type FormEvent, type JSX, useRef } from "react";
 
 import { Input } from "@tix/core-ui/input";
 import { Select } from "@tix/core-ui/select";
@@ -12,37 +12,26 @@ export type TicketFiltersProps = {
 
 export function TicketFilters({ search, onChange }: TicketFiltersProps): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null);
-  const checkboxRef = useRef<HTMLInputElement>(null);
+
+  // Every control change returns to page 1, so each commit starts from the
+  // current search minus its cursor stack, then applies the changed field.
+  // `delete` rather than `= undefined`: exactOptionalPropertyTypes forbids
+  // undefined on these optional keys.
+  function commit(apply: (draft: CatalogSearch) => void): void {
+    const draft: CatalogSearch = { ...search };
+    delete draft.cursors;
+    apply(draft);
+    onChange(draft);
+  }
 
   function onSearchSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const q = (inputRef.current?.value ?? "").trim();
-    const patch: CatalogSearch = { ...search };
-    delete patch.cursors;
-    if (q.length > 0) patch.q = q;
-    else delete patch.q;
-    onChange(patch);
+    commit((draft) => {
+      if (q.length > 0) draft.q = q;
+      else delete draft.q;
+    });
   }
-
-  // Use a native event listener so the handler fires for imperatively-dispatched
-  // change events in tests (React's synthetic onChange can suppress them on
-  // uncontrolled checkboxes when checked is set directly on the element).
-  useEffect(() => {
-    const el = checkboxRef.current;
-    if (el === null) return;
-
-    function handleChange(): void {
-      const checked = checkboxRef.current?.checked ?? false;
-      const patch: CatalogSearch = { ...search };
-      delete patch.cursors;
-      if (checked) patch.availableOnly = true;
-      else delete patch.availableOnly;
-      onChange(patch);
-    }
-
-    el.addEventListener("change", handleChange);
-    return () => el.removeEventListener("change", handleChange);
-  });
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -59,21 +48,24 @@ export function TicketFilters({ search, onChange }: TicketFiltersProps): JSX.Ele
       <Select
         aria-label="Sort tickets"
         value={search.sort ?? "newest"}
-        onValueChange={(sort) => {
-          const patch: CatalogSearch = { ...search };
-          delete patch.cursors;
-          if (sort) patch.sort = sort as NonNullable<CatalogSearch["sort"]>;
-          else delete patch.sort;
-          onChange(patch);
-        }}
+        onValueChange={(sort) =>
+          commit((draft) => {
+            draft.sort = sort as NonNullable<CatalogSearch["sort"]>;
+          })
+        }
         options={sortOptions}
       />
 
       <label className="flex items-center gap-2 text-sm">
         <input
-          ref={checkboxRef}
           type="checkbox"
           defaultChecked={search.availableOnly ?? false}
+          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+            commit((draft) => {
+              if (event.currentTarget.checked) draft.availableOnly = true;
+              else delete draft.availableOnly;
+            })
+          }
         />
         Available only
       </label>
