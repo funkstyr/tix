@@ -7,7 +7,7 @@ import type { SelectOption } from "@tix/core-ui/select";
 // Search schema for the public catalog. Keep the sort literal in sync with
 // `ticketSortValues` in @tix/contracts/tickets — the endpoint rejects anything else.
 export const catalogSearchSchema = type({
-  "q?": "string",
+  "q?": "string <= 100",
   "sort?": "'newest' | 'price_asc' | 'price_desc'",
   "availableOnly?": "boolean",
   // keyset breadcrumb: cursors[-1] is the current page; absent/empty == page 1
