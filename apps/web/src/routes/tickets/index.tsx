@@ -41,27 +41,27 @@ function TicketsListPage(): JSX.Element {
       {items.length === 0 ? (
         <EmptyState title="No tickets match your filters" description="Try widening your search." />
       ) : (
-        <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((ticket) => (
-              <TicketCard
-                key={ticket.id}
-                ticket={ticket}
-                quantityText={`${ticket.quantityAvailable} available`}
-              />
-            ))}
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((ticket) => (
+            <TicketCard
+              key={ticket.id}
+              ticket={ticket}
+              quantityText={`${ticket.quantityAvailable} available`}
+            />
+          ))}
+        </div>
+      )}
 
-          <Pager
-            page={pageNumber(search)}
-            canPrev={hasPrev(search)}
-            canNext={hasNext(nextCursor)}
-            onPrev={() => navigate({ to: "/tickets", search: goPrev(search) })}
-            onNext={() => {
-              if (nextCursor !== null) navigate({ to: "/tickets", search: goNext(search, nextCursor) });
-            }}
-          />
-        </>
+      {(items.length > 0 || hasPrev(search)) && (
+        <Pager
+          page={pageNumber(search)}
+          canPrev={hasPrev(search)}
+          canNext={hasNext(nextCursor)}
+          onPrev={() => navigate({ to: "/tickets", search: goPrev(search) })}
+          onNext={() => {
+            if (nextCursor !== null) navigate({ to: "/tickets", search: goNext(search, nextCursor) });
+          }}
+        />
       )}
     </section>
   );
