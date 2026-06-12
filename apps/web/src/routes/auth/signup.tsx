@@ -1,12 +1,21 @@
-import { type ChangeEvent, type FormEvent, type JSX, useCallback, useState } from "react";
+import { type FormEvent, type JSX, useCallback } from "react";
+import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import { type } from "arktype";
 
 import { Alert } from "@tix/core-ui/alert";
 import { Button } from "@tix/core-ui/button";
-import { FormField } from "@tix/core-ui/form-field";
 
 import { AuthCard } from "../../auth/auth-card";
 import { useAuth } from "../../auth/use-auth";
+import { FormTextField } from "../../forms/form-text-field";
+import { useSubmitState } from "../../forms/use-submit-state";
+
+const signUpSchema = type({
+  name: "string >= 1",
+  email: "string.email",
+  password: "string >= 8",
+});
 
 export const Route = createFileRoute("/auth/signup")({
   component: SignUpPage,
@@ -17,82 +26,58 @@ function SignUpPage(): JSX.Element {
   const router = useRouter();
   const navigate = useNavigate();
 
-  const [name, setName] = useState("");
+  const form = useForm({
+    defaultValues: { name: "", email: "", password: "" },
+    validators: {
+      onChange: signUpSchema,
+      onSubmitAsync: async ({ value }) => {
+        const result = await auth.signUp(value);
+        if (result.error !== null) return result.error;
 
-  const [email, setEmail] = useState("");
-
-  const [password, setPassword] = useState("");
-
-  const [error, setError] = useState<string | null>(null);
-
-  const [pending, setPending] = useState(false);
-
-  const onName = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setName(event.target.value);
-  }, []);
-
-  const onEmail = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setEmail(event.target.value);
-  }, []);
-
-  const onPassword = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setPassword(event.target.value);
-  }, []);
+        await router.invalidate();
+        await navigate({ to: "/" });
+        return undefined;
+      },
+    },
+  });
 
   const onSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
+    (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      setPending(true);
-      setError(null);
-
-      const result = await auth.signUp({ name, email, password });
-      if (result.error !== null) {
-        setError(result.error);
-        setPending(false);
-        return;
-      }
-
-      await router.invalidate();
-      await navigate({ to: "/" });
+      void form.handleSubmit();
     },
-    [auth, name, email, password, navigate, router],
+    [form],
   );
+
+  const { canSubmit, isSubmitting, submitError } = useSubmitState(form);
 
   return (
     <AuthCard title="Sign up">
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <FormField
-          id="signup-name"
-          label="Name"
-          type="text"
-          required
-          value={name}
-          onChange={onName}
-        />
+      <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form.Field name="name">
+          {(field) => <FormTextField field={field} id="signup-name" label="Name" type="text" />}
+        </form.Field>
 
-        <FormField
-          id="signup-email"
-          label="Email"
-          type="email"
-          required
-          value={email}
-          onChange={onEmail}
-        />
+        <form.Field name="email">
+          {(field) => <FormTextField field={field} id="signup-email" label="Email" type="email" />}
+        </form.Field>
 
-        <FormField
-          id="signup-password"
-          label="Password"
-          type="password"
-          required
-          minLength={8}
-          value={password}
-          onChange={onPassword}
-        />
+        <form.Field name="password">
+          {(field) => (
+            <FormTextField
+              field={field}
+              id="signup-password"
+              label="Password"
+              type="password"
+              hint="At least 8 characters"
+            />
+          )}
+        </form.Field>
 
-        {error === null ? null : <Alert>{error}</Alert>}
+        {submitError == null ? null : <Alert>{submitError}</Alert>}
 
-        <Button type="submit" disabled={pending}>
-          {pending ? "Creating account…" : "Create account"}
+        <Button type="submit" disabled={!canSubmit || isSubmitting}>
+          {isSubmitting ? "Creating account…" : "Create account"}
         </Button>
       </form>
     </AuthCard>
