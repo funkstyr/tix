@@ -16,6 +16,10 @@
       "types": "./dist/readiness.d.ts",
       "import": "./dist/readiness.js"
     },
+    "./http-app": {
+      "types": "./dist/http-app.d.ts",
+      "import": "./dist/http-app.js"
+    },
     "./tags": {
       "types": "./dist/tags.d.ts",
       "import": "./dist/tags.js"
@@ -48,7 +52,8 @@
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
     "@tix/observability": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "hono": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
