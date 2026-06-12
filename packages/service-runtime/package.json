@@ -8,6 +8,10 @@
   ],
   "type": "module",
   "exports": {
+    "./orpc-boundary": {
+      "types": "./dist/orpc-boundary.d.ts",
+      "import": "./dist/orpc-boundary.js"
+    },
     "./readiness": {
       "types": "./dist/readiness.d.ts",
       "import": "./dist/readiness.js"
@@ -38,6 +42,7 @@
   "dependencies": {
     "@effect/platform": "catalog:",
     "@nats-io/transport-node": "catalog:",
+    "@orpc/server": "catalog:",
     "@pyroscope/nodejs": "catalog:",
     "@tix/contracts": "workspace:*",
     "@tix/db-core": "workspace:*",

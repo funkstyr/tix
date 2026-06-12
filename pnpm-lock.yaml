@@ -1218,6 +1218,9 @@ importers:
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 1.14.3(@opentelemetry/api@1.9.1)
       '@pyroscope/nodejs':
         specifier: 'catalog:'
         version: 0.4.11
