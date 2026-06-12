@@ -1,4 +1,4 @@
-import { type JSX } from "react";
+import { type JSX, useCallback } from "react";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 
 import { cn } from "./cn";
@@ -23,16 +23,17 @@ export function Select({
   className,
   "aria-label": ariaLabel,
 }: SelectProps): JSX.Element {
+  // base-ui can emit null (e.g. a programmatic clear); our callers only ever
+  // deal in concrete string values, so drop the null case.
+  const onRootValueChange = useCallback(
+    (next: unknown) => {
+      if (next !== null) onValueChange(next as string);
+    },
+    [onValueChange],
+  );
+
   return (
-    <SelectPrimitive.Root
-      items={options}
-      value={value}
-      onValueChange={(next) => {
-        // base-ui can emit null (e.g. a programmatic clear); our callers only
-        // ever deal in concrete string values, so drop the null case.
-        if (next !== null) onValueChange(next as string);
-      }}
-    >
+    <SelectPrimitive.Root items={options} value={value} onValueChange={onRootValueChange}>
       <SelectPrimitive.Trigger
         aria-label={ariaLabel}
         data-slot="select-trigger"
@@ -49,13 +50,13 @@ export function Select({
         <SelectPrimitive.Positioner className="z-50" sideOffset={4}>
           <SelectPrimitive.Popup
             data-slot="select-popup"
-            className="max-h-[var(--available-height)] min-w-[var(--anchor-width)] overflow-y-auto rounded-md border border-input bg-popover p-1 text-popover-foreground shadow-md outline-none"
+            className="border-input bg-popover text-popover-foreground max-h-[var(--available-height)] min-w-[var(--anchor-width)] overflow-y-auto rounded-md border p-1 shadow-md outline-none"
           >
             {options.map((option) => (
               <SelectPrimitive.Item
                 key={option.value}
                 value={option.value}
-                className="flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
               >
                 <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
               </SelectPrimitive.Item>

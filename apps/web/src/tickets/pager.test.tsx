@@ -28,7 +28,9 @@ afterEach(async () => {
 });
 
 function buttonByText(text: string): HTMLButtonElement {
-  const match = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes(text));
+  const match = [...container.querySelectorAll("button")].find((b) =>
+    b.textContent?.includes(text),
+  );
   if (match === undefined) throw new Error(`No button containing "${text}"`);
 
   return match as HTMLButtonElement;
@@ -53,8 +55,8 @@ describe("Pager", () => {
   });
 
   it("invokes the callbacks on click when enabled", async () => {
-    const onPrev = vi.fn();
-    const onNext = vi.fn();
+    const onPrev = vi.fn<() => void>();
+    const onNext = vi.fn<() => void>();
     await mount({ page: 2, canPrev: true, canNext: true, onPrev, onNext });
 
     await act(async () => {

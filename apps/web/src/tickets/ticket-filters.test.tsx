@@ -28,7 +28,10 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-async function mount(search: CatalogSearch, onChange: (next: CatalogSearch) => void): Promise<void> {
+async function mount(
+  search: CatalogSearch,
+  onChange: (next: CatalogSearch) => void,
+): Promise<void> {
   await act(async () => {
     root.render(<TicketFilters search={search} onChange={onChange} />);
   });
@@ -57,7 +60,9 @@ describe("TicketFilters", () => {
       search.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => {
-      container.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      container
+        .querySelector("form")
+        ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
 
     expect(onChange).toHaveBeenCalledWith({ q: "taylor", cursors: undefined });

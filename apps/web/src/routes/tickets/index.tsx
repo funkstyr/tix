@@ -1,10 +1,11 @@
-import type { JSX } from "react";
+import { type JSX, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { EmptyState } from "@tix/core-ui/empty-state";
 import { PageHeader } from "@tix/core-ui/page-header";
 
 import {
+  type CatalogSearch,
   catalogSearchSchema,
   goNext,
   goPrev,
@@ -29,14 +30,25 @@ function TicketsListPage(): JSX.Element {
   const { items, nextCursor } = Route.useLoaderData();
   const navigate = useNavigate();
 
+  const onFiltersChange = useCallback(
+    (next: CatalogSearch) => navigate({ to: "/tickets", search: next }),
+    [navigate],
+  );
+
+  const onPrev = useCallback(
+    () => navigate({ to: "/tickets", search: goPrev(search) }),
+    [navigate, search],
+  );
+
+  const onNext = useCallback(() => {
+    if (nextCursor !== null) navigate({ to: "/tickets", search: goNext(search, nextCursor) });
+  }, [navigate, search, nextCursor]);
+
   return (
     <section>
       <PageHeader title="Tickets" description="Browse every listing" />
 
-      <TicketFilters
-        search={search}
-        onChange={(next) => navigate({ to: "/tickets", search: next })}
-      />
+      <TicketFilters search={search} onChange={onFiltersChange} />
 
       {items.length === 0 ? (
         <EmptyState title="No tickets match your filters" description="Try widening your search." />
@@ -57,10 +69,8 @@ function TicketsListPage(): JSX.Element {
           page={pageNumber(search)}
           canPrev={hasPrev(search)}
           canNext={hasNext(nextCursor)}
-          onPrev={() => navigate({ to: "/tickets", search: goPrev(search) })}
-          onNext={() => {
-            if (nextCursor !== null) navigate({ to: "/tickets", search: goNext(search, nextCursor) });
-          }}
+          onPrev={onPrev}
+          onNext={onNext}
         />
       )}
     </section>

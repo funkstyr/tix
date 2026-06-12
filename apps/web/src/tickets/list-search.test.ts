@@ -61,7 +61,12 @@ describe("toListInput", () => {
   it("drops blank q, includes availableOnly only when true, and forwards the current cursor", () => {
     expect(toListInput({ q: "  ", availableOnly: false })).toEqual({});
     expect(
-      toListInput({ q: "  taylor ", sort: "price_asc", availableOnly: true, cursors: ["c1", "c2"] }),
+      toListInput({
+        q: "  taylor ",
+        sort: "price_asc",
+        availableOnly: true,
+        cursors: ["c1", "c2"],
+      }),
     ).toEqual({ q: "taylor", sort: "price_asc", availableOnly: true, cursor: "c2" });
   });
 });
@@ -69,6 +74,9 @@ describe("toListInput", () => {
 describe("toMineDeps", () => {
   it("forwards sort and the current cursor, dropping blanks", () => {
     expect(toMineDeps({})).toEqual({});
-    expect(toMineDeps({ sort: "newest", cursors: ["c1"] })).toEqual({ sort: "newest", cursor: "c1" });
+    expect(toMineDeps({ sort: "newest", cursors: ["c1"] })).toEqual({
+      sort: "newest",
+      cursor: "c1",
+    });
   });
 });

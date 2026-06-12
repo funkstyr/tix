@@ -17,7 +17,7 @@ export function Pager({ page, canPrev, canNext, onPrev, onNext }: PagerProps): J
         Previous
       </Button>
 
-      <span className="text-sm text-muted-foreground">Page {page}</span>
+      <span className="text-muted-foreground text-sm">Page {page}</span>
 
       <Button variant="outline" size="sm" disabled={!canNext} onClick={onNext}>
         Next

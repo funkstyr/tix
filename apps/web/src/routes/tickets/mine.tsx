@@ -1,4 +1,4 @@
-import { type JSX, useMemo } from "react";
+import { type JSX, useCallback, useMemo } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { EmptyState } from "@tix/core-ui/empty-state";
@@ -58,6 +58,24 @@ function MyTicketsPage(): JSX.Element {
     [],
   );
 
+  const onSortChange = useCallback(
+    (sort: string) =>
+      navigate({
+        to: "/tickets/mine",
+        search: applyFilter(search, { sort: sort as NonNullable<MineSearch["sort"]> }),
+      }),
+    [navigate, search],
+  );
+
+  const onPrev = useCallback(
+    () => navigate({ to: "/tickets/mine", search: goPrev(search) }),
+    [navigate, search],
+  );
+
+  const onNext = useCallback(() => {
+    if (nextCursor !== null) navigate({ to: "/tickets/mine", search: goNext(search, nextCursor) });
+  }, [navigate, search, nextCursor]);
+
   return (
     <section>
       <PageHeader title="My tickets" action={headerAction} />
@@ -66,12 +84,7 @@ function MyTicketsPage(): JSX.Element {
         <Select
           aria-label="Sort tickets"
           value={search.sort ?? "newest"}
-          onValueChange={(sort) =>
-            navigate({
-              to: "/tickets/mine",
-              search: applyFilter(search, { sort: sort as NonNullable<MineSearch["sort"]> }),
-            })
-          }
+          onValueChange={onSortChange}
           options={sortOptions}
         />
       </div>
@@ -100,10 +113,8 @@ function MyTicketsPage(): JSX.Element {
           page={pageNumber(search)}
           canPrev={hasPrev(search)}
           canNext={hasNext(nextCursor)}
-          onPrev={() => navigate({ to: "/tickets/mine", search: goPrev(search) })}
-          onNext={() => {
-            if (nextCursor !== null) navigate({ to: "/tickets/mine", search: goNext(search, nextCursor) });
-          }}
+          onPrev={onPrev}
+          onNext={onNext}
         />
       )}
     </section>

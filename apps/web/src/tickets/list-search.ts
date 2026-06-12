@@ -1,7 +1,6 @@
 import { type } from "arktype";
 
 import type { TicketSort } from "@tix/contracts/tickets";
-
 import type { SelectOption } from "@tix/core-ui/select";
 
 // Search schema for the public catalog. Keep the sort literal in sync with
