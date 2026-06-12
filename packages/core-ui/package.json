@@ -60,6 +60,10 @@
       "types": "./dist/form-field.d.ts",
       "import": "./dist/form-field.js"
     },
+    "./field": {
+      "types": "./dist/field.d.ts",
+      "import": "./dist/field.js"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {

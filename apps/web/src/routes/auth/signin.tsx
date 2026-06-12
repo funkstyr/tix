@@ -1,16 +1,23 @@
-import { type ChangeEvent, type FormEvent, type JSX, useCallback, useState } from "react";
+import { type FormEvent, type JSX, useCallback } from "react";
+import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { type } from "arktype";
 
 import { Alert } from "@tix/core-ui/alert";
 import { Button } from "@tix/core-ui/button";
-import { FormField } from "@tix/core-ui/form-field";
 
 import { AuthCard } from "../../auth/auth-card";
 import { useAuth } from "../../auth/use-auth";
+import { FormTextField } from "../../forms/form-text-field";
+import { useSubmitState } from "../../forms/use-submit-state";
 
 const searchSchema = type({
   "redirect?": "string",
+});
+
+const signInSchema = type({
+  email: "string.email",
+  password: "string >= 1",
 });
 
 export const Route = createFileRoute("/auth/signin")({
@@ -24,66 +31,48 @@ function SignInPage(): JSX.Element {
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
 
-  const [email, setEmail] = useState("");
+  const form = useForm({
+    defaultValues: { email: "", password: "" },
+    validators: {
+      onChange: signInSchema,
+      onSubmitAsync: async ({ value }) => {
+        const result = await auth.signIn(value);
+        if (result.error !== null) return result.error;
 
-  const [password, setPassword] = useState("");
-
-  const [error, setError] = useState<string | null>(null);
-
-  const [pending, setPending] = useState(false);
-
-  const onEmail = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setEmail(event.target.value);
-  }, []);
-
-  const onPassword = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setPassword(event.target.value);
-  }, []);
+        await router.invalidate();
+        await navigate({ to: redirect ?? "/" });
+        return undefined;
+      },
+    },
+  });
 
   const onSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
+    (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      setPending(true);
-      setError(null);
-
-      const result = await auth.signIn({ email, password });
-      if (result.error !== null) {
-        setError(result.error);
-        setPending(false);
-        return;
-      }
-
-      await router.invalidate();
-      await navigate({ to: redirect ?? "/" });
+      void form.handleSubmit();
     },
-    [auth, email, password, navigate, redirect, router],
+    [form],
   );
+
+  const { canSubmit, isSubmitting, submitError } = useSubmitState(form);
 
   return (
     <AuthCard title="Sign in">
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <FormField
-          id="signin-email"
-          label="Email"
-          type="email"
-          required
-          value={email}
-          onChange={onEmail}
-        />
+      <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form.Field name="email">
+          {(field) => <FormTextField field={field} id="signin-email" label="Email" type="email" />}
+        </form.Field>
 
-        <FormField
-          id="signin-password"
-          label="Password"
-          type="password"
-          required
-          value={password}
-          onChange={onPassword}
-        />
+        <form.Field name="password">
+          {(field) => (
+            <FormTextField field={field} id="signin-password" label="Password" type="password" />
+          )}
+        </form.Field>
 
-        {error === null ? null : <Alert>{error}</Alert>}
+        {submitError == null ? null : <Alert>{submitError}</Alert>}
 
-        <Button type="submit" disabled={pending}>
-          {pending ? "Signing in…" : "Sign in"}
+        <Button type="submit" disabled={!canSubmit || isSubmitting}>
+          {isSubmitting ? "Signing in…" : "Sign in"}
         </Button>
       </form>
     </AuthCard>
