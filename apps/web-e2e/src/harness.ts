@@ -63,9 +63,19 @@ export async function startHarness(): Promise<Harness> {
     reservationTtlMs: 5 * 60 * 1000,
   });
 
+  // The browser loads the SPA from `localhost` (Playwright `baseURL`) while the
+  // canary stack reports its gateway as `127.0.0.1`. For cookies those are
+  // different sites, so better-auth's `SameSite=Lax` session cookie is withheld
+  // on the cross-site `getSession()` that runs after a hard reload — the header
+  // renders signed-out and "My tickets" never appears. Hand the browser a
+  // same-site `localhost` gateway URL so the cookie flows on rehydration. The
+  // Node-side in-process clients keep the `127.0.0.1` URL (undici can be flaky
+  // resolving `localhost` to IPv6 against an IPv4-bound server).
+  const browserGatewayUrl = stack.gatewayBaseUrl.replace("127.0.0.1", "localhost");
+
   const vite = await startVite({
     webUrl,
-    gatewayUrl: stack.gatewayBaseUrl,
+    gatewayUrl: browserGatewayUrl,
     stripePublishableKey,
   });
 

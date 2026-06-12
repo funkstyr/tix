@@ -1,23 +1,41 @@
-import { type JSX, useMemo } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { type JSX, useCallback, useMemo } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 
 import { EmptyState } from "@tix/core-ui/empty-state";
 import { PageHeader } from "@tix/core-ui/page-header";
+import { Select } from "@tix/core-ui/select";
 
 import { requireAuth } from "../../auth/require-auth";
+import {
+  applyFilter,
+  goNext,
+  goPrev,
+  hasNext,
+  hasPrev,
+  type MineSearch,
+  mineSearchSchema,
+  pageNumber,
+  sortOptions,
+  toMineDeps,
+} from "../../tickets/list-search";
+import { Pager } from "../../tickets/pager";
 import { TicketCard } from "../../tickets/ticket-card";
 
 export const Route = createFileRoute("/tickets/mine")({
-  loader: ({ context }) => {
+  validateSearch: mineSearchSchema,
+  loaderDeps: ({ search }) => toMineDeps(search),
+  loader: ({ context, deps }) => {
     const token = requireAuth(context.auth, "/tickets/mine");
 
-    return context.gateway.tickets.listMine({ token });
+    return context.gateway.tickets.listMine({ token, ...deps });
   },
   component: MyTicketsPage,
 });
 
 function MyTicketsPage(): JSX.Element {
-  const { items } = Route.useLoaderData();
+  const search = Route.useSearch();
+  const { items, nextCursor } = Route.useLoaderData();
+  const navigate = useNavigate();
 
   const headerAction = useMemo(
     () => (
@@ -40,9 +58,36 @@ function MyTicketsPage(): JSX.Element {
     [],
   );
 
+  const onSortChange = useCallback(
+    (sort: string) =>
+      navigate({
+        to: "/tickets/mine",
+        search: applyFilter(search, { sort: sort as NonNullable<MineSearch["sort"]> }),
+      }),
+    [navigate, search],
+  );
+
+  const onPrev = useCallback(
+    () => navigate({ to: "/tickets/mine", search: goPrev(search) }),
+    [navigate, search],
+  );
+
+  const onNext = useCallback(() => {
+    if (nextCursor !== null) navigate({ to: "/tickets/mine", search: goNext(search, nextCursor) });
+  }, [navigate, search, nextCursor]);
+
   return (
     <section>
       <PageHeader title="My tickets" action={headerAction} />
+
+      <div className="mb-6 flex items-center justify-end">
+        <Select
+          aria-label="Sort tickets"
+          value={search.sort ?? "newest"}
+          onValueChange={onSortChange}
+          options={sortOptions}
+        />
+      </div>
 
       {items.length === 0 ? (
         <EmptyState
@@ -61,6 +106,16 @@ function MyTicketsPage(): JSX.Element {
             />
           ))}
         </div>
+      )}
+
+      {(items.length > 0 || hasPrev(search)) && (
+        <Pager
+          page={pageNumber(search)}
+          canPrev={hasPrev(search)}
+          canNext={hasNext(nextCursor)}
+          onPrev={onPrev}
+          onNext={onNext}
+        />
       )}
     </section>
   );
