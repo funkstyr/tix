@@ -24,6 +24,10 @@
       "types": "./dist/http-app.d.ts",
       "import": "./dist/http-app.js"
     },
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "import": "./dist/env.js"
+    },
     "./tags": {
       "types": "./dist/tags.d.ts",
       "import": "./dist/tags.js"
@@ -57,6 +61,7 @@
     "@tix/db-core": "workspace:*",
     "@tix/messaging": "workspace:*",
     "@tix/observability": "workspace:*",
+    "arktype": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:"
   },

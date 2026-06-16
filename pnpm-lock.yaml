@@ -1239,6 +1239,9 @@ importers:
       '@tix/observability':
         specifier: workspace:*
         version: link:../observability
+      arktype:
+        specifier: 'catalog:'
+        version: 2.2.0
       effect:
         specifier: 'catalog:'
         version: 3.21.2
