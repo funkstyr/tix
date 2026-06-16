@@ -1,6 +1,7 @@
-import { ArkErrors, type } from "arktype";
+import { type } from "arktype";
 
 import { ORDERS_STREAM } from "@tix/contracts/subjects";
+import { parseEnvSchema, requirePort } from "@tix/service-runtime/env";
 
 const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
 const DEFAULT_PORT = 4500;
@@ -36,15 +37,7 @@ function parseRedisUrl(raw: string): { host: string; port: number } {
 }
 
 export function parseEnv(): ExpirationEnv {
-  const parsed = envSchema(process.env);
-  if (parsed instanceof ArkErrors) {
-    throw new Error(`invalid environment: ${parsed.summary}`);
-  }
-
-  const port = parsed.PORT ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid PORT: ${port}`);
-  }
+  const parsed = parseEnvSchema(envSchema, process.env);
 
   return {
     databaseUrl: parsed.DATABASE_URL,
@@ -52,6 +45,6 @@ export function parseEnv(): ExpirationEnv {
     redis: parseRedisUrl(parsed.REDIS_URL),
     stream: parsed.EXPIRATION_STREAM ?? ORDERS_STREAM,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
-    port,
+    port: requirePort(parsed.PORT, DEFAULT_PORT, "PORT"),
   };
 }
