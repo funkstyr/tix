@@ -42,6 +42,10 @@ describe("requirePort", () => {
 });
 
 describe("requirePositiveInt", () => {
+  it("accepts a valid explicit value", () => {
+    expect(requirePositiveInt(1000, 5, "RESERVATION_TTL_MS")).toBe(1000);
+  });
+
   it("falls back when unset", () => {
     expect(requirePositiveInt(undefined, 5, "RESERVATION_TTL_MS")).toBe(5);
   });
