@@ -1,7 +1,8 @@
-import { integer, jsonb, pgSchema, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { integer, pgSchema, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import type { OrderRecord } from "@tix/contracts/orders";
 import type { PaymentIntentStatus } from "@tix/contracts/payments";
+import { defineInbox, defineOutbox } from "@tix/db-core/schema";
 
 // The read-model mirrors the Order aggregate's status, so it speaks the same closed set
 // the orders contract defines rather than a bare `string`. Today payments only projects
@@ -42,30 +43,9 @@ export const orderReadModel = paymentsSchema.table("order_read_model", {
     .$onUpdate(() => new Date()),
 });
 
-export const paymentsOutbox = paymentsSchema.table("outbox", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  subject: text("subject").notNull(),
-  payload: jsonb("payload").notNull(),
-  eventId: uuid("event_id").notNull().unique(),
-  // W3C traceparent captured at enqueue, replayed into publish headers by the
-  // relay (ADR-0009). Nullable: untraced rows publish unchanged.
-  traceparent: text("traceparent"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  sentAt: timestamp("sent_at", { withTimezone: true }),
-});
+export const paymentsOutbox = defineOutbox(paymentsSchema);
 
-export const paymentsInbox = paymentsSchema.table(
-  "inbox",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    // event_id is text, not uuid: publishers pick their own msgId format (see
-    // defineInbox in @tix/db-core for the shared rationale).
-    eventId: text("event_id").notNull(),
-    subject: text("subject").notNull(),
-    consumedAt: timestamp("consumed_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => [unique("inbox_event_subject_uq").on(t.eventId, t.subject)],
-);
+export const paymentsInbox = defineInbox(paymentsSchema);
 
 export const paymentsTables = {
   payments,
