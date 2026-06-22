@@ -1,7 +1,15 @@
-import { jsonb, pgSchema, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { jsonb, type PgSchema, pgSchema, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
-export function defineOutbox(schemaName: string) {
-  return pgSchema(schemaName).table("outbox", {
+// Accepts either a schema name (db-core's own tests) or the service's existing
+// `pgSchema(...)` instance, so services bind the shared table shape into the same
+// schema object their domain tables live in (ADR-0003: one schema per service,
+// ADR-0005: outbox/inbox in every service).
+function resolveSchema(schema: string | PgSchema): PgSchema {
+  return typeof schema === "string" ? pgSchema(schema) : schema;
+}
+
+export function defineOutbox(schema: string | PgSchema) {
+  return resolveSchema(schema).table("outbox", {
     id: uuid("id").primaryKey().defaultRandom(),
     subject: text("subject").notNull(),
     payload: jsonb("payload").notNull(),
@@ -16,8 +24,8 @@ export function defineOutbox(schemaName: string) {
   });
 }
 
-export function defineInbox(schemaName: string) {
-  return pgSchema(schemaName).table(
+export function defineInbox(schema: string | PgSchema) {
+  return resolveSchema(schema).table(
     "inbox",
     {
       id: uuid("id").primaryKey().defaultRandom(),
