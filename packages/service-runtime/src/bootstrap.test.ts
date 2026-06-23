@@ -28,6 +28,41 @@ describe("acquireStoppable", () => {
   });
 });
 
+describe("scoped boot failure", () => {
+  it("finalizes already-acquired resources when a later one fails to start", async () => {
+    // The partial-boot case: a service acquires relay/poller/consumers in order,
+    // and one of the later consumers fails to start. The resources acquired before
+    // it must still be torn down (LIFO on scope close) rather than leaked — no
+    // dangling NATS consumer or db pool when boot fails halfway.
+    const events: string[] = [];
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* acquireStoppable(async () => {
+            events.push("a-start");
+            return {
+              stop: async () => {
+                events.push("a-stop");
+              },
+            };
+          });
+          yield* acquireStoppable(async () => {
+            events.push("b-start");
+            throw new Error("b failed to start");
+          });
+          events.push("unreachable");
+        }),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    // a acquired then released on unwind; b never fully acquired so it has no
+    // finalizer; the body after b never runs.
+    expect(events).toEqual(["a-start", "b-start", "a-stop"]);
+  });
+});
+
 describe("acquireHttpServer", () => {
   it("serves while the scope is open and closes the listener after", async () => {
     const app = new Hono();
