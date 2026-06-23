@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check-types": "tsgo --noEmit",
+    "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
@@ -18,6 +19,7 @@
     "gateway": "workspace:*",
     "payments": "workspace:*",
     "stripe": "catalog:",
-    "testcontainers": "catalog:"
+    "testcontainers": "catalog:",
+    "vitest": "catalog:"
   }
 }
