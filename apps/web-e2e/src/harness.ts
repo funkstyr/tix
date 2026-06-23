@@ -5,7 +5,10 @@ import { createStripePaymentIntentClient } from "payments/stripe-payment-intent"
 import Stripe from "stripe";
 import { GenericContainer, Wait } from "testcontainers";
 
+import { waitForUrl } from "@tix/test-helpers/wait-for-url";
+
 import { WEB_PORT } from "./ports.ts";
+import { resolveStripePublishableKey } from "./stripe-keys.ts";
 
 const webRoot = fileURLToPath(new URL("../../web", import.meta.url));
 
@@ -22,11 +25,12 @@ export async function startHarness(): Promise<Harness> {
   // boot the stack with a stub PaymentIntent client so the Seller spec runs
   // locally; the Buyer spec skips itself when it sees `STRIPE_TEST_KEY` unset.
   const stripeSecretKey = process.env["STRIPE_TEST_KEY"];
-  // The publishable key is exposed to the browser; either pull it from the
-  // environment or fall back to Stripe's docs sample key, which works against
-  // the test mode of any Stripe account when paired with a real test secret.
-  const stripePublishableKey =
-    process.env["STRIPE_TEST_PUBLISHABLE_KEY"] ?? "pk_test_TYooMQauvdEDq54NiTphI7jx";
+  // The publishable key is exposed to the browser; pull it from the environment
+  // or fall back to Stripe's docs sample key. Empty is treated as absent — CI
+  // injects an unset secret as "" (see resolveStripePublishableKey).
+  const stripePublishableKey = resolveStripePublishableKey(
+    process.env["STRIPE_TEST_PUBLISHABLE_KEY"],
+  );
 
   const pgContainer = await new GenericContainer("postgres:16-alpine")
     .withEnvironment({
@@ -125,7 +129,7 @@ async function startVite(args: {
     process.stderr.write(`[vite] ${buf.toString()}`);
   });
 
-  await waitForUrl(args.webUrl, 60_000);
+  await waitForUrl(args.webUrl, { timeoutMs: 60_000, label: "Vite dev server" });
 
   return { child };
 }
@@ -138,20 +142,4 @@ async function stopVite(handle: ViteHandle): Promise<void> {
     });
     handle.child.kill("SIGTERM");
   });
-}
-
-async function waitForUrl(url: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      // eslint-disable-next-line no-await-in-loop -- polling is inherently sequential
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet
-    }
-    // eslint-disable-next-line no-await-in-loop -- backoff before next poll
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error(`Vite dev server did not become ready: ${url}`);
 }

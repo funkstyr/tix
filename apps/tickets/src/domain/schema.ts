@@ -1,15 +1,7 @@
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  integer,
-  jsonb,
-  pgSchema,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, integer, pgSchema, text, timestamp, uuid } from "drizzle-orm/pg-core";
+
+import { defineInbox, defineOutbox } from "@tix/db-core/schema";
 
 export const ticketsSchema = pgSchema("tickets");
 
@@ -36,28 +28,8 @@ export const tickets = ticketsSchema.table(
   ],
 );
 
-export const ticketsOutbox = ticketsSchema.table("outbox", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  subject: text("subject").notNull(),
-  payload: jsonb("payload").notNull(),
-  eventId: uuid("event_id").notNull().unique(),
-  // W3C traceparent captured at enqueue, replayed into publish headers by the
-  // relay (ADR-0009). Nullable: untraced rows publish unchanged.
-  traceparent: text("traceparent"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  sentAt: timestamp("sent_at", { withTimezone: true }),
-});
+export const ticketsOutbox = defineOutbox(ticketsSchema);
 
-export const ticketsInbox = ticketsSchema.table(
-  "inbox",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    // event_id is text, not uuid: publishers pick their own msgId format.
-    eventId: text("event_id").notNull(),
-    subject: text("subject").notNull(),
-    consumedAt: timestamp("consumed_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => [unique("inbox_event_subject_uq").on(t.eventId, t.subject)],
-);
+export const ticketsInbox = defineInbox(ticketsSchema);
 
 export const ticketsTables = { tickets, outbox: ticketsOutbox, inbox: ticketsInbox };

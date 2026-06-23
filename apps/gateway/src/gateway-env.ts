@@ -1,4 +1,6 @@
-import { ArkErrors, type } from "arktype";
+import { type } from "arktype";
+
+import { parseEnvSchema, requirePort } from "@tix/service-runtime/env";
 
 const DEFAULT_PORT = 4000;
 const DEFAULT_SESSION_COOKIE_NAME = "tix.session";
@@ -30,18 +32,10 @@ export type GatewayEnv = {
 };
 
 export function parseEnv(env: Record<string, string | undefined>): GatewayEnv {
-  const parsed = envSchema(env);
-  if (parsed instanceof ArkErrors) {
-    throw new Error(`invalid environment: ${parsed.summary}`);
-  }
-
-  const port = parsed.GATEWAY_HTTP_PORT ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid GATEWAY_HTTP_PORT: ${port}`);
-  }
+  const parsed = parseEnvSchema(envSchema, env);
 
   return {
-    port,
+    port: requirePort(parsed.GATEWAY_HTTP_PORT, DEFAULT_PORT, "GATEWAY_HTTP_PORT"),
     webOrigin: parsed.WEB_ORIGIN,
     authBaseUrl: parsed.AUTH_BASE_URL,
     ticketsBaseUrl: parsed.TICKETS_BASE_URL,

@@ -23,6 +23,10 @@
     "./wait-for": {
       "types": "./dist/wait-for.d.ts",
       "import": "./dist/wait-for.js"
+    },
+    "./wait-for-url": {
+      "types": "./dist/wait-for-url.d.ts",
+      "import": "./dist/wait-for-url.js"
     }
   },
   "scripts": {

@@ -1,6 +1,7 @@
-import { ArkErrors, type } from "arktype";
+import { type } from "arktype";
 
 import { ORDERS_STREAM, PAYMENTS_STREAM, TICKETS_STREAM } from "@tix/contracts/subjects";
+import { parseEnvSchema, requirePort, requirePositiveInt } from "@tix/service-runtime/env";
 
 const DEFAULT_PORT = 4003;
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
@@ -35,23 +36,10 @@ export type OrdersEnv = {
 };
 
 export function parseEnv(): OrdersEnv {
-  const parsed = envSchema(process.env);
-  if (parsed instanceof ArkErrors) {
-    throw new Error(`invalid environment: ${parsed.summary}`);
-  }
-
-  const port = parsed.ORDERS_HTTP_PORT ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid ORDERS_HTTP_PORT: ${port}`);
-  }
-
-  const reservationTtlMs = parsed.RESERVATION_TTL_MS ?? DEFAULT_RESERVATION_TTL_MS;
-  if (!Number.isInteger(reservationTtlMs) || reservationTtlMs <= 0) {
-    throw new Error(`invalid RESERVATION_TTL_MS: ${reservationTtlMs}`);
-  }
+  const parsed = parseEnvSchema(envSchema, process.env);
 
   return {
-    port,
+    port: requirePort(parsed.ORDERS_HTTP_PORT, DEFAULT_PORT, "ORDERS_HTTP_PORT"),
     databaseUrl: parsed.DATABASE_URL,
     authBaseUrl: parsed.AUTH_BASE_URL,
     ticketsBaseUrl: parsed.TICKETS_BASE_URL,
@@ -60,7 +48,11 @@ export function parseEnv(): OrdersEnv {
     stream: parsed.ORDERS_STREAM ?? ORDERS_STREAM,
     paymentsStream: parsed.PAYMENTS_STREAM ?? PAYMENTS_STREAM,
     ticketsStream: parsed.TICKETS_STREAM ?? TICKETS_STREAM,
-    reservationTtlMs,
+    reservationTtlMs: requirePositiveInt(
+      parsed.RESERVATION_TTL_MS,
+      DEFAULT_RESERVATION_TTL_MS,
+      "RESERVATION_TTL_MS",
+    ),
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT ?? DEFAULT_OTEL_ENDPOINT,
   };
 }

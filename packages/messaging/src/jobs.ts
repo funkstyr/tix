@@ -1,3 +1,8 @@
+// NOTE(seam): expiration is the only adapter of this module today — one adapter
+// makes this a hypothetical seam (BullMQ delayed jobs, ADR-0002). Keep the
+// interface stable but don't generalize it further until a second service
+// schedules delayed jobs; if expiration ever absorbs it wholesale, moving this
+// file into apps/expiration is the honest outcome.
 import { type ConnectionOptions, type JobsOptions, Queue, Worker } from "bullmq";
 import { Cause, Effect, Exit } from "effect";
 

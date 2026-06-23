@@ -13,7 +13,6 @@ import {
   CardTitle,
 } from "@tix/core-ui/card";
 import { EmptyState } from "@tix/core-ui/empty-state";
-import { FormField } from "@tix/core-ui/form-field";
 import { Input } from "@tix/core-ui/input";
 import { Label } from "@tix/core-ui/label";
 import { PageHeader } from "@tix/core-ui/page-header";
@@ -105,16 +104,6 @@ function GalleryPage(): JSX.Element {
         <h2 className="text-lg font-semibold">PageHeader</h2>
 
         <PageHeader title="Tickets" description="Browse every listing" action={listAction} />
-      </section>
-
-      <Separator />
-
-      <section className="flex max-w-sm flex-col gap-3">
-        <h2 className="text-lg font-semibold">FormField</h2>
-
-        <FormField id="gallery-price" label="Price (USD)" type="number" />
-
-        <FormField id="gallery-bad" label="Quantity" error="Enter a quantity of 1 or more" />
       </section>
 
       <Separator />

@@ -1,6 +1,7 @@
-import { ArkErrors, type } from "arktype";
+import { type } from "arktype";
 
 import { ORDERS_STREAM } from "@tix/contracts/subjects";
+import { parseEnvSchema, requirePort } from "@tix/service-runtime/env";
 
 const DEFAULT_PORT = 4002;
 const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
@@ -26,18 +27,10 @@ export type TicketsEnv = {
 };
 
 export function parseEnv(): TicketsEnv {
-  const parsed = envSchema(process.env);
-  if (parsed instanceof ArkErrors) {
-    throw new Error(`invalid environment: ${parsed.summary}`);
-  }
-
-  const port = parsed.TICKETS_HTTP_PORT ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid TICKETS_HTTP_PORT: ${port}`);
-  }
+  const parsed = parseEnvSchema(envSchema, process.env);
 
   return {
-    port,
+    port: requirePort(parsed.TICKETS_HTTP_PORT, DEFAULT_PORT, "TICKETS_HTTP_PORT"),
     databaseUrl: parsed.DATABASE_URL,
     authBaseUrl: parsed.AUTH_BASE_URL,
     natsUrl: parsed.NATS_URL,

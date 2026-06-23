@@ -1,4 +1,6 @@
-import { ArkErrors, type } from "arktype";
+import { type } from "arktype";
+
+import { parseEnvSchema, requirePort } from "@tix/service-runtime/env";
 
 const DEFAULT_PORT = 4001;
 const DEFAULT_OTEL_ENDPOINT = "http://otel-collector:4318";
@@ -25,15 +27,8 @@ export type AuthEnv = {
 };
 
 export function parseEnv(env: Record<string, string | undefined>): AuthEnv {
-  const parsed = envSchema(env);
-  if (parsed instanceof ArkErrors) {
-    throw new Error(`invalid environment: ${parsed.summary}`);
-  }
-
-  const port = parsed.AUTH_HTTP_PORT ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`invalid AUTH_HTTP_PORT: ${port}`);
-  }
+  const parsed = parseEnvSchema(envSchema, env);
+  const port = requirePort(parsed.AUTH_HTTP_PORT, DEFAULT_PORT, "AUTH_HTTP_PORT");
 
   return {
     port,

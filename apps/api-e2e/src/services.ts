@@ -2,6 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { waitForUrl } from "@tix/test-helpers/wait-for-url";
+
 import {
   env,
   repoRoot,
@@ -82,30 +84,14 @@ export function spawnAll(): void {
   });
 }
 
-async function waitForHealth(url: string, deadline: number): Promise<void> {
-  while (Date.now() < deadline) {
-    try {
-      // eslint-disable-next-line no-await-in-loop -- polling is inherently sequential
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet
-    }
-    // eslint-disable-next-line no-await-in-loop -- backoff before the next poll
-    await delay(250);
-  }
-  throw new Error(`service did not become healthy: ${url}`);
-}
-
 // expiration has no HTTP server; by the time auth/tickets/orders all report
 // healthy, expiration's BullMQ worker has had time to register on the ORDERS
 // stream, so we don't gate on it explicitly.
 export async function waitForReady(timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
   await Promise.all([
-    waitForHealth(`${env.AUTH_BASE_URL}/health`, deadline),
-    waitForHealth(`${env.TICKETS_BASE_URL}/health`, deadline),
-    waitForHealth(`${env.ORDERS_BASE_URL}/health`, deadline),
+    waitForUrl(`${env.AUTH_BASE_URL}/health`, { timeoutMs, label: "auth" }),
+    waitForUrl(`${env.TICKETS_BASE_URL}/health`, { timeoutMs, label: "tickets" }),
+    waitForUrl(`${env.ORDERS_BASE_URL}/health`, { timeoutMs, label: "orders" }),
   ]);
 }
 
