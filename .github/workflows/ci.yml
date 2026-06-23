@@ -43,5 +43,11 @@ jobs:
       - name: Check types
         run: pnpm run check-types
 
+      # The per-service integration suites gate PRs but skip silently when Docker
+      # is unreachable (the dockerAvailable guard). Fail loudly here instead so a
+      # runner-image change can never quietly turn them off.
+      - name: Ensure Docker is reachable for integration tests
+        run: docker info > /dev/null
+
       - name: Test
         run: pnpm run test

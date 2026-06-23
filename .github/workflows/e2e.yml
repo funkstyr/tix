@@ -41,8 +41,14 @@ jobs:
           restore-keys: |
             turbo-${{ runner.os }}-
 
+      # `--wait` treats the one-shot nats-init container's clean exit(0) as a
+      # failure (this killed the only previous run of this workflow), so wait
+      # only on the long-running services, then run the stream bootstrap to
+      # completion so a failure there still fails the job.
       - name: Bring up infra (postgres, nats, redis)
-        run: docker compose up -d --wait
+        run: |
+          docker compose up -d --wait postgres nats redis
+          docker compose run --rm nats-init
 
       - name: Run e2e smoke test
         run: pnpm run e2e
