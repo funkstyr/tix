@@ -17,6 +17,14 @@ describe("parseEnvSchema", () => {
   it("throws the uniform error on failure", () => {
     expect(() => parseEnvSchema(schema, {})).toThrow(/invalid environment:/);
   });
+
+  it("tolerates undeclared keys (services pass the whole process.env)", () => {
+    // Every service calls parseEnvSchema(schema, process.env), which carries dozens
+    // of unrelated vars (PATH, HOME, …). The schema must extract its declared fields
+    // without rejecting on the extras.
+    const parsed = parseEnvSchema(schema, { FOO: "x", PATH: "/usr/bin", HOME: "/root" });
+    expect(parsed.FOO).toBe("x");
+  });
 });
 
 describe("requirePort", () => {
@@ -26,6 +34,16 @@ describe("requirePort", () => {
 
   it("accepts a valid explicit port", () => {
     expect(requirePort(8080, 4002, "TICKETS_HTTP_PORT")).toBe(8080);
+  });
+
+  it("accepts the maximum valid port (inclusive upper bound)", () => {
+    expect(requirePort(65535, 4002, "TICKETS_HTTP_PORT")).toBe(65535);
+  });
+
+  it("rejects the port one past the maximum", () => {
+    expect(() => requirePort(65536, 4002, "TICKETS_HTTP_PORT")).toThrow(
+      "invalid TICKETS_HTTP_PORT: 65536",
+    );
   });
 
   it("rejects out-of-range ports with the field name", () => {
