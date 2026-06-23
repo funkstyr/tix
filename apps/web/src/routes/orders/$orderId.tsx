@@ -1,7 +1,6 @@
 import { type JSX, useCallback, useMemo, useState } from "react";
 import { createFileRoute, notFound, useRouter } from "@tanstack/react-router";
 
-import type { OrderRecord } from "@tix/contracts/orders";
 import { Alert } from "@tix/core-ui/alert";
 import { Button } from "@tix/core-ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@tix/core-ui/card";
@@ -11,11 +10,9 @@ import { requireAuth } from "../../auth/require-auth";
 import { useAuth } from "../../auth/use-auth";
 import { useClient } from "../../client/use-client";
 import { cancelOrder } from "../../orders/cancel-order";
+import { isCancellable, isPayable } from "../../orders/order-status";
 import { OrderSummary } from "../../orders/order-summary";
 import { StripeCheckout } from "../../orders/stripe-checkout";
-
-const PAYABLE_STATUSES = new Set<OrderRecord["status"]>(["created", "awaiting_payment"]);
-const CANCELLABLE_STATUSES = new Set<OrderRecord["status"]>(["created", "awaiting_payment"]);
 
 export const Route = createFileRoute("/orders/$orderId")({
   loader: async ({ context, params }) => {
@@ -55,8 +52,8 @@ function OrderDetailPage(): JSX.Element {
     void router.invalidate();
   }, [router]);
 
-  const payable = !expired && PAYABLE_STATUSES.has(order.status);
-  const cancellable = !expired && CANCELLABLE_STATUSES.has(order.status);
+  const payable = isPayable(order.status, expired);
+  const cancellable = isCancellable(order.status, expired);
 
   return (
     <section className="mx-auto max-w-md">
