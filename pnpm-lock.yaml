@@ -233,6 +233,9 @@ importers:
       '@tix/saga-client':
         specifier: workspace:*
         version: link:../../packages/saga-client
+      '@tix/test-helpers':
+        specifier: workspace:*
+        version: link:../../packages/test-helpers
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.1
@@ -859,6 +862,9 @@ importers:
       '@tix/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@tix/test-helpers':
+        specifier: workspace:*
+        version: link:../../packages/test-helpers
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.1

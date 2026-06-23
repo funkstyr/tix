@@ -5,6 +5,8 @@ import { createStripePaymentIntentClient } from "payments/stripe-payment-intent"
 import Stripe from "stripe";
 import { GenericContainer, Wait } from "testcontainers";
 
+import { waitForUrl } from "@tix/test-helpers/wait-for-url";
+
 import { WEB_PORT } from "./ports.ts";
 
 const webRoot = fileURLToPath(new URL("../../web", import.meta.url));
@@ -125,7 +127,7 @@ async function startVite(args: {
     process.stderr.write(`[vite] ${buf.toString()}`);
   });
 
-  await waitForUrl(args.webUrl, 60_000);
+  await waitForUrl(args.webUrl, { timeoutMs: 60_000, label: "Vite dev server" });
 
   return { child };
 }
@@ -138,20 +140,4 @@ async function stopVite(handle: ViteHandle): Promise<void> {
     });
     handle.child.kill("SIGTERM");
   });
-}
-
-async function waitForUrl(url: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      // eslint-disable-next-line no-await-in-loop -- polling is inherently sequential
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet
-    }
-    // eslint-disable-next-line no-await-in-loop -- backoff before next poll
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error(`Vite dev server did not become ready: ${url}`);
 }
