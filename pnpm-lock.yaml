@@ -136,8 +136,8 @@ catalogs:
       specifier: ^3.21.2
       version: 3.21.2
     hono:
-      specifier: ^4.12.21
-      version: 4.12.21
+      specifier: ^4.12.27
+      version: 4.12.31
     jsdom:
       specifier: ^29.1.1
       version: 29.1.1
@@ -259,7 +259,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.3(hono@4.12.21)
+        version: 2.0.3(hono@4.12.31)
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -295,7 +295,7 @@ importers:
         version: 3.21.2
       hono:
         specifier: 'catalog:'
-        version: 4.12.21
+        version: 4.12.31
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
@@ -329,7 +329,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.3(hono@4.12.21)
+        version: 2.0.3(hono@4.12.31)
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -365,7 +365,7 @@ importers:
         version: 3.21.2
       hono:
         specifier: 'catalog:'
-        version: 4.12.21
+        version: 4.12.31
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
@@ -402,7 +402,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.3(hono@4.12.21)
+        version: 2.0.3(hono@4.12.31)
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -429,7 +429,7 @@ importers:
         version: 3.21.2
       hono:
         specifier: 'catalog:'
-        version: 4.12.21
+        version: 4.12.31
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
@@ -490,7 +490,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.3(hono@4.12.21)
+        version: 2.0.3(hono@4.12.31)
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -529,7 +529,7 @@ importers:
         version: 3.21.2
       hono:
         specifier: 'catalog:'
-        version: 4.12.21
+        version: 4.12.31
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
@@ -578,7 +578,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.3(hono@4.12.21)
+        version: 2.0.3(hono@4.12.31)
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -614,7 +614,7 @@ importers:
         version: 3.21.2
       hono:
         specifier: 'catalog:'
-        version: 4.12.21
+        version: 4.12.31
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
@@ -691,7 +691,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.3(hono@4.12.21)
+        version: 2.0.3(hono@4.12.31)
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -730,7 +730,7 @@ importers:
         version: 3.21.2
       hono:
         specifier: 'catalog:'
-        version: 4.12.21
+        version: 4.12.31
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
@@ -1226,7 +1226,7 @@ importers:
         version: 0.96.1(effect@3.21.2)
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.0.3(hono@4.12.21)
+        version: 2.0.3(hono@4.12.31)
       '@nats-io/transport-node':
         specifier: 'catalog:'
         version: 3.4.0
@@ -1256,7 +1256,7 @@ importers:
         version: 3.21.2
       hono:
         specifier: 'catalog:'
-        version: 4.12.21
+        version: 4.12.31
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
@@ -1654,11 +1654,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -4582,8 +4582,8 @@ packages:
     resolution: {integrity: sha512-ej4AhfhfL2Q2zpMmLo7U1Uv9+PyhIZpgQLGT1F9miIGmiCJIoCgSmczFdrc97mWT4kVY72KA+WnnhJ5pghSvSg==}
     engines: {node: '>= 0.4'}
 
-  hono@4.12.21:
-    resolution: {integrity: sha512-uV63apnb0kyPtAUwoWgaGh9HyIFcv8lgmzPZSiTBQAFOFGIzka5EZ1dZocmGnn0XdX0+XTqJ6Tqv7selMuGLRQ==}
+  hono@4.12.31:
+    resolution: {integrity: sha512-zJIHFrl6bq3RDd2YusFNCDlM8qUprxKswyi/OPzPyzKDdyBXDqWx8bZlZ7R+saTdSTatUmb3O7K4SspGPaEOQg==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.1.1:
@@ -6720,9 +6720,9 @@ snapshots:
       protobufjs: 7.6.0
       yargs: 17.7.2
 
-  '@hono/node-server@2.0.3(hono@4.12.21)':
+  '@hono/node-server@2.0.3(hono@4.12.31)':
     dependencies:
-      hono: 4.12.21
+      hono: 4.12.31
 
   '@inquirer/ansi@1.0.2': {}
 
@@ -8861,7 +8861,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.12.21: {}
+  hono@4.12.31: {}
 
   hookable@6.1.1: {}
 
